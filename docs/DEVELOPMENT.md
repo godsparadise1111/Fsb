@@ -38,7 +38,7 @@
 - `GET /api/permissions` فهرست مجوزها
 - `POST /api/roles` ایجاد نقش با `code`, `name`, اختیاری `description`, `permissionIds`
 - `GET /api/roles` فهرست نقش‌ها و مجوزهایشان
-- `POST /api/user-roles` اعطای نقش؛ `userId`, `roleId` و اختیاری `organizationId`
+- `POST /api/user-roles` اعطای نقش سازمانی؛ `userId`, `roleId` و `organizationId` الزامی. نقش‌های `PLATFORM` فقط توسط مدیر سطح سامانه و بدون `organizationId` قابل اعطا هستند.
 
 ### تعریف و نسخه‌بندی فرایند
 - `POST /api/process-definitions` تعریف فرایند؛ `organizationId`, `code`, `name`, اختیاری `description`
