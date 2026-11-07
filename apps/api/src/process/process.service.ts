@@ -24,17 +24,16 @@ export class ProcessService {
     return this.definitions.find({ where: organizationId ? { organizationId } : {}, order: { name: 'ASC' } });
   }
   async createVersion(definitionId: string, dto: CreateProcessVersionDto) {
-    const definition = await this.definitions.findOneBy({ id: definitionId });
-    if (!definition) throw new NotFoundException('Process definition not found');
-    if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be changed');
-    const latest = await this.versions.findOne({ where: { definitionId }, order: { versionNumber: 'DESC' } });
-    return this.versions.save(this.versions.create({
-      definitionId,
-      versionNumber: (latest?.versionNumber ?? 0) + 1,
-      status: 'DRAFT',
-      schema: dto.schema,
-      changeNote: dto.changeNote ?? null,
-    }));
+    return this.dataSource.transaction(async manager => {
+      const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      if (!definition) throw new NotFoundException('Process definition not found');
+      if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be changed');
+      const latest = await manager.findOne(ProcessVersion, { where: { definitionId }, order: { versionNumber: 'DESC' } });
+      return manager.save(ProcessVersion, manager.create(ProcessVersion, {
+        definitionId, versionNumber: (latest?.versionNumber ?? 0) + 1, status: 'DRAFT',
+        schema: dto.schema, changeNote: dto.changeNote ?? null,
+      }));
+    });
   }
   async listVersions(definitionId: string) {
     if (!await this.definitions.exist({ where: { id: definitionId } })) throw new NotFoundException('Process definition not found');
