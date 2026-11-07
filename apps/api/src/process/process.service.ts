@@ -91,6 +91,9 @@ export class ProcessService {
              config.reassignUserIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) {
           throw new BadRequestException(`Process step ${index + 1} reassignUserIds must be an array of 1 to 50 UUIDs`);
         }
+        if (Array.isArray(config.reassignUserIds) && new Set(config.reassignUserIds).size !== config.reassignUserIds.length) {
+          throw new BadRequestException(`Process step ${index + 1} reassignUserIds cannot contain duplicates`);
+        }
         if (config.reassignUserIds !== undefined && (reassignAfterHours === undefined || reassignAfterHours === null)) {
           throw new BadRequestException(`Process step ${index + 1} must configure reassignAfterHours when reassignUserIds are set`);
         }
