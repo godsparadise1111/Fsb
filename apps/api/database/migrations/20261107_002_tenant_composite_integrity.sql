@@ -105,7 +105,7 @@ CREATE INDEX "IDX_form_submissions_tenant_submitted" ON form_submissions ("tenan
 
 -- An organization is permanently owned by one tenant. Prevent tenantless rows,
 -- reassignment and creation under a suspended/closed customer at database level.
-CREATE OR REPLACE FUNCTION fsb_guard_organization_tenant() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION fsb_guard_organization_tenant() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE tenant_status varchar(20);
 BEGIN
   IF NEW."tenantId" IS NULL THEN
@@ -119,7 +119,7 @@ BEGIN
     RAISE EXCEPTION 'Organizations can only belong to active tenants';
   END IF;
   RETURN NEW;
-END $;
+END $$;
 
 CREATE TRIGGER "TR_organizations_tenant_guard"
   BEFORE INSERT OR UPDATE OF "tenantId" ON organizations
