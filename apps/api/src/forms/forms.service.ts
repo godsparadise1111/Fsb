@@ -110,4 +110,43 @@ export class FormsService {
       .getManyAndCount();
     return { items, pagination: { total, limit, offset, hasMore: offset + items.length < total } };
   }
+
+  async exportSubmissions(versionId: string, tenantId?: string | null, requestedLimit = 1000, requestedOffset = 0) {
+    const version = await this.versions.findOne({ where: { id: versionId }, relations: { definition: { organization: { tenant: true } } } });
+    if (!version) throw new NotFoundException('Form version not found');
+    if (!tenantId || version.definition.organization?.tenantId !== tenantId || version.definition.organization.tenant?.status !== 'ACTIVE') {
+      throw new BadRequestException('Form submissions are outside the active customer account');
+    }
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(Math.trunc(requestedLimit), 5000) : 1000;
+    const offset = Number.isFinite(requestedOffset) && requestedOffset >= 0 ? Math.min(Math.trunc(requestedOffset), 100000) : 0;
+    const rows = await this.dataSource.query(
+      `SELECT fs.id AS "submissionId", fs."submittedAt", fs."processInstanceId", fs.data,
+              u."firstName", u."lastName", u.email
+         FROM form_submissions fs
+         INNER JOIN form_versions fv ON fv.id = fs."formVersionId"
+         INNER JOIN form_definitions fd ON fd.id = fv."definitionId"
+         INNER JOIN organizations o ON o.id = fd."organizationId"
+         INNER JOIN tenants t ON t.id = o."tenantId"
+         LEFT JOIN users u ON u.id = fs."submittedByUserId"
+        WHERE fv.id = $1 AND fs."tenantId" = $2 AND t.status = 'ACTIVE'
+        ORDER BY fs."submittedAt" DESC, fs.id DESC
+        LIMIT $3 OFFSET $4`,
+      [versionId, tenantId, limit, offset],
+    );
+    const cell = (value: unknown) => {
+      let text = value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
+      if (/^[\\s]*[=+\\-@]/.test(text) || /^[\\t\\r]/.test(text)) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const headers = ['شناسه ثبت', 'تاریخ ثبت', 'شناسه نمونه فرایند', 'نام ثبت‌کننده', 'ایمیل ثبت‌کننده', 'داده‌های فرم'];
+    const lines = [
+      headers.map(cell).join(','),
+      ...rows.map((row: any) => [
+        row.submissionId, row.submittedAt instanceof Date ? row.submittedAt.toISOString() : row.submittedAt,
+        row.processInstanceId, [row.firstName, row.lastName].filter(Boolean).join(' '), row.email, row.data,
+      ].map(cell).join(',')),
+    ];
+    return '\\uFEFF' + lines.join('\\r\\n') + '\\r\\n';
+  }
+
 }
