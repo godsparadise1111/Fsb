@@ -11,7 +11,7 @@ export class OrganizationController {
   constructor(private readonly service: OrganizationService) {}
   @RequirePermissions('tenants.manage')
   @Post() create(@Body() dto: CreateOrganizationDto) { return this.service.createOrganization(dto); }
-  @RequirePermissions('organization.manage')
+  @RequirePermissions('tenant.organizations.manage')
   @Post('tenant') createForTenant(@Body() dto: CreateOrganizationDto, @CurrentUser() user: AuthenticatedUser) {
     if (!user.tenantId) throw new BadRequestException('An authenticated tenant context is required');
     return this.service.createOrganization({ ...dto, tenantId: user.tenantId });
