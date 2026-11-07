@@ -16,6 +16,8 @@ import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { TaskDelegation } from './entities/task-delegation.entity';
 import { TaskDeferralRequest } from './entities/task-deferral-request.entity';
 import { OrganizationSubstitution } from './entities/organization-substitution.entity';
+import { OrganizationAbsence } from './entities/organization-absence.entity';
+import { CreateOrganizationAbsenceDto } from './dto/create-organization-absence.dto';
 import { WorkflowTaskReassignment } from './entities/workflow-task-reassignment.entity';
 import { CreateOrganizationSubstitutionDto } from './dto/create-organization-substitution.dto';
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
@@ -426,6 +428,93 @@ export class WorkflowService {
         resourceId: substitution.id, metadata: { organizationId, originalUserId: substitution.originalUserId },
       });
       return substitution;
+    });
+  }
+
+  async createOrganizationAbsence(actorUserId: string, dto: CreateOrganizationAbsenceDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const startsAt = new Date(dto.startsAt);
+    const endsAt = new Date(dto.endsAt);
+    const reason = dto.reason.trim();
+    const now = new Date();
+    if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) ||
+        startsAt < new Date(now.getTime() - 60000) || endsAt <= startsAt ||
+        endsAt.getTime() - startsAt.getTime() > 90 * 86400000) {
+      throw new BadRequestException('Absence must have a valid start and end time, no more than 90 days');
+    }
+    if (dto.userId === dto.substituteUserId) throw new BadRequestException('Absent user and substitute must differ');
+    if (reason.length < 5 || reason.length > 1000) throw new BadRequestException('A reason between 5 and 1000 characters is required');
+    return this.dataSource.transaction(async manager => {
+      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, tenantId, isActive: true } });
+      if (!organization) throw new NotFoundException('Active organization not found in this tenant');
+      const eligible = await manager.createQueryBuilder(UserPosition, 'up')
+        .innerJoin('up.position', 'position').innerJoin('position.unit', 'unit')
+        .innerJoin('tenant_memberships', 'tm', 'tm."tenantId" = :tenantId AND tm."userId" = up."userId" AND tm."isActive" = true', { tenantId })
+        .innerJoin(User, 'u', 'u.id = up."userId" AND u."isActive" = true')
+        .where('up."userId" IN (:...ids)', { ids: [dto.userId, dto.substituteUserId] })
+        .andWhere('unit."organizationId" = :organizationId AND unit."isActive" = true AND position."isActive" = true AND up."isActive" = true', { organizationId: dto.organizationId })
+        .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
+        .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
+      if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Absent user and substitute must be active tenant members with valid positions at the absence start');
+      const substitution = await manager.save(OrganizationSubstitution, manager.create(OrganizationSubstitution, {
+        tenantId, organizationId: dto.organizationId, originalUserId: dto.userId,
+        substituteUserId: dto.substituteUserId, startsAt, endsAt, reason, createdByUserId: actorUserId,
+        revokedAt: null, revokedByUserId: null,
+      }));
+      const absence = await manager.save(OrganizationAbsence, manager.create(OrganizationAbsence, {
+        tenantId, organizationId: dto.organizationId, userId: dto.userId,
+        substituteUserId: dto.substituteUserId, substitutionId: substitution.id,
+        startsAt, endsAt, reason, createdByUserId: actorUserId,
+        cancelledAt: null, cancelledByUserId: null,
+      }));
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, targetUserId: dto.userId, action: 'workflow.organization_absence.created',
+        resourceType: 'ORG_ABSENCE', resourceId: absence.id,
+        metadata: { organizationId: dto.organizationId, substituteUserId: dto.substituteUserId, substitutionId: substitution.id, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), reason },
+      });
+      return absence;
+    });
+  }
+
+  async listOrganizationAbsences(organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const limit = limitValue === undefined ? 50 : Number(limitValue);
+    const offset = offsetValue === undefined ? 0 : Number(offsetValue);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be between 1 and 100');
+    if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new BadRequestException('offset must be between 0 and 100000');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    const [items, total] = await this.dataSource.getRepository(OrganizationAbsence).findAndCount({
+      where: { tenantId, organizationId }, order: { createdAt: 'DESC' }, take: limit, skip: offset,
+    });
+    return { items, total, limit, offset };
+  }
+
+  async cancelOrganizationAbsence(organizationId: string, absenceId: string, actorUserId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      const absence = await manager.findOne(OrganizationAbsence, {
+        where: { id: absenceId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!absence) throw new NotFoundException('Absence not found');
+      if (absence.cancelledAt) throw new ConflictException('Absence is already cancelled');
+      absence.cancelledAt = new Date();
+      absence.cancelledByUserId = actorUserId;
+      await manager.save(absence);
+      const substitution = await manager.findOne(OrganizationSubstitution, {
+        where: { id: absence.substitutionId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (substitution && !substitution.revokedAt) {
+        substitution.revokedAt = absence.cancelledAt;
+        substitution.revokedByUserId = actorUserId;
+        await manager.save(substitution);
+      }
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, targetUserId: absence.userId, action: 'workflow.organization_absence.cancelled',
+        resourceType: 'ORG_ABSENCE', resourceId: absence.id,
+        metadata: { organizationId, substituteUserId: absence.substituteUserId, substitutionId: absence.substitutionId },
+      });
+      return absence;
     });
   }
 
