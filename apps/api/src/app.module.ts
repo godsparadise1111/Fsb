@@ -2,9 +2,15 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HealthModule } from './health/health.module';
 import { OrganizationModule } from './organization/organization.module';
+import { IdentityModule } from './identity/identity.module';
 import { Organization } from './organization/entities/organization.entity';
 import { OrganizationUnit } from './organization/entities/organization-unit.entity';
 import { Position } from './organization/entities/position.entity';
+import { User } from './identity/entities/user.entity';
+import { UserPosition } from './identity/entities/user-position.entity';
+import { Role } from './identity/entities/role.entity';
+import { Permission } from './identity/entities/permission.entity';
+import { UserRole } from './identity/entities/user-role.entity';
 
 @Module({
   imports: [
@@ -15,12 +21,13 @@ import { Position } from './organization/entities/position.entity';
       username: process.env.POSTGRES_USER ?? 'fsb',
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
-      entities: [Organization, OrganizationUnit, Position],
+      entities: [Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole],
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
     HealthModule,
     OrganizationModule,
+    IdentityModule,
   ],
 })
 export class AppModule {}
