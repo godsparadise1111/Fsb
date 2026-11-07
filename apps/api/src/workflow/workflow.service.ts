@@ -184,6 +184,19 @@ export class WorkflowService {
       } else {
         task.status = 'IN_PROGRESS';
       }
+      const remainingDelegations = await manager.find(TaskDelegation, { where: { taskId, tenantId, revokedAt: null } });
+      for (const delegation of remainingDelegations) {
+        if (task.status === 'COMPLETED' || task.status === 'CANCELLED' || delegation.fromUserId === userId) {
+          delegation.revokedAt = new Date();
+          delegation.revokedByUserId = userId;
+          await manager.save(delegation);
+          await this.tenantAudit.record(manager, {
+            tenantId, actorUserId: userId, targetUserId: delegation.toUserId,
+            action: 'workflow.task.delegation_closed', resourceType: 'TASK_DELEGATION', resourceId: delegation.id,
+            metadata: { taskId, reason: task.status === 'COMPLETED' || task.status === 'CANCELLED' ? 'TASK_CLOSED' : 'ORIGINAL_ASSIGNEE_ACTED' },
+          });
+        }
+      }
       await manager.save(task);
       return manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { assignees: true, processInstance: true } });
     });
@@ -286,7 +299,7 @@ export class WorkflowService {
     if (!await this.tasks.exist({ where: { id: taskId } })) throw new NotFoundException('Task not found');
     const assigned = await this.assignees.exist({ where: { taskId, userId: requesterId } });
     const delegated = await this.dataSource.getRepository(TaskDelegation).exist({
-      where: { taskId, tenantId, toUserId: requesterId, revokedAt: null },
+      where: { taskId, tenantId, toUserId: requesterId },
     });
     const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
     if (task?.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task history is outside the active tenant');
