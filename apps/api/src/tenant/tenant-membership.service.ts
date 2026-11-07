@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
 import { TenantMembership } from './entities/tenant-membership.entity';
 import { User } from '../identity/entities/user.entity';
+import { TenantAuditService } from './tenant-audit.service';
 
 @Injectable()
 export class TenantMembershipService {
@@ -11,9 +12,10 @@ export class TenantMembershipService {
     private readonly dataSource: DataSource,
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(TenantMembership) private readonly memberships: Repository<TenantMembership>,
+    private readonly audit: TenantAuditService,
   ) {}
 
-  async add(tenantId: string, userId: string, isTenantAdmin = false) {
+  async add(tenantId: string, userId: string, actorUserId: string, isTenantAdmin = false) {
     return this.dataSource.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, { where: { id: tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!tenant) throw new NotFoundException('Tenant not found');
@@ -29,11 +31,15 @@ export class TenantMembershipService {
         existing.isActive = true;
         existing.isTenantAdmin = isTenantAdmin;
         existing.acceptedAt = new Date();
-        return repository.save(existing);
+        const saved = await repository.save(existing);
+        await this.audit.record(manager, { tenantId, actorUserId, targetUserId: userId, action: 'MEMBER_REACTIVATED', resourceType: 'TENANT_MEMBERSHIP', resourceId: saved.id, metadata: { isTenantAdmin } });
+        return saved;
       }
-      return repository.save(repository.create({
+      const saved = await repository.save(repository.create({
         tenantId, userId, isActive: true, isTenantAdmin, acceptedAt: new Date(),
       }));
+      await this.audit.record(manager, { tenantId, actorUserId, targetUserId: userId, action: 'MEMBER_ADDED', resourceType: 'TENANT_MEMBERSHIP', resourceId: saved.id, metadata: { isTenantAdmin } });
+      return saved;
     });
   }
 
@@ -45,7 +51,7 @@ export class TenantMembershipService {
     });
   }
 
-  async setAdmin(tenantId: string, userId: string, isTenantAdmin: boolean) {
+  async setAdmin(tenantId: string, userId: string, actorUserId: string, isTenantAdmin: boolean) {
     return this.dataSource.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, { where: { id: tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!tenant) throw new NotFoundException('Tenant not found');
@@ -60,12 +66,15 @@ export class TenantMembershipService {
         const admins = await repository.count({ where: { tenantId, isActive: true, isTenantAdmin: true } });
         if (admins <= 1) throw new BadRequestException('A tenant must retain at least one active administrator');
       }
+      const previous = membership.isTenantAdmin;
       membership.isTenantAdmin = isTenantAdmin;
-      return repository.save(membership);
+      const saved = await repository.save(membership);
+      if (previous !== isTenantAdmin) await this.audit.record(manager, { tenantId, actorUserId, targetUserId: userId, action: isTenantAdmin ? 'ADMIN_PROMOTED' : 'ADMIN_DEMOTED', resourceType: 'TENANT_MEMBERSHIP', resourceId: saved.id });
+      return saved;
     });
   }
 
-  async remove(tenantId: string, userId: string) {
+  async remove(tenantId: string, userId: string, actorUserId: string) {
     return this.dataSource.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, { where: { id: tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!tenant) throw new NotFoundException('Tenant not found');
@@ -81,7 +90,9 @@ export class TenantMembershipService {
       }
       membership.isActive = false;
       membership.isTenantAdmin = false;
-      return repository.save(membership);
+      const saved = await repository.save(membership);
+      await this.audit.record(manager, { tenantId, actorUserId, targetUserId: userId, action: 'MEMBER_REMOVED', resourceType: 'TENANT_MEMBERSHIP', resourceId: saved.id });
+      return saved;
     });
   }
 }
