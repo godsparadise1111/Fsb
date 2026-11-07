@@ -56,7 +56,7 @@ export class FileAttachmentsService {
     if (!submission.length) throw new NotFoundException('Submission not found in the active customer account');
     const id = randomUUID();
     const storageKey = randomUUID();
-    const safeName = file.originalname.replace(/[\\/\\x00-\\x1f\\x7f]/g, '_').slice(0, 255) || 'attachment';
+    const safeName = Array.from(file.originalname).map(char => { const code = char.charCodeAt(0); return char === '/' || char === '\\' || code <= 31 || code === 127 ? '_' : char; }).join('').slice(0, 255) || 'attachment';
     const hash = createHash('sha256').update(file.buffer).digest('hex');
     await mkdir(this.storageRoot, { recursive: true, mode: 0o700 });
     await chmod(this.storageRoot, 0o700);
