@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors, StreamableFile, NotFoundException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { FormsService } from './forms.service';
+import { FileAttachmentsService } from './file-attachments.service';
 import { CreateFormDto } from './dto/create-form.dto';
 import { CreateFormVersionDto } from './dto/create-form-version.dto';
 import { SubmitFormDto } from './dto/submit-form.dto';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
+type UploadedBinary = { originalname: string; mimetype: string; size: number; buffer: Buffer };
+
 @Controller('forms')
 export class FormsController {
-  constructor(private readonly forms: FormsService) {}
+  constructor(private readonly forms: FormsService, private readonly fileAttachments: FileAttachmentsService) {}
   @RequirePermissions('forms.manage')
   @Post() create(@Body() dto: CreateFormDto) { return this.forms.createDefinition(dto); }
   @RequirePermissions('forms.read')
@@ -23,4 +27,33 @@ export class FormsController {
   @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto, user.tenantId); }
   @RequirePermissions('forms.read')
   @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @CurrentUser() user: AuthenticatedUser) { return this.forms.listSubmissions(versionId, user.tenantId); }
+
+  @RequirePermissions('forms.submit')
+  @Post('versions/:versionId/submissions/:submissionId/attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  uploadAttachment(
+    @Param('versionId') versionId: string,
+    @Param('submissionId') submissionId: string,
+    @UploadedFile() file: UploadedBinary,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.fileAttachments.upload(versionId, submissionId, user.tenantId, user.sub, file);
+  }
+
+  @RequirePermissions('forms.read')
+  @Get('versions/:versionId/submissions/:submissionId/attachments/:attachmentId/download')
+  async downloadAttachment(
+    @Param('versionId') versionId: string,
+    @Param('submissionId') submissionId: string,
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const result = await this.fileAttachments.getForDownload(versionId, submissionId, attachmentId, user.tenantId);
+    if (!result) throw new NotFoundException('Attachment not found');
+    const filename = encodeURIComponent(result.attachment.originalName);
+    return new StreamableFile(result.buffer, {
+      type: result.attachment.mimeType,
+      disposition: `attachment; filename="attachment"; filename*=UTF-8''${filename}`,
+    });
+  }
 }
