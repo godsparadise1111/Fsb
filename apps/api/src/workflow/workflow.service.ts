@@ -15,6 +15,8 @@ import { ActTaskDto } from './dto/act-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { TaskDelegation } from './entities/task-delegation.entity';
 import { TaskDeferralRequest } from './entities/task-deferral-request.entity';
+import { OrganizationSubstitution } from './entities/organization-substitution.entity';
+import { CreateOrganizationSubstitutionDto } from './dto/create-organization-substitution.dto';
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
 
@@ -84,6 +86,14 @@ export class WorkflowService {
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
       .andWhere(`(assignment.id IS NOT NULL OR EXISTS (
+        SELECT 1 FROM organization_substitutions substitution
+         JOIN task_assignees original ON original."taskId" = task.id
+          AND original."userId" = substitution."originalUserId" AND original.status = 'PENDING'
+        WHERE substitution."organizationId" = instance."organizationId"
+          AND substitution."tenantId" = :tenantId AND substitution."substituteUserId" = :userId
+          AND substitution."revokedAt" IS NULL
+          AND substitution."startsAt" <= now() AND substitution."endsAt" > now()
+      ) OR EXISTS (
         SELECT 1 FROM task_delegations delegation
          JOIN task_assignees original ON original."taskId" = delegation."taskId"
           AND original."userId" = delegation."fromUserId" AND original.status = 'PENDING'
@@ -104,6 +114,24 @@ export class WorkflowService {
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
       let assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
       let actingDelegation: TaskDelegation | null = null;
+      let actingSubstitution: OrganizationSubstitution | null = null;
+      if (!assignment) {
+        const substitutions = await manager.createQueryBuilder(OrganizationSubstitution, 'substitution')
+          .innerJoin(TaskAssignee, 'original', 'original.taskId = :taskId AND original.userId = substitution.originalUserId AND original.status = :pending', { taskId, pending: 'PENDING' })
+          .where('substitution.organizationId = :organizationId AND substitution.tenantId = :tenantId', { organizationId: task.processInstance.organizationId, tenantId })
+          .andWhere('substitution.substituteUserId = :userId AND substitution."revokedAt" IS NULL', { userId })
+          .andWhere('substitution."startsAt" <= :now AND substitution."endsAt" > :now', { now: new Date() })
+          .setLock('pessimistic_write')
+          .getMany();
+        if (substitutions.length > 1) throw new ConflictException('Multiple active substitutions match this task; administrator review is required');
+        actingSubstitution = substitutions[0] ?? null;
+        if (actingSubstitution) {
+          assignment = await manager.findOne(TaskAssignee, {
+            where: { taskId, userId: actingSubstitution.originalUserId, status: 'PENDING' },
+            lock: { mode: 'pessimistic_write' },
+          });
+        }
+      }
       if (!assignment) {
         const delegations = await manager.find(TaskDelegation, {
           where: { taskId, tenantId, toUserId: userId, revokedAt: null },
@@ -124,7 +152,9 @@ export class WorkflowService {
       assignment.status = dto.action;
       assignment.comment = actingDelegation
         ? `Delegated action by ${userId}: ${dto.comment ?? ''}`.slice(0, 4000)
-        : dto.comment ?? null;
+        : actingSubstitution
+          ? `Substitution action by ${userId} for ${actingSubstitution.originalUserId}: ${dto.comment ?? ''}`.slice(0, 4000)
+          : dto.comment ?? null;
       assignment.actedAt = new Date();
       await manager.save(assignment);
       if (actingDelegation) {
@@ -306,6 +336,87 @@ export class WorkflowService {
     });
   }
 
+
+
+  async createOrganizationSubstitution(actorUserId: string, dto: CreateOrganizationSubstitutionDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const startsAt = new Date(dto.startsAt);
+    const endsAt = new Date(dto.endsAt);
+    const now = new Date();
+    const reason = dto.reason.trim();
+    if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) ||
+        startsAt < new Date(now.getTime() - 60000) || endsAt <= startsAt ||
+        endsAt.getTime() - startsAt.getTime() > 90 * 86400000) {
+      throw new BadRequestException('Substitution must have a valid start and end time, no more than 90 days');
+    }
+    if (dto.originalUserId === dto.substituteUserId) throw new BadRequestException('Original and substitute users must differ');
+    if (reason.length < 5 || reason.length > 1000) throw new BadRequestException('A reason between 5 and 1000 characters is required');
+    return this.dataSource.transaction(async manager => {
+      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, tenantId, isActive: true } });
+      if (!organization) throw new NotFoundException('Active organization not found in this tenant');
+      const eligible = await manager.createQueryBuilder(UserPosition, 'up')
+        .innerJoin('up.position', 'position').innerJoin('position.unit', 'unit')
+        .innerJoin('tenant_memberships', 'tm', 'tm."tenantId" = :tenantId AND tm."userId" = up."userId" AND tm."isActive" = true', { tenantId })
+        .innerJoin(User, 'u', 'u.id = up."userId" AND u."isActive" = true')
+        .where('up."userId" IN (:...ids)', { ids: [dto.originalUserId, dto.substituteUserId] })
+        .andWhere('unit."organizationId" = :organizationId AND unit."isActive" = true AND position."isActive" = true AND up."isActive" = true', { organizationId: dto.organizationId })
+        .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
+        .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
+      if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Both users must be active tenant members with valid positions in the organization at the substitution start');
+      const overlap = await manager.createQueryBuilder(OrganizationSubstitution, 's')
+        .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.originalUserId = :originalUserId', {
+          tenantId, organizationId: dto.organizationId, originalUserId: dto.originalUserId,
+        })
+        .andWhere('s.revokedAt IS NULL AND s.startsAt < :endsAt AND s.endsAt > :startsAt', { startsAt, endsAt })
+        .getCount();
+      if (overlap) throw new ConflictException('An overlapping substitution already exists for this employee and organization');
+      const substitution = await manager.save(OrganizationSubstitution, manager.create(OrganizationSubstitution, {
+        tenantId, organizationId: dto.organizationId, originalUserId: dto.originalUserId,
+        substituteUserId: dto.substituteUserId, startsAt, endsAt, reason, createdByUserId: actorUserId,
+        revokedAt: null, revokedByUserId: null,
+      }));
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, targetUserId: dto.substituteUserId, action: 'workflow.organization_substitution.created',
+        resourceType: 'ORG_SUBSTITUTION', resourceId: substitution.id,
+        metadata: { organizationId: dto.organizationId, originalUserId: dto.originalUserId, substituteUserId: dto.substituteUserId, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), reason },
+      });
+      return substitution;
+    });
+  }
+
+  async listOrganizationSubstitutions(organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const limit = limitValue === undefined ? 50 : Number(limitValue);
+    const offset = offsetValue === undefined ? 0 : Number(offsetValue);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be between 1 and 100');
+    if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new BadRequestException('offset must be between 0 and 100000');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    const [items, total] = await this.dataSource.getRepository(OrganizationSubstitution).findAndCount({
+      where: { tenantId, organizationId }, order: { createdAt: 'DESC' }, take: limit, skip: offset,
+    });
+    return { items, total, limit, offset };
+  }
+
+  async revokeOrganizationSubstitution(organizationId: string, substitutionId: string, actorUserId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      const substitution = await manager.findOne(OrganizationSubstitution, {
+        where: { id: substitutionId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!substitution) throw new NotFoundException('Substitution not found');
+      if (substitution.revokedAt) throw new ConflictException('Substitution is already revoked');
+      substitution.revokedAt = new Date();
+      substitution.revokedByUserId = actorUserId;
+      await manager.save(substitution);
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, targetUserId: substitution.substituteUserId,
+        action: 'workflow.organization_substitution.revoked', resourceType: 'ORG_SUBSTITUTION',
+        resourceId: substitution.id, metadata: { organizationId, originalUserId: substitution.originalUserId },
+      });
+      return substitution;
+    });
+  }
 
   async requestTaskDeferral(taskId: string, requesterId: string, dto: RequestTaskDeferralDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
