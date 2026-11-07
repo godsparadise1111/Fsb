@@ -19,7 +19,7 @@ END $$;
 
 ALTER TABLE user_positions ALTER COLUMN "tenantId" SET NOT NULL;
 
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM user_positions up
@@ -31,7 +31,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Active user positions include users without active membership in the same tenant; reconcile memberships before migration 005';
   END IF;
-END $;
+END $$;
 
 ALTER TABLE user_positions ADD CONSTRAINT "FK_user_positions_tenant"
   FOREIGN KEY ("tenantId") REFERENCES tenants(id) ON DELETE RESTRICT;
@@ -78,7 +78,7 @@ ALTER TABLE user_roles ADD COLUMN "tenantId" uuid NULL;
 UPDATE user_roles ur SET "tenantId" = o."tenantId"
 FROM organizations o WHERE o.id = ur."organizationId";
 
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM user_roles ur INNER JOIN roles r ON r.id = ur."roleId"
@@ -97,7 +97,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Active organization role assignments include users without active tenant membership; reconcile before migration 005';
   END IF;
-END $;
+END $$;
 
 ALTER TABLE user_roles ADD CONSTRAINT "CHK_user_roles_tenant_scope"
   CHECK (("organizationId" IS NULL AND "tenantId" IS NULL) OR ("organizationId" IS NOT NULL AND "tenantId" IS NOT NULL));
