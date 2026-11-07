@@ -51,7 +51,7 @@ export default function AbsencesPage() {
       throw new Error(Array.isArray(message) ? message.join('، ') : message || `خطای سرور (${response.status})`);
     }
     return payload;
-  }, [token]);
+  }, [token, tenantId]);
 
   const loadData = useCallback(async () => {
     if (!token) return;
