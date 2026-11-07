@@ -4,6 +4,7 @@ import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
+import { CreateOrganizationSubstitutionDto } from './dto/create-organization-substitution.dto';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
@@ -30,6 +31,23 @@ export class WorkflowController {
   @Delete('tasks/:id/delegations/:delegationId')
   revokeDelegation(@Param('id') id: string, @Param('delegationId') delegationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.revokeTaskDelegation(id, delegationId, user.sub, user.tenantId);
+  }
+
+
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organization-substitutions')
+  createSubstitution(@Body() dto: CreateOrganizationSubstitutionDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.createOrganizationSubstitution(user.sub, dto, user.tenantId);
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/substitutions')
+  substitutions(@Param('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listOrganizationSubstitutions(organizationId, user.tenantId, limit, offset);
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Delete('organizations/:organizationId/substitutions/:substitutionId')
+  revokeSubstitution(@Param('organizationId') organizationId: string, @Param('substitutionId') substitutionId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.revokeOrganizationSubstitution(organizationId, substitutionId, user.sub, user.tenantId);
   }
 
   @RequirePermissions('workflow.tasks.defer.approve')
