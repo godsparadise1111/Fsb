@@ -4,6 +4,7 @@ import { IdentityService } from './identity.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { AssignPositionDto } from './dto/assign-position.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
+import { CreatePermissionDto } from './dto/create-permission.dto';
 
 class SetActiveDto { @IsBoolean() isActive: boolean; }
 class GrantRoleDto { @IsUUID() userId: string; @IsUUID() roleId: string; @IsOptional() @IsUUID() organizationId?: string; }
@@ -16,6 +17,8 @@ export class IdentityController {
   @Patch('users/:id/active') setUserActive(@Param('id') id: string, @Body() dto: SetActiveDto) { return this.identity.setUserActive(id, dto.isActive); }
   @Post('user-positions') assignPosition(@Body() dto: AssignPositionDto) { return this.identity.assignPosition(dto); }
   @Get('users/:id/positions') listUserPositions(@Param('id') id: string) { return this.identity.listUserPositions(id); }
+  @Post('permissions') createPermission(@Body() dto: CreatePermissionDto) { return this.identity.createPermission(dto); }
+  @Get('permissions') listPermissions() { return this.identity.listPermissions(); }
   @Post('roles') createRole(@Body() dto: CreateRoleDto) { return this.identity.createRole(dto); }
   @Get('roles') listRoles() { return this.identity.listRoles(); }
   @Post('user-roles') grantRole(@Body() dto: GrantRoleDto) { return this.identity.grantRole(dto.userId, dto.roleId, dto.organizationId); }
