@@ -9,9 +9,11 @@ import { TaskAssignee } from './entities/task-assignee.entity';
 import { WorkflowActionLog } from './entities/workflow-action-log.entity';
 import { WorkflowController } from './workflow.controller';
 import { WorkflowService } from './workflow.service';
+import { TaskDelegation } from './entities/task-delegation.entity';
+import { TenantModule } from '../tenant/tenant.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProcessVersion, Organization, User, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog])],
+  imports: [TypeOrmModule.forFeature([ProcessVersion, Organization, User, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, TaskDelegation]), TenantModule],
   controllers: [WorkflowController],
   providers: [WorkflowService],
 })
