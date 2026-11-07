@@ -30,7 +30,7 @@ export class PermissionsGuard implements CanActivate {
       request.body?.processInstanceId,
       request.body?.organizationUnitId,
       request.body?.parentId,
-    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+    ].filter((value): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
     if (!candidates.length) return direct;
 
     // Resolve resource ownership from the database, never from a caller-supplied tenantId.
