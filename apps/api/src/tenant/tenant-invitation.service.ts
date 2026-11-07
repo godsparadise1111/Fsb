@@ -8,6 +8,7 @@ import { Tenant } from './entities/tenant.entity';
 import { TenantInvitation } from './entities/tenant-invitation.entity';
 import { TenantMembership } from './entities/tenant-membership.entity';
 import { User } from '../identity/entities/user.entity';
+import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 
 @Injectable()
 export class TenantInvitationService {
@@ -15,6 +16,7 @@ export class TenantInvitationService {
     private readonly dataSource: DataSource,
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(TenantInvitation) private readonly invitations: Repository<TenantInvitation>,
+    private readonly notificationOutbox: NotificationOutboxService,
   ) {}
 
   private hashToken(token: string) {
@@ -56,8 +58,23 @@ export class TenantInvitationService {
         isTenantAdmin, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       });
       const saved = await repository.save(invitation);
-      // The raw token is returned once for delivery by the trusted notification channel.
-      return { id: saved.id, email: saved.email, isTenantAdmin: saved.isTenantAdmin, expiresAt: saved.expiresAt, token };
+      await this.notificationOutbox.enqueue(manager, {
+        tenantId,
+        eventType: 'tenant.invitation.created',
+        recipient: email,
+        subject: 'Invitation to join ' + tenant.name,
+        dedupeKey: 'tenant-invitation:' + saved.id,
+        payload: {
+          invitationId: saved.id,
+          tenantName: tenant.name,
+          email,
+          token,
+          isTenantAdmin: saved.isTenantAdmin,
+          expiresAt: saved.expiresAt.toISOString(),
+          acceptPath: '/invite?token=' + encodeURIComponent(token),
+        },
+      });
+      return { id: saved.id, email: saved.email, isTenantAdmin: saved.isTenantAdmin, expiresAt: saved.expiresAt, deliveryQueued: true };
     });
   }
 
