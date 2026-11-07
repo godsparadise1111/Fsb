@@ -35,6 +35,7 @@ export class TenantInvitationService {
       const existingUser = await manager.getRepository(User).createQueryBuilder('user')
         .where('LOWER(user.email) = :email', { email }).getOne();
       if (existingUser) {
+        if (!existingUser.isActive) throw new ConflictException('The existing account is inactive; reactivate it before sending an invitation');
         const existingMembership = await manager.getRepository(TenantMembership).findOneBy({
           tenantId, userId: existingUser.id, isActive: true,
         });
@@ -69,13 +70,18 @@ export class TenantInvitationService {
   }
 
   async revoke(tenantId: string, invitationId: string) {
-    const invitation = await this.invitations.findOneBy({ id: invitationId, tenantId });
-    if (!invitation) throw new NotFoundException('Invitation not found');
-    if (invitation.acceptedAt) throw new BadRequestException('An accepted invitation cannot be revoked');
-    if (invitation.revokedAt) return { id: invitation.id, revoked: true };
-    invitation.revokedAt = new Date();
-    await this.invitations.save(invitation);
-    return { id: invitation.id, revoked: true };
+    return this.dataSource.transaction(async manager => {
+      const invitation = await manager.findOne(TenantInvitation, {
+        where: { id: invitationId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!invitation) throw new NotFoundException('Invitation not found');
+      if (invitation.acceptedAt) throw new BadRequestException('An accepted invitation cannot be revoked');
+      if (invitation.revokedAt) return { id: invitation.id, revoked: true };
+      invitation.revokedAt = new Date();
+      await manager.save(invitation);
+      return { id: invitation.id, revoked: true };
+    });
   }
 
   async register(token: string, dto: RegisterTenantInvitationDto) {
