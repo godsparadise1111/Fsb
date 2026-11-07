@@ -27,7 +27,7 @@ BEGIN
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Task assignee tenant mismatch'; END IF;
   NEW."tenantId" := resolved;
   RETURN NEW;
-END $;
+END $
 
 CREATE TRIGGER "TR_task_assignees_00_tenant"
   BEFORE INSERT OR UPDATE OF "taskId", "tenantId" ON task_assignees
