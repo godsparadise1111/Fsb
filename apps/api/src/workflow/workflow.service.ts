@@ -355,6 +355,21 @@ export class WorkflowService {
     });
   }
 
+
+  async listPendingTaskDeferrals(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    if (!organizationId) throw new BadRequestException('organizationId is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, isActive: true } });
+    if (!organization || organization.tenantId !== tenantId) throw new NotFoundException('Organization not found');
+    return this.dataSource.getRepository(TaskDeferralRequest).createQueryBuilder('request')
+      .innerJoin('workflow_tasks', 'task', 'task.id = request."taskId"')
+      .innerJoin('process_instances', 'instance', 'instance.id = task."processInstanceId"')
+      .where('request."tenantId" = :tenantId AND request.status = :status', { tenantId, status: 'PENDING' })
+      .andWhere('instance."organizationId" = :organizationId', { organizationId })
+      .orderBy('request."createdAt"', 'ASC')
+      .getMany();
+  }
+
   async listTaskDeferrals(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
