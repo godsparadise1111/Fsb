@@ -55,6 +55,15 @@ BEGIN
       WHERE wt.id = NEW."taskId" AND pi."tenantId" = NEW."tenantId"
         AND wt.status IN ('OPEN', 'IN_PROGRESS')
         AND wt."dueAt" IS NOT DISTINCT FROM NEW."originalDueAt"
+        AND (
+          EXISTS (SELECT 1 FROM task_assignees a
+                   WHERE a."taskId" = wt.id AND a."userId" = NEW."requesterUserId" AND a.status = 'PENDING')
+          OR EXISTS (SELECT 1 FROM task_delegations d
+                      JOIN task_assignees a ON a."taskId" = d."taskId" AND a."userId" = d."fromUserId" AND a.status = 'PENDING'
+                     WHERE d."taskId" = wt.id AND d."tenantId" = NEW."tenantId"
+                       AND d."toUserId" = NEW."requesterUserId" AND d."revokedAt" IS NULL
+                       AND d."startsAt" <= now() AND d."endsAt" > now())
+        )
     ) THEN
       RAISE EXCEPTION 'Deferral requester and task must belong to an active tenant and actionable task';
     END IF;
