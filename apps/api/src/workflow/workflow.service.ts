@@ -38,6 +38,7 @@ export class WorkflowService {
       if (users.length !== uniqueIds.length) throw new BadRequestException('Every assignee must be an active user');
       const membershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
         .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+        .innerJoin('tenant_memberships', 'tenantMembership', 'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true', { tenantId: organization.tenantId })
         .where('membership.userId IN (:...userIds)', { userIds: [...uniqueIds, dto.startedByUserId] })
         .andWhere('unit.organizationId = :organizationId', { organizationId: dto.organizationId })
         .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
@@ -109,6 +110,7 @@ export class WorkflowService {
           if (nextUsers.length !== nextUserIds.length) throw new BadRequestException('Every next-step assignee must be an active user');
           const nextMembershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
             .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+            .innerJoin('tenant_memberships', 'tenantMembership', 'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true', { tenantId: instance.organization?.tenantId })
             .where('membership.userId IN (:...userIds)', { userIds: nextUserIds })
             .andWhere('unit.organizationId = :organizationId', { organizationId: instance.organizationId })
             .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
