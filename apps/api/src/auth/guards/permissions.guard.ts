@@ -63,6 +63,7 @@ export class PermissionsGuard implements CanActivate {
 
     // Tenant administrators are elevated only inside their verified active tenant.
     // Platform-management permissions always remain platform-only.
+    if (!platformOnly && user.tenantId && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
     if (!platformOnly && user.isTenantAdmin && user.tenantId && required.every(code => code.startsWith('tenant.members.'))) return true;
     if (!platformOnly && user.isTenantAdmin && user.tenantId && selectedOrganization?.tenantId === user.tenantId) return true;
 
