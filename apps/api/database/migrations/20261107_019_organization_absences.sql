@@ -38,6 +38,10 @@ BEGIN
     IF OLD."cancelledAt" IS NOT NULL OR NEW."cancelledAt" IS NULL OR NEW."cancelledByUserId" IS NULL THEN
       RAISE EXCEPTION 'Only an active absence can be cancelled';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+      WHERE tm."tenantId"=NEW."tenantId" AND tm."userId"=NEW."cancelledByUserId" AND tm."isActive"=true) THEN
+      RAISE EXCEPTION 'Absence canceller must be an active tenant member';
+    END IF;
     RETURN NEW;
   END IF;
   SELECT * INTO s FROM organization_substitutions WHERE id=NEW."substitutionId";
