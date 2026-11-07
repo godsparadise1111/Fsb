@@ -74,10 +74,12 @@ export class IdentityService {
     if (role.scope === 'PLATFORM') {
       const actorIsPlatformOperator = await this.userRoles.createQueryBuilder('assignment')
         .innerJoin('assignment.role', 'role')
+        .innerJoin('role.permissions', 'permission')
         .where('assignment.userId = :actorUserId', { actorUserId })
         .andWhere('assignment.isActive = true')
         .andWhere('role.isActive = true')
         .andWhere('role.scope = :scope', { scope: 'PLATFORM' })
+        .andWhere('permission.code IN (:...codes)', { codes: ['*', 'assignments.manage'] })
         .getCount() > 0;
       if (!actorIsPlatformOperator || organizationId) throw new ForbiddenException('Only platform operators may grant platform roles, and platform roles cannot be organization-scoped');
     } else {
