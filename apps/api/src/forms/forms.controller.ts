@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { FormsService } from './forms.service';
 import { CreateFormDto } from './dto/create-form.dto';
 import { CreateFormVersionDto } from './dto/create-form-version.dto';
@@ -20,7 +20,7 @@ export class FormsController {
   @RequirePermissions('forms.publish')
   @Post(':id/versions/:versionId/publish') publish(@Param('id') id: string, @Param('versionId') versionId: string) { return this.forms.publishVersion(id, versionId); }
   @RequirePermissions('forms.submit')
-  @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto); }
+  @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto, user.tenantId); }
   @RequirePermissions('forms.read')
   @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @Query('organizationId') organizationId?: string) { if (!organizationId) throw new BadRequestException('organizationId query parameter is required'); return this.forms.listSubmissions(versionId, organizationId); }
 }
