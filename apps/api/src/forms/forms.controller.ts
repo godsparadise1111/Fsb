@@ -26,7 +26,7 @@ export class FormsController {
   @RequirePermissions('forms.submit')
   @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto, user.tenantId); }
   @RequirePermissions('forms.read')
-  @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @CurrentUser() user: AuthenticatedUser) { return this.forms.listSubmissions(versionId, user.tenantId); }
+  @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @Query('limit') limit: string | undefined, @Query('offset') offset: string | undefined, @CurrentUser() user: AuthenticatedUser) { return this.forms.listSubmissions(versionId, user.tenantId, Number(limit ?? 50), Number(offset ?? 0)); }
 
   @RequirePermissions('forms.submit')
   @Post('versions/:versionId/submissions/:submissionId/attachments')
