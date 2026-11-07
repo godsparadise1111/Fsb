@@ -75,6 +75,35 @@ export class TenantReportsService {
       [tenantId, from, to, orgFilter],
     );
 
+    const taskAging = await this.dataSource.query(
+      `SELECT
+         count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS'))::int AS "openTasks",
+         count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '3 days')::int AS "olderThan3Days",
+         count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '7 days')::int AS "olderThan7Days",
+         count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '14 days')::int AS "olderThan14Days",
+         round(avg(EXTRACT(EPOCH FROM (now() - wt."createdAt")) / 3600)
+           FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS'))::numeric, 1) AS "averageOpenHours"
+       FROM workflow_tasks wt
+       INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
+       INNER JOIN organizations o ON o.id = pi."organizationId"
+       WHERE o."tenantId" = $1 AND ($2::uuid IS NULL OR pi."organizationId" = $2)`,
+      [tenantId, orgFilter],
+    );
+
+    const oldestOpenTasks = await this.dataSource.query(
+      `SELECT wt.id AS "taskId", wt.title, wt.status, wt."createdAt",
+              pi.id AS "processInstanceId", pi.title AS "processTitle",
+              o.id AS "organizationId", o.name AS "organizationName",
+              round((EXTRACT(EPOCH FROM (now() - wt."createdAt")) / 3600)::numeric, 1) AS "ageHours"
+         FROM workflow_tasks wt
+         INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
+         INNER JOIN organizations o ON o.id = pi."organizationId"
+        WHERE o."tenantId" = $1 AND wt.status IN ('OPEN', 'IN_PROGRESS')
+          AND ($2::uuid IS NULL OR pi."organizationId" = $2)
+        ORDER BY wt."createdAt" ASC LIMIT 20`,
+      [tenantId, orgFilter],
+    );
+
     const byOrganization = await this.dataSource.query(
       `SELECT o.id AS "organizationId", o.name AS "organizationName",
               count(pi.id)::int AS started,
@@ -102,6 +131,19 @@ export class TenantReportsService {
         uniqueStarters: Number(summary.uniqueStarters ?? 0),
       },
       tasksByStatus: tasks.map((item: any) => ({ status: item.status, count: Number(item.count) })),
+      taskAging: {
+        openTasks: Number(taskAging[0]?.openTasks ?? 0),
+        olderThan3Days: Number(taskAging[0]?.olderThan3Days ?? 0),
+        olderThan7Days: Number(taskAging[0]?.olderThan7Days ?? 0),
+        olderThan14Days: Number(taskAging[0]?.olderThan14Days ?? 0),
+        averageOpenHours: taskAging[0]?.averageOpenHours == null ? null : Number(taskAging[0].averageOpenHours),
+        oldestOpenTasks: oldestOpenTasks.map((item: any) => ({
+          taskId: item.taskId, title: item.title, status: item.status,
+          createdAt: item.createdAt, processInstanceId: item.processInstanceId,
+          processTitle: item.processTitle, organizationId: item.organizationId,
+          organizationName: item.organizationName, ageHours: Number(item.ageHours),
+        })),
+      },
       dailyThroughput: daily.map((item: any) => ({ day: item.day, started: Number(item.started), completed: Number(item.completed) })),
       organizations: byOrganization.map((item: any) => ({
         organizationId: item.organizationId, organizationName: item.organizationName,
