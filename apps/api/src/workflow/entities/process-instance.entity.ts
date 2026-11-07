@@ -18,6 +18,7 @@ export class ProcessInstance {
   @Column({ length: 240 }) title: string;
   @Column({ default: 'RUNNING', length: 20 }) status: 'RUNNING' | 'COMPLETED' | 'CANCELLED';
   @Column({ type: 'jsonb', default: () => "'{}'::jsonb" }) data: Record<string, unknown>;
+  @Column({ default: 0 }) currentStepIndex: number;
   @CreateDateColumn() startedAt: Date;
   @UpdateDateColumn() updatedAt: Date;
   @Column({ type: 'timestamptz', nullable: true }) completedAt: Date | null;
