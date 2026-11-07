@@ -11,6 +11,7 @@ BEGIN
   END IF;
 END $$;
 
+ALTER TABLE organizations ALTER COLUMN "tenantId" SET NOT NULL;
 ALTER TABLE organizations
   ADD CONSTRAINT "UQ_organizations_id_tenant" UNIQUE (id, "tenantId");
 
@@ -100,6 +101,29 @@ CREATE INDEX "IDX_form_definitions_tenant_org" ON form_definitions ("tenantId", 
 CREATE INDEX "IDX_process_instances_tenant_org_status" ON process_instances ("tenantId", "organizationId", status);
 CREATE INDEX "IDX_workflow_tasks_tenant_status" ON workflow_tasks ("tenantId", status);
 CREATE INDEX "IDX_form_submissions_tenant_submitted" ON form_submissions ("tenantId", "submittedAt");
+
+
+-- An organization is permanently owned by one tenant. Prevent tenantless rows,
+-- reassignment and creation under a suspended/closed customer at database level.
+CREATE OR REPLACE FUNCTION fsb_guard_organization_tenant() RETURNS trigger LANGUAGE plpgsql AS $
+DECLARE tenant_status varchar(20);
+BEGIN
+  IF NEW."tenantId" IS NULL THEN
+    RAISE EXCEPTION 'Every organization must belong to a tenant';
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD."tenantId" IS DISTINCT FROM NEW."tenantId" THEN
+    RAISE EXCEPTION 'Organization tenant ownership is immutable; use an audited migration for exceptional transfers';
+  END IF;
+  SELECT status INTO tenant_status FROM tenants WHERE id = NEW."tenantId";
+  IF tenant_status IS DISTINCT FROM 'ACTIVE' THEN
+    RAISE EXCEPTION 'Organizations can only belong to active tenants';
+  END IF;
+  RETURN NEW;
+END $;
+
+CREATE TRIGGER "TR_organizations_tenant_guard"
+  BEFORE INSERT OR UPDATE OF "tenantId" ON organizations
+  FOR EACH ROW EXECUTE FUNCTION fsb_guard_organization_tenant();
 
 -- Populate tenantId transparently for ORM inserts, while rejecting cross-tenant parent references.
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_organization() RETURNS trigger LANGUAGE plpgsql AS $$
