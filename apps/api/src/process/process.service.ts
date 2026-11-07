@@ -54,6 +54,20 @@ export class ProcessService {
       const version = await manager.findOne(ProcessVersion, { where: { id: versionId, definitionId }, lock: { mode: 'pessimistic_write' } });
       if (!version) throw new NotFoundException('Process version not found');
       if (version.status !== 'DRAFT') throw new BadRequestException('Only draft versions can be published');
+      const configuredSteps = version.schema?.steps;
+      if (configuredSteps !== undefined && !Array.isArray(configuredSteps)) {
+        throw new BadRequestException('Process schema steps must be an array');
+      }
+      for (const [index, step] of (configuredSteps ?? []).entries()) {
+        if (!step || typeof step !== 'object' || Array.isArray(step)) {
+          throw new BadRequestException(`Process step ${index + 1} must be an object`);
+        }
+        const dueInHours = (step as Record<string, unknown>).dueInHours;
+        if (dueInHours !== undefined && dueInHours !== null &&
+            (typeof dueInHours !== 'number' || !Number.isFinite(dueInHours) || dueInHours <= 0 || dueInHours > 8760)) {
+          throw new BadRequestException(`Process step ${index + 1} dueInHours must be greater than 0 and no more than 8760`);
+        }
+      }
       version.status = 'PUBLISHED';
       version.publishedAt = new Date();
       await manager.save(version);
