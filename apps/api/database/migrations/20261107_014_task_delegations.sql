@@ -25,6 +25,10 @@ CREATE INDEX "IDX_task_delegations_task"
 
 CREATE OR REPLACE FUNCTION fsb_validate_task_delegation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- Revocation is always permitted, including after task closure or membership expiry.
+  IF TG_OP = 'UPDATE' AND NEW."revokedAt" IS DISTINCT FROM OLD."revokedAt" THEN
+    RETURN NEW;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM workflow_tasks wt
     JOIN process_instances pi ON pi.id = wt."processInstanceId"
