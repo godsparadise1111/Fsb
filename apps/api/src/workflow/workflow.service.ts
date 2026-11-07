@@ -229,6 +229,16 @@ export class WorkflowService {
         lock: { mode: 'pessimistic_write' },
       });
       if (existing && existing.endsAt > now) throw new ConflictException('An active delegation already exists for this assignment');
+      if (existing) {
+        existing.revokedAt = now;
+        existing.revokedByUserId = actorUserId;
+        await manager.save(existing);
+        await this.tenantAudit.record(manager, {
+          tenantId, actorUserId, targetUserId: existing.toUserId,
+          action: 'workflow.task.delegation_expired', resourceType: 'TASK_DELEGATION', resourceId: existing.id,
+          metadata: { taskId, reason: 'REPLACED_AFTER_EXPIRY' },
+        });
+      }
       const target = await manager.findOne(User, { where: { id: dto.toUserId, isActive: true } });
       if (!target) throw new BadRequestException('Delegate must be an active user');
       const eligible = await manager.createQueryBuilder(UserPosition, 'membership')
