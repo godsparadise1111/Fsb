@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { WorkflowService } from './workflow.service';
 import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
+import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
@@ -14,6 +15,21 @@ export class WorkflowController {
   @Get('tasks/my') myTasks(@CurrentUser() user: AuthenticatedUser) { return this.workflow.listMyTasks(user.sub, user.tenantId); }
   @RequirePermissions('workflow.tasks.act')
   @Post('tasks/:id/actions') act(@Param('id') id: string, @Body() dto: ActTaskDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.act(id, user.sub, dto, user.tenantId); }
+  @RequirePermissions('workflow.tasks.act')
+  @Post('tasks/:id/delegations')
+  delegate(@Param('id') id: string, @Body() dto: DelegateTaskDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.delegateTask(id, user.sub, dto, user.tenantId);
+  }
+  @RequirePermissions('workflow.history.read')
+  @Get('tasks/:id/delegations')
+  delegations(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listTaskDelegations(id, user.sub, user.tenantId);
+  }
+  @RequirePermissions('workflow.tasks.act')
+  @Delete('tasks/:id/delegations/:delegationId')
+  revokeDelegation(@Param('id') id: string, @Param('delegationId') delegationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.revokeTaskDelegation(id, delegationId, user.sub, user.tenantId);
+  }
   @RequirePermissions('workflow.history.read')
   @Get('tasks/:id/history') history(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.taskHistory(id, user.sub, user.tenantId); }
 }
