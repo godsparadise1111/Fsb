@@ -6,6 +6,7 @@ import { TaskAssignee } from './task-assignee.entity';
 @Entity('workflow_tasks')
 export class WorkflowTask {
   @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('uuid', { insert: false, update: false }) tenantId: string;
   @Column('uuid') processInstanceId: string;
   @ManyToOne(() => ProcessInstance, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'processInstanceId' }) processInstance: ProcessInstance;
