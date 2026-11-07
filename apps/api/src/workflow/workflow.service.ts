@@ -14,6 +14,8 @@ import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { TaskDelegation } from './entities/task-delegation.entity';
+import { TaskDeferralRequest } from './entities/task-deferral-request.entity';
+import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
 
 @Injectable()
@@ -301,6 +303,107 @@ export class WorkflowService {
         metadata: { taskId },
       });
       return delegation;
+    });
+  }
+
+
+  async requestTaskDeferral(taskId: string, requesterId: string, dto: RequestTaskDeferralDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const proposedDueAt = new Date(dto.proposedDueAt);
+    const now = new Date();
+    if (!Number.isFinite(proposedDueAt.getTime()) || proposedDueAt <= now) {
+      throw new BadRequestException('Proposed deadline must be in the future');
+    }
+    const reason = dto.reason.trim();
+    if (reason.length < 5 || reason.length > 1000) throw new BadRequestException('A reason between 5 and 1000 characters is required');
+
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, {
+        where: { id: taskId }, relations: { processInstance: { organization: true } },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Only open tasks can be deferred');
+      const direct = await manager.exist(TaskAssignee, { where: { taskId, userId: requesterId, status: 'PENDING' } });
+      const delegated = await manager.createQueryBuilder(TaskDelegation, 'delegation')
+        .where('delegation.taskId = :taskId AND delegation.tenantId = :tenantId', { taskId, tenantId })
+        .andWhere('delegation.toUserId = :requesterId AND delegation."revokedAt" IS NULL', { requesterId })
+        .andWhere('delegation."startsAt" <= :now AND delegation."endsAt" > :now', { now })
+        .andWhere(`EXISTS (SELECT 1 FROM task_assignees a WHERE a."taskId" = delegation."taskId" AND a."userId" = delegation."fromUserId" AND a.status = 'PENDING')`)
+        .getCount() > 0;
+      if (!direct && !delegated) throw new ForbiddenException('Only a pending assignee or active delegate may request a deadline change');
+
+      const baseline = task.dueAt ?? now;
+      if (proposedDueAt <= baseline || proposedDueAt.getTime() - baseline.getTime() > 30 * 86400000) {
+        throw new BadRequestException('A deferral may extend the current deadline by no more than 30 days');
+      }
+      const pending = await manager.findOne(TaskDeferralRequest, {
+        where: { taskId, tenantId, status: 'PENDING' }, lock: { mode: 'pessimistic_write' },
+      });
+      if (pending) throw new ConflictException('A pending deadline change request already exists for this task');
+
+      const request = await manager.save(TaskDeferralRequest, manager.create(TaskDeferralRequest, {
+        tenantId, taskId, requesterUserId: requesterId, originalDueAt: task.dueAt,
+        proposedDueAt, reason, status: 'PENDING',
+      }));
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId: requesterId, action: 'workflow.task.deferral_requested',
+        resourceType: 'TASK_DEFERRAL', resourceId: request.id,
+        metadata: { taskId, originalDueAt: task.dueAt?.toISOString() ?? null, proposedDueAt: proposedDueAt.toISOString(), reason },
+      });
+      return request;
+    });
+  }
+
+  async listTaskDeferrals(taskId: string, requesterId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
+    if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+    const [assigned, started, delegated] = await Promise.all([
+      this.assignees.exist({ where: { taskId, userId: requesterId } }),
+      this.instances.exist({ where: { id: task.processInstanceId, startedByUserId: requesterId } }),
+      this.dataSource.getRepository(TaskDelegation).exist({ where: { taskId, tenantId, toUserId: requesterId } }),
+    ]);
+    if (!assigned && !started && !delegated) throw new ForbiddenException('You are not allowed to view task deadline requests');
+    return this.dataSource.getRepository(TaskDeferralRequest).find({
+      where: { taskId, tenantId }, order: { createdAt: 'DESC' },
+    });
+  }
+
+  async reviewTaskDeferral(taskId: string, requestId: string, reviewerId: string, decision: 'APPROVED' | 'REJECTED', dto: ReviewTaskDeferralDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, {
+        where: { id: taskId }, relations: { processInstance: { organization: true } },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      const request = await manager.findOne(TaskDeferralRequest, {
+        where: { id: requestId, taskId, tenantId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!request) throw new NotFoundException('Deadline change request not found');
+      if (request.status !== 'PENDING') throw new ConflictException('Deadline change request has already been reviewed');
+      if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Closed tasks cannot have their deadline changed');
+      const currentDueAt = task.dueAt?.getTime() ?? null;
+      const requestedOriginalDueAt = request.originalDueAt?.getTime() ?? null;
+      if (currentDueAt !== requestedOriginalDueAt) throw new ConflictException('Task deadline changed after this request was submitted; submit a new request');
+      if (decision === 'APPROVED') {
+        if (request.proposedDueAt <= new Date()) throw new ConflictException('The proposed deadline has already passed');
+        task.dueAt = request.proposedDueAt;
+        await manager.save(task);
+      }
+      request.status = decision;
+      request.reviewerUserId = reviewerId;
+      request.reviewedAt = new Date();
+      request.reviewerComment = dto.comment?.trim() || null;
+      await manager.save(request);
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId: reviewerId, targetUserId: request.requesterUserId,
+        action: decision === 'APPROVED' ? 'workflow.task.deferral_approved' : 'workflow.task.deferral_rejected',
+        resourceType: 'TASK_DEFERRAL', resourceId: request.id,
+        metadata: { taskId, previousDueAt: task.dueAt?.toISOString() ?? null, proposedDueAt: request.proposedDueAt.toISOString(), comment: request.reviewerComment },
+      });
+      return request;
     });
   }
 
