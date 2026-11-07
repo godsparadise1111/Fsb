@@ -174,9 +174,10 @@ export class WorkflowService {
       await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null }));
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
+      const activeAssignments = all.filter(item => item.status !== 'REASSIGNED');
       const completed = task.assignmentPolicy === 'ANY_ASSIGNEE'
-        ? dto.action === 'APPROVED'
-        : all.every(item => item.status === 'APPROVED');
+        ? activeAssignments.some(item => item.status === 'APPROVED')
+        : activeAssignments.length > 0 && activeAssignments.every(item => item.status === 'APPROVED');
       if (rejected) {
         task.status = 'CANCELLED';
         const instance = await manager.findOneByOrFail(ProcessInstance, { id: task.processInstanceId });
