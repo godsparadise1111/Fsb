@@ -79,6 +79,11 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
            JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
            JOIN users u ON u.id = $3 AND u."isActive" = true AND lower(u.email) = lower($4)
            JOIN tenant_memberships tm ON tm."userId" = u.id AND tm."tenantId" = pi."tenantId" AND tm."isActive" = true
+           JOIN user_positions up ON up."userId" = u.id AND up."isActive" = true
+             AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now())
+           JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
+           JOIN organization_units unit ON unit.id = p."organizationUnitId"
+             AND unit."organizationId" = pi."organizationId" AND unit."isActive" = true
           WHERE t.id = $1 AND pi."tenantId" = $2
             AND t.status IN ('OPEN', 'IN_PROGRESS') AND t."dueAt" IS NOT NULL AND t."dueAt" <= now()`,
         [taskId, item.tenantId, userId, item.recipient],
@@ -135,7 +140,11 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     if (this.busy || !this.transporter) return;
     this.busy = true;
     try {
-      await this.enqueueOverdueEscalations();
+      try {
+        await this.enqueueOverdueEscalations();
+      } catch (error) {
+        this.logger.warn(`SLA escalation scan failed: ${String(error).slice(0, 400)}`);
+      }
       const items = await this.outbox.claimBatch(this.workerId, 20);
       for (const item of items) {
         try {
