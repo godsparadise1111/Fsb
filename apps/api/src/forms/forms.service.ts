@@ -53,14 +53,20 @@ export class FormsService {
     return version;
   }
   async submit(versionId: string, submittedByUserId: string, dto: SubmitFormDto) {
-    const version = await this.versions.findOne({ where: { id: versionId, status: 'PUBLISHED' } });
+    const version = await this.versions.findOne({ where: { id: versionId, status: 'PUBLISHED' }, relations: { definition: true } });
     if (!version) throw new NotFoundException('Published form version not found');
     if (!await this.users.exist({ where: { id: submittedByUserId, isActive: true } })) throw new NotFoundException('Active submitter not found');
-    if (dto.processInstanceId && !await this.instances.exist({ where: { id: dto.processInstanceId } })) throw new NotFoundException('Process instance not found');
+    if (dto.processInstanceId) {
+      const instance = await this.instances.findOneBy({ id: dto.processInstanceId });
+      if (!instance) throw new NotFoundException('Process instance not found');
+      if (instance.organizationId !== version.definition.organizationId) throw new BadRequestException('Form and process instance must belong to the same organization');
+    }
     return this.submissions.save(this.submissions.create({ formVersionId: versionId, submittedByUserId, processInstanceId: dto.processInstanceId ?? null, data: dto.data }));
   }
-  async listSubmissions(versionId: string) {
-    if (!await this.versions.exist({ where: { id: versionId } })) throw new NotFoundException('Form version not found');
+  async listSubmissions(versionId: string, organizationId: string) {
+    const version = await this.versions.findOne({ where: { id: versionId }, relations: { definition: true } });
+    if (!version) throw new NotFoundException('Form version not found');
+    if (version.definition.organizationId !== organizationId) throw new BadRequestException('Form does not belong to the selected organization');
     return this.submissions.find({ where: { formVersionId: versionId }, relations: { submittedBy: true }, order: { submittedAt: 'DESC' } });
   }
 }
