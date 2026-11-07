@@ -1,8 +1,6 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('task_deferral_requests')
-@Index('IDX_task_deferral_requests_task', ['tenantId', 'taskId', 'createdAt'])
-@Index('IDX_task_deferral_requests_pending', ['tenantId', 'status', 'createdAt'])
 export class TaskDeferralRequest {
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column('uuid') tenantId: string;
