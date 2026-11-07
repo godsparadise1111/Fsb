@@ -3,8 +3,9 @@ import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CreateTenantMembershipDto } from './dto/create-tenant-membership.dto';
 import { TenantMembershipService } from './tenant-membership.service';
+import { IsBoolean } from 'class-validator';
 
-class UpdateTenantAdminDto { isTenantAdmin: boolean; }
+class UpdateTenantAdminDto { @IsBoolean() isTenantAdmin: boolean; }
 
 @Controller('platform/tenants/:tenantId/members')
 export class TenantMembershipController {
