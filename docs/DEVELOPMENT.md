@@ -26,7 +26,11 @@
 - `GET /api/platform/tenants/:tenantId/members` فهرست اعضای فعال
 - `PATCH /api/platform/tenants/:tenantId/members/:userId/admin` تعیین/لغو مدیر مشتری با `isTenantAdmin`
 - `DELETE /api/platform/tenants/:tenantId/members/:userId` غیرفعال‌کردن عضویت؛ حذف آخرین مدیر فعال ممنوع است
-- برای کاربران عضو مشتری، هدر `X-Tenant-Id` زمینهٔ مشتری را انتخاب می‌کند؛ API عضویت کاربر و فعال‌بودن Tenant را از DB اعتبارسنجی می‌کند. اگر فقط یک عضویت فعال وجود داشته باشد، زمینه خودکار انتخاب می‌شود.
+- برای کاربران عضو مشتری، هدر `X-Tenant-Id` زمینهٔ مشتری را انتخاب می‌کند؛ API عضویت کاربر و فعال‌بودن Tenant را از DB اعتبارسنجی می‌کند. اگر فقط یک عضویت وجود داشته باشد، زمینه خودکار انتخاب می‌شود.
+- `GET /api/tenant/members` فهرست اعضای Tenant جاری (مدیر مشتری)
+- `POST /api/tenant/members` افزودن کاربر موجود به Tenant جاری با `userId` و اختیاری `isTenantAdmin`
+- `PATCH /api/tenant/members/:userId/admin` تغییر وضعیت مدیر مشتری با `isTenantAdmin`
+- `DELETE /api/tenant/members/:userId` غیرفعال‌سازی عضویت؛ آخرین مدیر قابل حذف نیست
 - `POST /api/organizations` ایجاد سازمان در یک مشتری فعال؛ بدنه: `{ "tenantId": "...", "name": "...", "code": "..." }`
 - `GET /api/organizations` فهرست سازمان‌ها
 - `POST /api/organizations/units` ایجاد واحد؛ بدنه شامل `organizationId`, `name`, `code` و اختیاری `parentId`
