@@ -29,7 +29,6 @@ import { FormDefinition } from './forms/entities/form-definition.entity';
 import { FormVersion } from './forms/entities/form-version.entity';
 import { FormSubmission } from './forms/entities/form-submission.entity';
 import { NotificationOutbox } from './notifications/entities/notification-outbox.entity';
-import { NotificationsModule } from './notifications/notifications.module';
 import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
 
 @Module({
@@ -45,7 +44,7 @@ import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
-    HealthModule, OrganizationModule, IdentityModule, ProcessModule, WorkflowModule, FormsModule, AuthModule, TenantModule, NotificationsModule,
+    HealthModule, OrganizationModule, IdentityModule, ProcessModule, WorkflowModule, FormsModule, AuthModule, TenantModule,
   ],
 })
 export class AppModule {}
