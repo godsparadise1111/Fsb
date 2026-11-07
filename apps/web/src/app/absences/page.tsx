@@ -19,6 +19,7 @@ const personName = (user?: User) => user ? `${user.firstName} ${user.lastName}` 
 export default function AbsencesPage() {
   const [token, setToken] = useState('');
   const [identity, setIdentity] = useState('');
+  const [tenantId, setTenantId] = useState('');
   const [password, setPassword] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -42,7 +43,7 @@ export default function AbsencesPage() {
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const response = await fetch(`${API}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers || {}) },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}), ...(init.headers || {}) },
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
@@ -73,6 +74,8 @@ export default function AbsencesPage() {
 
   useEffect(() => {
     const saved = window.localStorage.getItem('fsb.accessToken');
+    const savedTenant = window.localStorage.getItem('fsb.tenantId') || '';
+    setTenantId(savedTenant);
     if (saved) { setToken(saved); setLoggedIn(true); }
   }, []);
 
@@ -99,6 +102,8 @@ export default function AbsencesPage() {
       const result = await response.json().catch(() => null);
       if (!response.ok) throw new Error(result?.message || 'نام کاربری یا گذرواژه صحیح نیست');
       window.localStorage.setItem('fsb.accessToken', result.accessToken);
+      if (tenantId.trim()) window.localStorage.setItem('fsb.tenantId', tenantId.trim());
+      else window.localStorage.removeItem('fsb.tenantId');
       setToken(result.accessToken); setLoggedIn(true); setPassword(''); setNotice('ورود با موفقیت انجام شد');
     } catch (e) { setError(e instanceof Error ? e.message : 'ورود ناموفق بود'); }
     finally { setLoading(false); }
@@ -130,7 +135,7 @@ export default function AbsencesPage() {
   }
 
   function logout() {
-    window.localStorage.removeItem('fsb.accessToken'); setToken(''); setLoggedIn(false);
+    window.localStorage.removeItem('fsb.accessToken'); window.localStorage.removeItem('fsb.tenantId'); setToken(''); setTenantId(''); setLoggedIn(false);
     setOrganizations([]); setUsers([]); setItems([]);
   }
 
@@ -148,10 +153,11 @@ export default function AbsencesPage() {
       <section className="absence-login">
         <div className="absence-kicker">WORKFORCE MANAGEMENT</div>
         <h1>ورود به مدیریت غیبت و جانشینی</h1>
-        <p>برای دسترسی به اطلاعات سازمانی، با حساب کاربری دارای مجوز مدیریت جانشینی وارد شوید.</p>
+        <p>برای دسترسی به اطلاعات سازمانی، با حساب کاربری دارای مجوز مدیریت جانشینی وارد شوید. اگر عضو چند مشتری هستید، شناسهٔ مشتری فعال را نیز وارد کنید.</p>
         <form onSubmit={login} className="absence-form">
           <label>نام کاربری یا ایمیل<input value={identity} onChange={e => setIdentity(e.target.value)} required autoComplete="username" /></label>
           <label>گذرواژه<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" /></label>
+          <label>شناسه مشتری (در صورت عضویت در چند مشتری)<input value={tenantId} onChange={e => setTenantId(e.target.value)} placeholder="UUID مشتری؛ برای عضویت تکی خالی بماند" /></label>
           {error && <div className="absence-alert error">{error}</div>}
           <button className="absence-primary" disabled={loading}>{loading ? 'در حال ورود…' : 'ورود امن'}</button>
         </form>
