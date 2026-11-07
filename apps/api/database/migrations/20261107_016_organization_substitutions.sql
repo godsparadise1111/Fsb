@@ -61,6 +61,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  IF NEW."revokedAt" IS NOT NULL OR NEW."revokedByUserId" IS NOT NULL THEN
+    RAISE EXCEPTION 'A new substitution cannot be created as revoked';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    NEW."tenantId"::text || ':' || NEW."organizationId"::text || ':' || NEW."originalUserId"::text, 0
+  ));
   SELECT "tenantId" INTO organization_tenant FROM organizations
    WHERE id = NEW."organizationId" AND "tenantId" = NEW."tenantId" AND "isActive" = true;
   IF organization_tenant IS NULL OR NOT EXISTS (SELECT 1 FROM tenants WHERE id = NEW."tenantId" AND status = 'ACTIVE') THEN
