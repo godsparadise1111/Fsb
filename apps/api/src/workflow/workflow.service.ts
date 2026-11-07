@@ -378,6 +378,11 @@ export class WorkflowService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      const reviewerMembership = await manager.query(
+        'SELECT 1 FROM tenant_memberships tm INNER JOIN users u ON u.id = tm."userId" AND u."isActive" = true WHERE tm."tenantId" = $1 AND tm."userId" = $2 AND tm."isActive" = true LIMIT 1',
+        [tenantId, reviewerId],
+      );
+      if (!reviewerMembership.length) throw new ForbiddenException('Only an active member of this tenant may review deadline requests');
       const request = await manager.findOne(TaskDeferralRequest, {
         where: { id: requestId, taskId, tenantId }, lock: { mode: 'pessimistic_write' },
       });
