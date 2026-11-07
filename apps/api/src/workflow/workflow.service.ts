@@ -57,19 +57,23 @@ export class WorkflowService {
     });
   }
 
-  listMyTasks(userId: string) {
+  listMyTasks(userId: string, tenantId?: string | null) {
+    if (!tenantId) return Promise.resolve([]);
     return this.tasks.createQueryBuilder('task')
       .innerJoin('task.assignees', 'assignment', 'assignment.userId = :userId', { userId })
       .leftJoinAndSelect('task.processInstance', 'instance')
+      .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId })
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
       .orderBy('task.createdAt', 'ASC').getMany();
   }
 
-  async act(taskId: string, userId: string, dto: ActTaskDto) {
+  async act(taskId: string, userId: string, dto: ActTaskDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required for workflow actions');
     return this.dataSource.transaction(async manager => {
-      const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, lock: { mode: 'pessimistic_write' } });
+      const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
+      if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
       const assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
       if (!assignment) throw new BadRequestException('User is not assigned to this task');
@@ -135,10 +139,12 @@ export class WorkflowService {
     });
   }
 
-  async taskHistory(taskId: string, requesterId: string) {
+  async taskHistory(taskId: string, requesterId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required to view workflow history');
     if (!await this.tasks.exist({ where: { id: taskId } })) throw new NotFoundException('Task not found');
     const assigned = await this.assignees.exist({ where: { taskId, userId: requesterId } });
-    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: true } });
+    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
+    if (task?.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task history is outside the active tenant');
     if (!task || (!assigned && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
     return this.dataSource.getRepository(WorkflowActionLog).find({ where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' } });
   }
