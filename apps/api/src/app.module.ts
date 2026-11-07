@@ -6,6 +6,7 @@ import { IdentityModule } from './identity/identity.module';
 import { ProcessModule } from './process/process.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { FormsModule } from './forms/forms.module';
+import { AuthModule } from './auth/auth.module';
 import { Organization } from './organization/entities/organization.entity';
 import { OrganizationUnit } from './organization/entities/organization-unit.entity';
 import { Position } from './organization/entities/position.entity';
@@ -43,6 +44,7 @@ import { FormSubmission } from './forms/entities/form-submission.entity';
     ProcessModule,
     WorkflowModule,
     FormsModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
