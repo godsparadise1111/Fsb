@@ -42,8 +42,8 @@ export class TenantReportsService {
         count(*) FILTER (WHERE pi.status = 'COMPLETED')::int AS "completedInstances",
         count(*) FILTER (WHERE pi.status = 'CANCELLED')::int AS "cancelledInstances",
         count(*)::int AS "startedInstances",
-        round(avg(EXTRACT(EPOCH FROM (pi."completedAt" - pi."startedAt")) / 3600)
-          FILTER (WHERE pi.status = 'COMPLETED' AND pi."completedAt" IS NOT NULL)::numeric, 2) AS "averageCompletionHours",
+        round((avg(EXTRACT(EPOCH FROM (pi."completedAt" - pi."startedAt")) / 3600)
+          FILTER (WHERE pi.status = 'COMPLETED' AND pi."completedAt" IS NOT NULL))::numeric, 2) AS "averageCompletionHours",
         count(DISTINCT pi."startedByUserId")::int AS "uniqueStarters"
        FROM process_instances pi
        INNER JOIN organizations o ON o.id = pi."organizationId"
@@ -64,14 +64,23 @@ export class TenantReportsService {
     );
 
     const daily = await this.dataSource.query(
-      `SELECT date_trunc('day', pi."startedAt")::date::text AS day,
-              count(*)::int AS started,
-              count(*) FILTER (WHERE pi.status = 'COMPLETED')::int AS completed
-         FROM process_instances pi
-         INNER JOIN organizations o ON o.id = pi."organizationId"
-        WHERE o."tenantId" = $1 AND pi."startedAt" >= $2 AND pi."startedAt" < $3
+      \`WITH days AS (
+         SELECT generate_series(date_trunc('day', $2::timestamptz),
+                                date_trunc('day', $3::timestamptz - interval '1 millisecond'),
+                                interval '1 day') AS day
+       )
+       SELECT days.day::date::text AS day,
+              count(pi.id) FILTER (WHERE pi."startedAt" >= days.day AND pi."startedAt" < days.day + interval '1 day')::int AS started,
+              count(pi.id) FILTER (WHERE pi."completedAt" >= days.day AND pi."completedAt" < days.day + interval '1 day')::int AS completed
+         FROM days
+         LEFT JOIN process_instances pi ON (
+           (pi."startedAt" >= days.day AND pi."startedAt" < days.day + interval '1 day')
+           OR (pi."completedAt" >= days.day AND pi."completedAt" < days.day + interval '1 day')
+         )
+         LEFT JOIN organizations o ON o.id = pi."organizationId"
+          AND o."tenantId" = $1
           AND ($4::uuid IS NULL OR pi."organizationId" = $4)
-        GROUP BY date_trunc('day', pi."startedAt") ORDER BY day`,
+        GROUP BY days.day ORDER BY days.day\`,
       [tenantId, from, to, orgFilter],
     );
 
@@ -81,8 +90,8 @@ export class TenantReportsService {
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '3 days')::int AS "olderThan3Days",
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '7 days')::int AS "olderThan7Days",
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '14 days')::int AS "olderThan14Days",
-         round(avg(EXTRACT(EPOCH FROM (now() - wt."createdAt")) / 3600)
-           FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS'))::numeric, 1) AS "averageOpenHours"
+         round((avg(EXTRACT(EPOCH FROM (now() - wt."createdAt")) / 3600)
+           FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS')))::numeric, 1) AS "averageOpenHours"
        FROM workflow_tasks wt
        INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
        INNER JOIN organizations o ON o.id = pi."organizationId"
