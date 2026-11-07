@@ -28,7 +28,7 @@ export class PermissionsGuard implements CanActivate {
 
     const platformOnly = required.some(code => code.startsWith('tenants.'));
     let organizationId = request.params?.organizationId ?? request.body?.organizationId ?? request.query?.organizationId ?? null;
-    const resourceId = request.params?.id ?? request.params?.versionId ?? null;
+    const resourceId = request.params?.id ?? request.params?.versionId ?? request.params?.unitId ?? request.body?.organizationUnitId ?? null;
     if (!organizationId && resourceId) {
       const rows = await this.dataSource.query(
         `SELECT "organizationId" AS "organizationId" FROM process_definitions WHERE id = $1
@@ -36,6 +36,7 @@ export class PermissionsGuard implements CanActivate {
            INNER JOIN form_definitions fd ON fd.id = fv."definitionId" WHERE fv.id = $1
          UNION SELECT pi."organizationId" AS "organizationId" FROM workflow_tasks wt
            INNER JOIN process_instances pi ON pi.id = wt."processInstanceId" WHERE wt.id = $1
+         UNION SELECT "organizationId" AS "organizationId" FROM organization_units WHERE id = $1
          LIMIT 1`,
         [resourceId],
       );
