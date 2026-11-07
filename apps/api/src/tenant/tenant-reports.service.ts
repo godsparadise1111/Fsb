@@ -115,6 +115,35 @@ export class TenantReportsService {
       [tenantId, orgFilter],
     );
 
+    const stagePerformance = await this.dataSource.query(
+      `SELECT pd.name AS "processName", wt.title AS "stageName",
+              count(*) FILTER (WHERE wt.status = 'COMPLETED' AND wt."completedAt" IS NOT NULL)::int AS "completedTasks",
+              round((avg(EXTRACT(EPOCH FROM (wt."completedAt" - wt."createdAt")) / 3600)
+                FILTER (WHERE wt.status = 'COMPLETED' AND wt."completedAt" IS NOT NULL))::numeric, 2) AS "averageCycleHours",
+              round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (wt."completedAt" - wt."createdAt")) / 3600)
+                FILTER (WHERE wt.status = 'COMPLETED' AND wt."completedAt" IS NOT NULL))::numeric, 2) AS "medianCycleHours",
+              round((percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (wt."completedAt" - wt."createdAt")) / 3600)
+                FILTER (WHERE wt.status = 'COMPLETED' AND wt."completedAt" IS NOT NULL))::numeric, 2) AS "p90CycleHours",
+              count(*) FILTER (WHERE wt.status = 'COMPLETED' AND wt."dueAt" IS NOT NULL
+                AND wt."completedAt" > wt."dueAt")::int AS "completedLate",
+              count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS'))::int AS "currentlyOpen",
+              count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."dueAt" IS NOT NULL
+                AND wt."dueAt" < now())::int AS "currentlyOverdue"
+         FROM workflow_tasks wt
+         INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
+         INNER JOIN process_versions pv ON pv.id = pi."processVersionId"
+         INNER JOIN process_definitions pd ON pd.id = pv."definitionId"
+         INNER JOIN organizations o ON o.id = pi."organizationId"
+        WHERE o."tenantId" = $1 AND wt."createdAt" >= $2 AND wt."createdAt" < $3
+          AND ($4::uuid IS NULL OR pi."organizationId" = $4)
+        GROUP BY pd.name, wt.title
+        ORDER BY COALESCE(avg(EXTRACT(EPOCH FROM (wt."completedAt" - wt."createdAt")) / 3600)
+          FILTER (WHERE wt.status = 'COMPLETED' AND wt."completedAt" IS NOT NULL), 0) DESC,
+          "currentlyOverdue" DESC, "currentlyOpen" DESC
+        LIMIT 50`,
+      [tenantId, from, to, orgFilter],
+    );
+
     const byOrganization = await this.dataSource.query(
       `SELECT o.id AS "organizationId", o.name AS "organizationName",
               count(pi.id)::int AS started,
@@ -158,6 +187,16 @@ export class TenantReportsService {
         })),
       },
       dailyThroughput: daily.map((item: any) => ({ day: item.day, started: Number(item.started), completed: Number(item.completed) })),
+      stagePerformance: stagePerformance.map((item: any) => ({
+        processName: item.processName, stageName: item.stageName,
+        completedTasks: Number(item.completedTasks),
+        averageCycleHours: item.averageCycleHours == null ? null : Number(item.averageCycleHours),
+        medianCycleHours: item.medianCycleHours == null ? null : Number(item.medianCycleHours),
+        p90CycleHours: item.p90CycleHours == null ? null : Number(item.p90CycleHours),
+        completedLate: Number(item.completedLate),
+        currentlyOpen: Number(item.currentlyOpen),
+        currentlyOverdue: Number(item.currentlyOverdue),
+      })),
       organizations: byOrganization.map((item: any) => ({
         organizationId: item.organizationId, organizationName: item.organizationName,
         started: Number(item.started), completed: Number(item.completed), running: Number(item.running),
@@ -196,6 +235,14 @@ export class TenantReportsService {
     for (const item of report.dailyThroughput) {
       lines.push(['روند روزانه', `${item.day} - شروع`, String(item.started)]);
       lines.push(['روند روزانه', `${item.day} - تکمیل`, String(item.completed)]);
+    }
+    for (const item of report.stagePerformance) {
+      lines.push(['عملکرد مراحل', `${item.processName} - ${item.stageName} - تکمیل‌شده`, String(item.completedTasks)]);
+      lines.push(['عملکرد مراحل', `${item.processName} - ${item.stageName} - میانگین چرخه (ساعت)`, String(item.averageCycleHours ?? '')]);
+      lines.push(['عملکرد مراحل', `${item.processName} - ${item.stageName} - میانه چرخه (ساعت)`, String(item.medianCycleHours ?? '')]);
+      lines.push(['عملکرد مراحل', `${item.processName} - ${item.stageName} - صدک ۹۰ چرخه (ساعت)`, String(item.p90CycleHours ?? '')]);
+      lines.push(['عملکرد مراحل', `${item.processName} - ${item.stageName} - تکمیل با تأخیر`, String(item.completedLate)]);
+      lines.push(['عملکرد مراحل', `${item.processName} - ${item.stageName} - باز / مهلت‌گذشته`, `${item.currentlyOpen} / ${item.currentlyOverdue}`]);
     }
     for (const item of report.organizations) {
       lines.push(['سازمان', `${item.organizationName} - شروع`, String(item.started)]);
