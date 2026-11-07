@@ -88,6 +88,7 @@ BEGIN
     JOIN users u ON u.id = tm."userId" AND u."isActive" = true
     JOIN tenants t ON t.id = tm."tenantId" AND t.status = 'ACTIVE'
     WHERE tm."tenantId" = NEW."tenantId" AND tm."userId" = NEW."reviewerUserId" AND tm."isActive" = true
+      AND NEW."reviewerUserId" <> NEW."requesterUserId"
   ) THEN
     RAISE EXCEPTION 'Deferral reviewer must be an active tenant member';
   END IF;
