@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { DataSource, Repository } from 'typeorm';
 import { FileAttachment } from './entities/file-attachment.entity';
@@ -44,7 +44,7 @@ export class FileAttachmentsService {
     }
 
     const submission = await this.dataSource.query(
-      `SELECT fs.id, fs."tenantId", fs."submittedByUserId"
+      `SELECT fs.id, fs."tenantId"
          FROM form_submissions fs
          INNER JOIN form_versions fv ON fv.id = fs."formVersionId"
          INNER JOIN form_definitions fd ON fd.id = fv."definitionId"
@@ -59,6 +59,7 @@ export class FileAttachmentsService {
     const safeName = file.originalname.replace(/[\\/\\x00-\\x1f\\x7f]/g, '_').slice(0, 255) || 'attachment';
     const hash = createHash('sha256').update(file.buffer).digest('hex');
     await mkdir(this.storageRoot, { recursive: true, mode: 0o700 });
+    await chmod(this.storageRoot, 0o700);
     const path = this.getStoragePath(storageKey);
     await writeFile(path, file.buffer, { flag: 'wx', mode: 0o600 });
     try {
