@@ -51,7 +51,7 @@
 - `POST /api/tasks/:id/actions` اقدام کاربر؛ `userId`, `action` برابر `APPROVED` یا `REJECTED` و اختیاری `comment`
 - `GET /api/tasks/:id/history` تاریخچه اقدامات کار
 
-سیاست `ALL_ASSIGNEES` فقط پس از تأیید همه افراد منتسب، کار را کامل می‌کند. سیاست `ANY_ASSIGNEE` با اولین تأیید کامل می‌شود. رد هر یک از افراد در نسخه فعلی، کار و نمونه فرایند را لغو می‌کند.
+سیاست `ALL_ASSIGNEES` فقط پس از تأیید همه افراد منتسب، کار را کامل می‌کند. سیاست `ANY_ASSIGNEE` با اولین تأیید کامل می‌شود. رد هر یک از افراد در نسخه فعلی، کار و نمونه فرایند را لغو می‌کند. پس از تکمیل هر کار، اگر در `processVersion.schema.steps` مرحله بعدی تعریف شده باشد، کار بعدی به‌صورت خودکار ساخته می‌شود. هر مرحله می‌تواند `title`, `instructions`, `assigneeUserIds` و `assignmentPolicy` داشته باشد؛ مرحله بعدی فقط به کاربران فعال قابل ارجاع است.
 
 ### فرم‌ساز و ثبت اطلاعات
 - `POST /api/forms` تعریف فرم؛ `organizationId`, `code`, `name` و اختیاری `description`
