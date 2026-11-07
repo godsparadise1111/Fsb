@@ -3,6 +3,7 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
 import { TenantService } from './tenant.service';
+import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('platform/tenants')
 export class TenantController {
@@ -10,7 +11,7 @@ export class TenantController {
 
   @RequirePermissions('tenants.manage')
   @Post()
-  create(@Body() dto: CreateTenantDto) { return this.tenants.create(dto); }
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTenantDto) { return this.tenants.create(dto, user.sub); }
 
   @RequirePermissions('tenants.read')
   @Get()
@@ -22,7 +23,7 @@ export class TenantController {
 
   @RequirePermissions('tenants.manage')
   @Patch(':id/status')
-  changeStatus(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateTenantStatusDto) {
-    return this.tenants.changeStatus(id, dto.status);
+  changeStatus(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateTenantStatusDto) {
+    return this.tenants.changeStatus(id, dto.status, user.sub);
   }
 }
