@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { WorkflowService } from './workflow.service';
 import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
@@ -32,6 +32,11 @@ export class WorkflowController {
     return this.workflow.revokeTaskDelegation(id, delegationId, user.sub, user.tenantId);
   }
 
+  @RequirePermissions('workflow.tasks.defer.approve')
+  @Get('tasks/deferrals/pending')
+  pendingDeferrals(@Query('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listPendingTaskDeferrals(organizationId, user.tenantId);
+  }
   @RequirePermissions('workflow.tasks.act')
   @Post('tasks/:id/deferrals')
   requestDeferral(@Param('id') id: string, @Body() dto: RequestTaskDeferralDto, @CurrentUser() user: AuthenticatedUser) {
