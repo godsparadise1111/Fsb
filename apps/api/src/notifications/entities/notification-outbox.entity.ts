@@ -15,7 +15,7 @@ export class NotificationOutbox {
   @Column({ type: 'text' }) payloadCiphertext: string;
   @Column({ length: 64 }) payloadIv: string;
   @Column({ length: 64 }) payloadAuthTag: string;
-  @Column({ length: 80, unique: true }) dedupeKey: string;
+  @Column({ length: 80 }) dedupeKey: string;
   @Column({ type: 'varchar', length: 20, default: 'PENDING' }) status: OutboxStatus;
   @Column({ type: 'integer', default: 0 }) attempts: number;
   @Column({ type: 'timestamptz', default: () => 'now()' }) availableAt: Date;
