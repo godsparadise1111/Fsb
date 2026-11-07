@@ -6,6 +6,7 @@ import { FormVersion } from './form-version.entity';
 @Index(['organizationId', 'code'], { unique: true })
 export class FormDefinition {
   @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('uuid', { insert: false, update: false }) tenantId: string;
   @Column('uuid') organizationId: string;
   @ManyToOne(() => Organization, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'organizationId' }) organization: Organization;
