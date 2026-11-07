@@ -28,6 +28,8 @@ import { WorkflowActionLog } from './workflow/entities/workflow-action-log.entit
 import { FormDefinition } from './forms/entities/form-definition.entity';
 import { FormVersion } from './forms/entities/form-version.entity';
 import { FormSubmission } from './forms/entities/form-submission.entity';
+import { NotificationOutbox } from './notifications/entities/notification-outbox.entity';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -38,11 +40,11 @@ import { FormSubmission } from './forms/entities/form-submission.entity';
       username: process.env.POSTGRES_USER ?? 'fsb',
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
-      entities: [Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
+      entities: [NotificationOutbox, Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
-    HealthModule, OrganizationModule, IdentityModule, ProcessModule, WorkflowModule, FormsModule, AuthModule, TenantModule,
+    HealthModule, OrganizationModule, IdentityModule, ProcessModule, WorkflowModule, FormsModule, AuthModule, TenantModule, NotificationsModule,
   ],
 })
 export class AppModule {}
