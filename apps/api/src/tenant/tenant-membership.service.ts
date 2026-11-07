@@ -11,7 +11,6 @@ export class TenantMembershipService {
     private readonly dataSource: DataSource,
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(TenantMembership) private readonly memberships: Repository<TenantMembership>,
-    @InjectRepository(User) private readonly users: Repository<User>,
   ) {}
 
   async add(tenantId: string, userId: string, isTenantAdmin = false) {
