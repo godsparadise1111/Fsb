@@ -77,8 +77,8 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'Deferral requester and task must belong to an active tenant and actionable task';
     END IF;
-    IF NEW."proposedDueAt" <= COALESCE(NEW."originalDueAt", now())
-       OR NEW."proposedDueAt" > COALESCE(NEW."originalDueAt", now()) + interval '30 days' THEN
+    IF NEW."proposedDueAt" <= GREATEST(COALESCE(NEW."originalDueAt", now()), now())
+       OR NEW."proposedDueAt" > GREATEST(COALESCE(NEW."originalDueAt", now()), now()) + interval '30 days' THEN
       RAISE EXCEPTION 'Proposed task deadline must extend the current deadline by no more than 30 days';
     END IF;
   END IF;
