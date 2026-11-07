@@ -25,16 +25,25 @@ export class PermissionsGuard implements CanActivate {
       where: { userId, isActive: true },
       relations: { role: { permissions: true } },
     });
-    const grantedCodes = new Set<string>();\n    let platformWildcard = false;
+    const grantedCodes = new Set<string>();
+    let platformWildcard = false;
+
     for (const assignment of grants) {
       if (!assignment.role?.isActive) continue;
       if (assignment.role.scope === 'PLATFORM') {
-        for (const permission of assignment.role.permissions ?? []) {\n          if (permission.code === '*') platformWildcard = true;\n          else grantedCodes.add(permission.code);\n        }
+        for (const permission of assignment.role.permissions ?? []) {
+          if (permission.code === '*') platformWildcard = true;
+          else grantedCodes.add(permission.code);
+        }
         continue;
       }
-      // Organization roles must always be evaluated against an explicit organization context.
+
+      // Organization roles require an explicit matching organization context.
       if (!organizationId || assignment.organizationId !== organizationId) continue;
-      // A wildcard attached to an organization role must never become a platform-wide bypass.\n      for (const permission of assignment.role.permissions ?? []) if (permission.code !== '*') grantedCodes.add(permission.code);
+      // Wildcards are reserved for platform roles and cannot bypass tenant boundaries.
+      for (const permission of assignment.role.permissions ?? []) {
+        if (permission.code !== '*') grantedCodes.add(permission.code);
+      }
     }
 
     if (platformWildcard || required.every(code => grantedCodes.has(code))) return true;
