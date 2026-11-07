@@ -16,6 +16,55 @@ export class PermissionsGuard implements CanActivate {
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
   ) {}
 
+  private async resolveOrganizationId(request: any): Promise<string | null> {
+    const direct = request.params?.organizationId ?? request.body?.organizationId ??
+      request.query?.organizationId ?? null;
+    if (direct) return direct;
+
+    const candidates = [
+      request.params?.id,
+      request.params?.versionId,
+      request.params?.unitId,
+      request.params?.positionId,
+      request.body?.processVersionId,
+      request.body?.formVersionId,
+      request.body?.processInstanceId,
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+    if (!candidates.length) return null;
+
+    // Resolve resource ownership from the database, never from a caller-supplied tenantId.
+    const rows = await this.dataSource.query(
+      `SELECT id AS "resourceId", "organizationId" FROM organizations WHERE id = ANY($1::uuid[])
+       UNION ALL
+       SELECT id AS "resourceId", "organizationId" FROM process_definitions WHERE id = ANY($1::uuid[])
+       UNION ALL
+       SELECT pv.id AS "resourceId", pd."organizationId"
+         FROM process_versions pv INNER JOIN process_definitions pd ON pd.id = pv."definitionId"
+        WHERE pv.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT fd.id AS "resourceId", fd."organizationId" FROM form_definitions fd WHERE fd.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT fv.id AS "resourceId", fd."organizationId"
+         FROM form_versions fv INNER JOIN form_definitions fd ON fd.id = fv."definitionId"
+        WHERE fv.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT pi.id AS "resourceId", pi."organizationId" FROM process_instances pi WHERE pi.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT wt.id AS "resourceId", pi."organizationId"
+         FROM workflow_tasks wt INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
+        WHERE wt.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT ou.id AS "resourceId", ou."organizationId" FROM organization_units ou WHERE ou.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT p.id AS "resourceId", ou."organizationId"
+         FROM positions p INNER JOIN organization_units ou ON ou.id = p."organizationUnitId"
+        WHERE p.id = ANY($1::uuid[])`,
+      [candidates],
+    );
+    const found = rows.find((row: { resourceId: string }) => candidates.includes(row.resourceId));
+    return found?.organizationId ?? null;
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [context.getHandler(), context.getClass()]);
     if (isPublic) return true;
@@ -26,54 +75,53 @@ export class PermissionsGuard implements CanActivate {
     const user = request.user;
     if (!user?.sub) throw new ForbiddenException('Authenticated user context is missing');
 
-    const platformOnly = required.some(code => code.startsWith('tenants.'));
-    let organizationId = request.params?.organizationId ?? request.body?.organizationId ?? request.query?.organizationId ?? null;
-    const resourceId = request.params?.id ?? request.params?.versionId ?? request.params?.unitId ?? request.body?.organizationUnitId ?? null;
-    if (!organizationId && resourceId) {
-      const rows = await this.dataSource.query(
-        `SELECT "organizationId" AS "organizationId" FROM process_definitions WHERE id = $1
-         UNION SELECT fd."organizationId" AS "organizationId" FROM form_versions fv
-           INNER JOIN form_definitions fd ON fd.id = fv."definitionId" WHERE fv.id = $1
-         UNION SELECT pi."organizationId" AS "organizationId" FROM workflow_tasks wt
-           INNER JOIN process_instances pi ON pi.id = wt."processInstanceId" WHERE wt.id = $1
-         UNION SELECT "organizationId" AS "organizationId" FROM organization_units WHERE id = $1
-         LIMIT 1`,
-        [resourceId],
-      );
-      organizationId = rows[0]?.organizationId ?? null;
-    }
     const grants = await this.assignments.find({
       where: { userId: user.sub, isActive: true },
       relations: { role: { permissions: true }, organization: true },
     });
-    const platformWildcard = grants.some(assignment =>
-      assignment.role?.isActive && assignment.role.scope === 'PLATFORM' &&
-      (assignment.role.permissions ?? []).some(permission => permission.code === '*'),
-    );
-    if (platformWildcard) return true;
+    const platformGrants = grants.filter(item => item.role?.isActive && item.role.scope === 'PLATFORM');
+    const platformCodes = new Set((platformGrants.flatMap(item => item.role.permissions ?? [])).map(item => item.code));
+    if (platformCodes.has('*') || required.every(code => platformCodes.has(code))) return true;
 
-    // A verified tenant context cannot be used to address another tenant's organization.
-    let selectedOrganization: Organization | null = null;
+    // Platform administration is never inherited by a tenant administrator.
+    if (required.some(code => code.startsWith('tenants.'))) {
+      throw new ForbiddenException('Platform-level permission required');
+    }
+    if (!user.tenantId) throw new ForbiddenException('An active tenant context is required');
+
+    const organizationId = await this.resolveOrganizationId(request);
+    let organization: Organization | null = null;
     if (organizationId) {
-      selectedOrganization = await this.organizations.findOne({ where: { id: organizationId, isActive: true } });
-      if (!selectedOrganization) throw new ForbiddenException('Organization is unavailable in the current access context');
-      if (!user.tenantId || selectedOrganization.tenantId !== user.tenantId) {
-        throw new ForbiddenException('Cross-tenant access is not allowed');
+      organization = await this.organizations.findOne({ where: { id: organizationId, isActive: true } });
+      if (!organization || organization.tenantId !== user.tenantId) {
+        throw new ForbiddenException('Resource is outside the active tenant');
       }
     }
 
-    // Tenant administrators are elevated only inside their verified active tenant.
-    // Platform-management permissions always remain platform-only.
-    if (!platformOnly && user.tenantId && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
-    if (!platformOnly && user.isTenantAdmin && user.tenantId && request.method === 'GET' && ['/api/organizations', '/api/process-definitions', '/api/forms'].includes(request.path)) return true;
-    if (!platformOnly && user.isTenantAdmin && user.tenantId && required.every(code => code.startsWith('tenant.members.'))) return true;
-    if (!platformOnly && user.isTenantAdmin && user.tenantId && selectedOrganization?.tenantId === user.tenantId) return true;
+    // Tenant administrators get only explicitly listed tenant-level capabilities.
+    if (user.isTenantAdmin) {
+      if (required.every(code => code === 'tenant.members.read' || code === 'tenant.members.manage')) return true;
+      if (!organizationId && required.every(code =>
+        ['organization.read', 'processes.read', 'forms.read', 'workflow.tasks.read'].includes(code),
+      )) return true;
+      if (organization && required.every(code =>
+        ['organization.read', 'organization.manage', 'processes.read', 'processes.manage', 'processes.publish',
+         'forms.read', 'forms.manage', 'forms.publish', 'forms.submit', 'workflow.start',
+         'workflow.tasks.read', 'workflow.tasks.act', 'workflow.history.read'].includes(code),
+      )) return true;
+    }
+
+    // Collection reads are scoped by the service query; all mutation and resource reads
+    // must resolve to an organization belonging to the selected tenant.
+    const collectionRead = !organizationId && request.method === 'GET' &&
+      required.every(code => ['organization.read', 'processes.read', 'forms.read', 'workflow.tasks.read'].includes(code));
+    if (collectionRead) return true;
 
     const grantedCodes = new Set<string>();
     for (const assignment of grants) {
       if (!assignment.role?.isActive || assignment.role.scope !== 'ORGANIZATION') continue;
       if (!organizationId || assignment.organizationId !== organizationId) continue;
-      if (!user.tenantId || assignment.organization?.tenantId !== user.tenantId) continue;
+      if (assignment.organization?.tenantId !== user.tenantId) continue;
       for (const permission of assignment.role.permissions ?? []) {
         if (permission.code !== '*') grantedCodes.add(permission.code);
       }
