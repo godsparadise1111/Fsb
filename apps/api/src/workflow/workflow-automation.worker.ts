@@ -39,7 +39,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
             AND jsonb_typeof(pv.schema->'steps') = 'array'
             AND COALESCE(pv.schema->'steps'->pi."currentStepIndex"->>'reassignAfterHours', '') ~ '^[0-9]+([.][0-9]+)?$'
             AND t."dueAt" + ((pv.schema->'steps'->pi."currentStepIndex"->>'reassignAfterHours')::numeric * interval '1 hour') <= now()
-            AND NOT EXISTS (SELECT 1 FROM workflow_task_reassignments r WHERE r."taskId" = t.id)
+            AND NOT EXISTS (SELECT 1 FROM workflow_task_reassignments r WHERE r."taskId" = t.id AND r."triggerType" = 'SLA')
           ORDER BY t."dueAt" ASC LIMIT 50`,
       ) as Array<{ taskId: string; tenantId: string; organizationId: string; step: Record<string, unknown> }>;
 
@@ -50,11 +50,66 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Automatic reassignment skipped for task ${candidate.taskId}: ${String(error).slice(0, 350)}`);
         }
       }
+      await this.processInactiveAssigneeBatch();
     } catch (error) {
       this.logger.error(`Workflow automation scan failed: ${String(error).slice(0, 500)}`);
     } finally {
       this.busy = false;
     }
+  }
+
+
+  private async processInactiveAssigneeBatch() {
+    const candidates = await this.dataSource.query(
+      \`SELECT DISTINCT t.id AS "taskId", pi."tenantId" AS "tenantId", pi."organizationId" AS "organizationId"
+         FROM workflow_tasks t JOIN process_instances pi ON pi.id = t."processInstanceId"
+         JOIN process_versions pv ON pv.id = pi."processVersionId"
+         JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
+         JOIN task_assignees ta ON ta."taskId" = t.id AND ta.status = 'PENDING'
+        WHERE t.status IN ('OPEN', 'IN_PROGRESS')
+          AND pv.schema->'steps'->pi."currentStepIndex"->>'reassignOnInactiveAssignee' = 'true'
+          AND jsonb_typeof(pv.schema->'steps'->pi."currentStepIndex"->'reassignUserIds') = 'array'
+          AND jsonb_array_length(pv.schema->'steps'->pi."currentStepIndex"->'reassignUserIds') BETWEEN 1 AND 50
+          AND NOT EXISTS (SELECT 1 FROM workflow_task_reassignments r WHERE r."taskId" = t.id AND r."triggerType" = 'INACTIVE_ASSIGNEE')
+          AND (NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ta."userId" AND u."isActive" = true)
+            OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId" = pi."tenantId" AND tm."userId" = ta."userId" AND tm."isActive" = true)
+            OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
+              JOIN organization_units ou ON ou.id = p."organizationUnitId" AND ou."organizationId" = pi."organizationId" AND ou."isActive" = true
+              WHERE up."userId" = ta."userId" AND up."isActive" = true AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now())))
+        ORDER BY t.id LIMIT 50\`,
+    );
+    for (const candidate of candidates as Array<{taskId:string;tenantId:string;organizationId:string}>) {
+      try { await this.reassignInactiveAssignees(candidate); }
+      catch (error) { this.logger.warn('Inactive-assignee reassignment skipped: ' + String(error).slice(0,350)); }
+    }
+  }
+
+  private async reassignInactiveAssignees(candidate: {taskId:string;tenantId:string;organizationId:string}) {
+    await this.dataSource.transaction(async manager => {
+      const [task] = await manager.query(\`SELECT id, status, "processInstanceId" FROM workflow_tasks WHERE id = $1 FOR UPDATE\`, [candidate.taskId]);
+      if (!task || !['OPEN','IN_PROGRESS'].includes(task.status)) return;
+      const [instance] = await manager.query(\`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE' WHERE pi.id = $1\`, [task.processInstanceId]);
+      if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId || instance.step?.reassignOnInactiveAssignee !== true) return;
+      const configured = instance.step?.reassignUserIds;
+      if (!Array.isArray(configured) || configured.length < 1 || configured.length > 50 || configured.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) return;
+      const targets = [...new Set(configured as string[])]; if (targets.length !== configured.length) return;
+      const [history] = await manager.query(\`SELECT id FROM workflow_task_reassignments WHERE "taskId"=$1 AND "triggerType"='INACTIVE_ASSIGNEE'\`, [candidate.taskId]); if (history) return;
+      const assignments = await manager.query(\`SELECT "userId",status FROM task_assignees WHERE "taskId"=$1 FOR UPDATE\`, [candidate.taskId]) as Array<{userId:string;status:string}>;
+      const pending = assignments.filter(a => a.status === 'PENDING'); if (!pending.length) return;
+      const invalid = await manager.query(\`SELECT ta."userId" FROM task_assignees ta WHERE ta."taskId"=$1 AND ta.status='PENDING' AND (
+        NOT EXISTS(SELECT 1 FROM users u WHERE u.id=ta."userId" AND u."isActive"=true) OR
+        NOT EXISTS(SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId"=$2 AND tm."userId"=ta."userId" AND tm."isActive"=true) OR
+        NOT EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))\`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
+      const displaced = invalid.map(x => x.userId); if (!displaced.length) return;
+      const eligible = await manager.query(\`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE u.id=ANY($1::uuid[]) AND u."isActive"=true\`, [targets,candidate.tenantId,candidate.organizationId]) as Array<{id:string}>;
+      if (eligible.length !== targets.length) { this.logger.warn('Inactive-assignee fallback targets are ineligible; assignments unchanged'); return; }
+      const byUser = new Map(assignments.map(a => [a.userId,a.status])); if (targets.some(id => byUser.has(id) && byUser.get(id) !== 'PENDING')) return;
+      const retained = pending.map(a => a.userId).filter(id => !displaced.includes(id)); const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) return;
+      const newTargets = targets.filter(id => !byUser.has(id));
+      await manager.query(\`UPDATE task_assignees SET status='REASSIGNED', comment='Automatically reassigned because assignee is inactive or no longer eligible' WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])\`, [candidate.taskId,displaced]);
+      if (newTargets.length) await manager.query(\`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,x,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) x ON CONFLICT ("taskId","userId") DO NOTHING\`, [candidate.taskId,newTargets]);
+      await manager.query(\`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)\`, [candidate.tenantId,candidate.taskId,JSON.stringify(displaced),JSON.stringify(finalIds),'Automatic reassignment because pending assignees became inactive or lost valid tenant/organization membership']);
+    });
   }
 
   private async reassignOverdueTask(candidate: { taskId: string; tenantId: string; organizationId: string; step: Record<string, unknown> }) {
