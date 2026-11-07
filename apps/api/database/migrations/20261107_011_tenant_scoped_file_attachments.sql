@@ -25,6 +25,13 @@ CREATE INDEX "IDX_file_attachments_uploader"
 
 CREATE FUNCTION enforce_file_attachment_membership() RETURNS trigger AS $$
 BEGIN
+  SELECT fs."tenantId" INTO NEW."tenantId"
+    FROM form_submissions fs
+    WHERE fs.id = NEW."submissionId";
+  IF NEW."tenantId" IS NULL THEN
+    RAISE EXCEPTION 'Attachment submission does not exist'
+      USING ERRCODE = '23503';
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM tenant_memberships tm
     INNER JOIN tenants t ON t.id = tm."tenantId"
