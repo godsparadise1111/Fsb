@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Organization } from '../organization/entities/organization.entity';
 import { ProcessDefinition } from './entities/process-definition.entity';
 import { ProcessVersion } from './entities/process-version.entity';
@@ -10,6 +10,7 @@ import { CreateProcessVersionDto } from './dto/create-process-version.dto';
 @Injectable()
 export class ProcessService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(ProcessDefinition) private readonly definitions: Repository<ProcessDefinition>,
     @InjectRepository(ProcessVersion) private readonly versions: Repository<ProcessVersion>,
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
@@ -40,16 +41,20 @@ export class ProcessService {
     return this.versions.find({ where: { definitionId }, order: { versionNumber: 'DESC' } });
   }
   async publishVersion(definitionId: string, versionId: string) {
-    const version = await this.versions.findOne({ where: { id: versionId, definitionId } });
-    if (!version) throw new NotFoundException('Process version not found');
-    if (version.status !== 'DRAFT') throw new BadRequestException('Only draft versions can be published');
-    version.status = 'PUBLISHED';
-    version.publishedAt = new Date();
-    await this.versions.save(version);
-    const definition = await this.definitions.findOneByOrFail({ id: definitionId });
-    definition.status = 'PUBLISHED';
-    await this.definitions.save(definition);
-    return version;
+    return this.dataSource.transaction(async manager => {
+      const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      if (!definition) throw new NotFoundException('Process definition not found');
+      if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be published');
+      const version = await manager.findOne(ProcessVersion, { where: { id: versionId, definitionId }, lock: { mode: 'pessimistic_write' } });
+      if (!version) throw new NotFoundException('Process version not found');
+      if (version.status !== 'DRAFT') throw new BadRequestException('Only draft versions can be published');
+      version.status = 'PUBLISHED';
+      version.publishedAt = new Date();
+      await manager.save(version);
+      definition.status = 'PUBLISHED';
+      await manager.save(definition);
+      return version;
+    });
   }
   async archiveDefinition(id: string) {
     const definition = await this.definitions.findOneBy({ id });
