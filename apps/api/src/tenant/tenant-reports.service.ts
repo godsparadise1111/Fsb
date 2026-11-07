@@ -76,10 +76,11 @@ export class TenantReportsService {
          LEFT JOIN process_instances pi ON (
            (pi."startedAt" >= days.day AND pi."startedAt" < days.day + interval '1 day')
            OR (pi."completedAt" >= days.day AND pi."completedAt" < days.day + interval '1 day')
+         ) AND EXISTS (
+           SELECT 1 FROM organizations o
+            WHERE o.id = pi."organizationId" AND o."tenantId" = $1
+              AND ($4::uuid IS NULL OR pi."organizationId" = $4)
          )
-         LEFT JOIN organizations o ON o.id = pi."organizationId"
-          AND o."tenantId" = $1
-          AND ($4::uuid IS NULL OR pi."organizationId" = $4)
         GROUP BY days.day ORDER BY days.day\`,
       [tenantId, from, to, orgFilter],
     );
