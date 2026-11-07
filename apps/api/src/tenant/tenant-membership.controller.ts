@@ -3,6 +3,7 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { CreateTenantMembershipDto } from './dto/create-tenant-membership.dto';
 import { TenantMembershipService } from './tenant-membership.service';
 import { IsBoolean } from 'class-validator';
+import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 
 class UpdateTenantAdminDto { @IsBoolean() isTenantAdmin: boolean; }
 
@@ -12,8 +13,8 @@ export class TenantMembershipController {
 
   @RequirePermissions('tenants.manage')
   @Post()
-  add(@Param('tenantId', new ParseUUIDPipe()) tenantId: string, @Body() dto: CreateTenantMembershipDto) {
-    return this.memberships.add(tenantId, dto.userId, dto.isTenantAdmin ?? false);
+  add(@Param('tenantId', new ParseUUIDPipe()) tenantId: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTenantMembershipDto) {
+    return this.memberships.add(tenantId, dto.userId, user.sub, dto.isTenantAdmin ?? false);
   }
 
   @RequirePermissions('tenants.read')
@@ -22,13 +23,13 @@ export class TenantMembershipController {
 
   @RequirePermissions('tenants.manage')
   @Patch(':userId/admin')
-  setAdmin(@Param('tenantId', new ParseUUIDPipe()) tenantId: string, @Param('userId', new ParseUUIDPipe()) userId: string, @Body() dto: UpdateTenantAdminDto) {
-    return this.memberships.setAdmin(tenantId, userId, dto.isTenantAdmin);
+  setAdmin(@Param('tenantId', new ParseUUIDPipe()) tenantId: string, @Param('userId', new ParseUUIDPipe()) userId: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateTenantAdminDto) {
+    return this.memberships.setAdmin(tenantId, userId, user.sub, dto.isTenantAdmin);
   }
 
   @RequirePermissions('tenants.manage')
   @Delete(':userId')
-  remove(@Param('tenantId', new ParseUUIDPipe()) tenantId: string, @Param('userId', new ParseUUIDPipe()) userId: string) {
-    return this.memberships.remove(tenantId, userId);
+  remove(@Param('tenantId', new ParseUUIDPipe()) tenantId: string, @Param('userId', new ParseUUIDPipe()) userId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.memberships.remove(tenantId, userId, user.sub);
   }
 }
