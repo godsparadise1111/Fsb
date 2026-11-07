@@ -53,12 +53,15 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM tenant_memberships tm
+    SELECT 1
+      FROM tenant_memberships tm
+      INNER JOIN tenants t ON t.id = tm."tenantId"
      WHERE tm."tenantId" = scoped_tenant
        AND tm."userId" = scoped_user
        AND tm."isActive" = true
+       AND t.status = 'ACTIVE'
   ) THEN
-    RAISE EXCEPTION 'User must have active membership in the resource tenant';
+    RAISE EXCEPTION 'User must have active membership in an active resource tenant';
   END IF;
   RETURN NEW;
 END $$;
