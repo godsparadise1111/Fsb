@@ -110,7 +110,7 @@ export class PermissionsGuard implements CanActivate {
 
     // Tenant administrators get only explicitly listed tenant-level capabilities.
     if (user.isTenantAdmin) {
-      if (required.every(code => ['tenant.members.read', 'tenant.members.manage', 'tenant.invitations.read', 'tenant.invitations.manage', 'tenant.audit.read', 'tenant.usage.read', 'tenant.organizations.manage'].includes(code))) return true;
+      if (required.every(code => ['tenant.members.read', 'tenant.members.manage', 'tenant.invitations.read', 'tenant.invitations.manage', 'tenant.audit.read', 'tenant.usage.read', 'tenant.notifications.read', 'tenant.notifications.manage', 'tenant.organizations.manage'].includes(code))) return true;
       const tenantScopedUserRead = request.method === 'GET' && (requestPath.endsWith('/users') || /\/users\/[^/]+\/positions$/.test(requestPath));
       if (tenantScopedUserRead && required.length === 1 && required[0] === 'users.read') return true;
       if (!organizationId && required.every(code =>
