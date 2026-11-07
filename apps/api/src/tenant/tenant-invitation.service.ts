@@ -9,6 +9,7 @@ import { TenantInvitation } from './entities/tenant-invitation.entity';
 import { TenantMembership } from './entities/tenant-membership.entity';
 import { User } from '../identity/entities/user.entity';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
+import { TenantAuditService } from './tenant-audit.service';
 
 @Injectable()
 export class TenantInvitationService {
@@ -17,6 +18,7 @@ export class TenantInvitationService {
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(TenantInvitation) private readonly invitations: Repository<TenantInvitation>,
     private readonly notificationOutbox: NotificationOutboxService,
+    private readonly audit: TenantAuditService,
   ) {}
 
   private hashToken(token: string) {
@@ -74,6 +76,7 @@ export class TenantInvitationService {
           acceptPath: '/invite?token=' + encodeURIComponent(token),
         },
       });
+      await this.audit.record(manager, { tenantId, actorUserId: inviterUserId, action: 'INVITATION_CREATED', resourceType: 'TENANT_INVITATION', resourceId: saved.id, metadata: { isTenantAdmin: saved.isTenantAdmin, deliveryQueued: true } });
       return { id: saved.id, email: saved.email, isTenantAdmin: saved.isTenantAdmin, expiresAt: saved.expiresAt, deliveryQueued: true };
     });
   }
@@ -86,7 +89,7 @@ export class TenantInvitationService {
     });
   }
 
-  async revoke(tenantId: string, invitationId: string) {
+  async revoke(tenantId: string, invitationId: string, actorUserId: string) {
     return this.dataSource.transaction(async manager => {
       const invitation = await manager.findOne(TenantInvitation, {
         where: { id: invitationId, tenantId },
@@ -97,6 +100,7 @@ export class TenantInvitationService {
       if (invitation.revokedAt) return { id: invitation.id, revoked: true };
       invitation.revokedAt = new Date();
       await manager.save(invitation);
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'INVITATION_REVOKED', resourceType: 'TENANT_INVITATION', resourceId: invitation.id });
       return { id: invitation.id, revoked: true };
     });
   }
@@ -136,6 +140,7 @@ export class TenantInvitationService {
       invitation.acceptedAt = new Date();
       invitation.acceptedByUserId = user.id;
       await repository.save(invitation);
+      await this.audit.record(manager, { tenantId: invitation.tenantId, actorUserId: user.id, targetUserId: user.id, action: 'INVITATION_REGISTERED', resourceType: 'TENANT_INVITATION', resourceId: invitation.id });
       return {
         registered: true,
         user: { id: user.id, email: user.email, username: user.username },
@@ -179,6 +184,7 @@ export class TenantInvitationService {
       invitation.acceptedAt = new Date();
       invitation.acceptedByUserId = userId;
       await repository.save(invitation);
+      await this.audit.record(manager, { tenantId: invitation.tenantId, actorUserId: userId, targetUserId: userId, action: 'INVITATION_ACCEPTED', resourceType: 'TENANT_INVITATION', resourceId: invitation.id });
       return { accepted: true, tenantId: invitation.tenantId, tenantName: tenant.name, isTenantAdmin: membership.isTenantAdmin };
     });
   }
