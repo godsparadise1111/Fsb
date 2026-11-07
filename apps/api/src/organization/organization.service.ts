@@ -3,14 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Organization } from './entities/organization.entity';
 import { OrganizationUnit } from './entities/organization-unit.entity';
+import { Position } from './entities/position.entity';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
+import { CreatePositionDto } from './dto/create-position.dto';
 @Injectable()
 export class OrganizationService {
-  constructor(
-    @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
-    @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>,
-  ) {}
+  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>) {}
   async createOrganization(dto: CreateOrganizationDto) {
     if (await this.organizations.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
     return this.organizations.save(this.organizations.create(dto));
@@ -29,5 +28,15 @@ export class OrganizationService {
   async listUnits(organizationId: string) {
     if (!await this.organizations.exist({ where: { id: organizationId } })) throw new NotFoundException('Organization not found');
     return this.units.find({ where: { organizationId }, relations: { parent: true }, order: { name: 'ASC' } });
+  }
+  async createPosition(dto: CreatePositionDto) {
+    const unit = await this.units.findOne({ where: { id: dto.organizationUnitId, isActive: true } });
+    if (!unit) throw new NotFoundException('Organization unit not found');
+    if (await this.positions.findOne({ where: { organizationUnitId: dto.organizationUnitId, code: dto.code } })) throw new ConflictException('Position code already exists in this unit');
+    return this.positions.save(this.positions.create(dto));
+  }
+  async listPositions(unitId: string) {
+    if (!await this.units.exist({ where: { id: unitId } })) throw new NotFoundException('Organization unit not found');
+    return this.positions.find({ where: { organizationUnitId: unitId, isActive: true }, order: { title: 'ASC' } });
   }
 }
