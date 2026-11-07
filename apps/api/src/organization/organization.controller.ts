@@ -7,7 +7,7 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 @Controller('organizations')
 export class OrganizationController {
   constructor(private readonly service: OrganizationService) {}
-  @RequirePermissions('organization.manage')
+  @RequirePermissions('tenants.manage')
   @Post() create(@Body() dto: CreateOrganizationDto) { return this.service.createOrganization(dto); }
   @RequirePermissions('organization.read')
   @Get() list() { return this.service.listOrganizations(); }
