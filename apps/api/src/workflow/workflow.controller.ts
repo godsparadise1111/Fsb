@@ -3,6 +3,7 @@ import { WorkflowService } from './workflow.service';
 import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
+import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
@@ -29,6 +30,27 @@ export class WorkflowController {
   @Delete('tasks/:id/delegations/:delegationId')
   revokeDelegation(@Param('id') id: string, @Param('delegationId') delegationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.revokeTaskDelegation(id, delegationId, user.sub, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.tasks.act')
+  @Post('tasks/:id/deferrals')
+  requestDeferral(@Param('id') id: string, @Body() dto: RequestTaskDeferralDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.requestTaskDeferral(id, user.sub, dto, user.tenantId);
+  }
+  @RequirePermissions('workflow.history.read')
+  @Get('tasks/:id/deferrals')
+  deferrals(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listTaskDeferrals(id, user.sub, user.tenantId);
+  }
+  @RequirePermissions('workflow.tasks.defer.approve')
+  @Post('tasks/:id/deferrals/:requestId/approve')
+  approveDeferral(@Param('id') id: string, @Param('requestId') requestId: string, @Body() dto: ReviewTaskDeferralDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.reviewTaskDeferral(id, requestId, user.sub, 'APPROVED', dto, user.tenantId);
+  }
+  @RequirePermissions('workflow.tasks.defer.approve')
+  @Post('tasks/:id/deferrals/:requestId/reject')
+  rejectDeferral(@Param('id') id: string, @Param('requestId') requestId: string, @Body() dto: ReviewTaskDeferralDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.reviewTaskDeferral(id, requestId, user.sub, 'REJECTED', dto, user.tenantId);
   }
   @RequirePermissions('workflow.history.read')
   @Get('tasks/:id/history') history(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.taskHistory(id, user.sub, user.tenantId); }
