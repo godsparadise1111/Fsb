@@ -75,6 +75,10 @@
 - `PATCH /api/process-definitions/:id/archive` بایگانی تعریف فرایند
 
 ### اجرای گردش‌کار
+- `POST /api/organization-substitutions` ایجاد جانشینی سازمانی با `organizationId`, `originalUserId`, `substituteUserId`, `startsAt`, `endsAt`, `reason`؛ جانشین و فرد اصلی باید عضو فعال Tenant و دارای سمت معتبر در همان سازمان باشند؛ بازه حداکثر ۹۰ روز است و بازه‌های هم‌پوشان برای فرد اصلی مجاز نیستند.
+- `GET /api/organizations/:organizationId/substitutions?limit=50&offset=0` فهرست صفحه‌بندی‌شده تاریخچه جانشینی‌ها.
+- `DELETE /api/organizations/:organizationId/substitutions/:substitutionId` لغو جانشینی فعال؛ جزئیات تاریخی تغییرناپذیر و اقدام در Audit ثبت می‌شود.
+- جانشین در بازه معتبر، وظایف باز فرد اصلی را در کارتابل می‌بیند و می‌تواند اقدام کند؛ هویت واقعی جانشین در Action Log ثبت و انتساب اصلی تکمیل می‌شود. در زمان مشاهده و اقدام، عضویت و سمت فعال جانشین دوباره بررسی می‌شود؛ جانشینی به‌تنهایی وظایف را به فرد دیگر منتقل یا مسئولیت اصلی را حذف نمی‌کند.
 - `POST /api/tasks/:id/delegations` تفویض زمان‌دار وظیفه توسط مسئول اصلی به کاربر دارای عضویت فعال Tenant و سمت فعال در همان سازمان؛ بدنه `{ "toUserId": "<uuid>", "endsAt": "<ISO-8601>" }`؛ حداکثر ۳۰ روز، بدون تغییر مسئول اصلی و همراه با ممیزی.
 - `GET /api/tasks/:id/delegations` مشاهده تاریخچه تفویض برای مسئولان/آغازکننده/نماینده مجاز.
 - `DELETE /api/tasks/:id/delegations/:delegationId` لغو تفویض توسط مسئول اصلی.
