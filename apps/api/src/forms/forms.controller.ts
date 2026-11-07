@@ -26,6 +26,24 @@ export class FormsController {
   @RequirePermissions('forms.submit')
   @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto, user.tenantId); }
   @RequirePermissions('forms.read')
+  @Get('versions/:versionId/submissions/export.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async exportSubmissions(
+    @Param('versionId') versionId: string,
+    @Query('limit') limit: string | undefined,
+    @Query('offset') offset: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const csv = await this.forms.exportSubmissions(versionId, user.tenantId, Number(limit ?? 1000), Number(offset ?? 0));
+    return new StreamableFile(Buffer.from(csv, 'utf8'), {
+      type: 'text/csv; charset=utf-8',
+      disposition: `attachment; filename="form-submissions-${versionId}.csv"`,
+    });
+  }
+
+  @RequirePermissions('forms.read')
   @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @Query('limit') limit: string | undefined, @Query('offset') offset: string | undefined, @CurrentUser() user: AuthenticatedUser) { return this.forms.listSubmissions(versionId, user.tenantId, Number(limit ?? 50), Number(offset ?? 0)); }
 
   @RequirePermissions('forms.submit')
