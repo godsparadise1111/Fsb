@@ -52,17 +52,23 @@ export class NotificationOutboxService {
     const repository = manager.getRepository(NotificationOutbox);
     const existing = await repository.findOneBy({ dedupeKey: input.dedupeKey });
     if (existing) return existing;
-    return repository.save(repository.create({
-      tenantId: input.tenantId,
-      eventType: input.eventType,
-      recipient: input.recipient.trim().toLowerCase(),
-      subject: input.subject ?? null,
-      ...encrypted,
-      dedupeKey: input.dedupeKey,
-      status: 'PENDING',
-      attempts: 0,
-      availableAt: new Date(),
-    }));
+    await manager.createQueryBuilder()
+      .insert()
+      .into(NotificationOutbox)
+      .values({
+        tenantId: input.tenantId,
+        eventType: input.eventType,
+        recipient: input.recipient.trim().toLowerCase(),
+        subject: input.subject ?? null,
+        ...encrypted,
+        dedupeKey: input.dedupeKey,
+        status: 'PENDING',
+        attempts: 0,
+        availableAt: new Date(),
+      })
+      .orIgnore()
+      .execute();
+    return repository.findOneByOrFail({ dedupeKey: input.dedupeKey });
   }
 
   async claimBatch(workerId: string, limit = 20) {
