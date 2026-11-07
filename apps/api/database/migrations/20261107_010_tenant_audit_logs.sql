@@ -14,7 +14,7 @@ CREATE TABLE tenant_audit_logs (
 );
 
 CREATE INDEX "IDX_tenant_audit_tenant_created"
-  ON tenant_audit_logs ("tenantId", "createdAt" DESC, id DESC);
+  ON tenant_audit_logs ("tenantId", "createdAt" DESC);
 CREATE INDEX "IDX_tenant_audit_actor"
   ON tenant_audit_logs ("tenantId", "actorUserId", "createdAt" DESC);
 
