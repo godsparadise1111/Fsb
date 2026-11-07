@@ -22,8 +22,13 @@ export class ProcessService {
     if (await this.definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) throw new ConflictException('Process code already exists in this organization');
     return this.definitions.save(this.definitions.create({ ...dto, status: 'DRAFT' }));
   }
-  listDefinitions(organizationId?: string) {
-    return this.definitions.find({ where: organizationId ? { organizationId } : {}, order: { name: 'ASC' } });
+  listDefinitions(organizationId?: string, tenantId?: string | null) {
+    const query = this.definitions.createQueryBuilder('definition')
+      .innerJoinAndSelect('definition.organization', 'organization')
+      .orderBy('definition.name', 'ASC');
+    if (organizationId) query.andWhere('definition.organizationId = :organizationId', { organizationId });
+    else if (tenantId) query.andWhere('organization.tenantId = :tenantId', { tenantId });
+    return query.getMany();
   }
   async createVersion(definitionId: string, dto: CreateProcessVersionDto) {
     return this.dataSource.transaction(async manager => {
