@@ -16,6 +16,7 @@ import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { TaskDelegation } from './entities/task-delegation.entity';
 import { TaskDeferralRequest } from './entities/task-deferral-request.entity';
 import { OrganizationSubstitution } from './entities/organization-substitution.entity';
+import { WorkflowTaskReassignment } from './entities/workflow-task-reassignment.entity';
 import { CreateOrganizationSubstitutionDto } from './dto/create-organization-substitution.dto';
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
@@ -553,6 +554,14 @@ export class WorkflowService {
         metadata: { taskId, previousDueAt: previousDueAt?.toISOString() ?? null, effectiveDueAt: decision === 'APPROVED' ? request.proposedDueAt.toISOString() : previousDueAt?.toISOString() ?? null, proposedDueAt: request.proposedDueAt.toISOString(), comment: request.reviewerComment },
       });
       return request;
+    });
+  }
+
+
+  async listTaskReassignments(taskId: string, requesterId: string, tenantId?: string | null) {
+    await this.taskHistory(taskId, requesterId, tenantId);
+    return this.dataSource.getRepository(WorkflowTaskReassignment).find({
+      where: { taskId, tenantId: tenantId! }, order: { createdAt: 'ASC' },
     });
   }
 
