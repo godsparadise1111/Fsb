@@ -29,6 +29,7 @@ export class PermissionsGuard implements CanActivate {
       request.body?.formVersionId,
       request.body?.processInstanceId,
       request.body?.organizationUnitId,
+      request.body?.positionId,
       request.body?.parentId,
     ].filter((value): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
     if (!candidates.length) return direct;
@@ -110,13 +111,15 @@ export class PermissionsGuard implements CanActivate {
     // Tenant administrators get only explicitly listed tenant-level capabilities.
     if (user.isTenantAdmin) {
       if (required.every(code => ['tenant.members.read', 'tenant.members.manage', 'tenant.invitations.read', 'tenant.invitations.manage', 'tenant.organizations.manage'].includes(code))) return true;
+      const tenantScopedUserRead = request.method === 'GET' && (requestPath === '/api/users' || /^\\/api\\/users\\/[^/]+\\/positions$/.test(requestPath));
+      if (tenantScopedUserRead && required.length === 1 && required[0] === 'users.read') return true;
       if (!organizationId && required.every(code =>
         ['organization.read', 'processes.read', 'forms.read', 'workflow.tasks.read'].includes(code),
       )) return true;
       if (organization && required.every(code =>
         ['organization.read', 'organization.manage', 'processes.read', 'processes.manage', 'processes.publish',
          'forms.read', 'forms.manage', 'forms.publish', 'forms.submit', 'workflow.start',
-         'workflow.tasks.read', 'workflow.tasks.act', 'workflow.history.read'].includes(code),
+         'workflow.tasks.read', 'workflow.tasks.act', 'workflow.history.read', 'assignments.manage'].includes(code),
       )) return true;
     }
 
