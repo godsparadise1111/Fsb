@@ -408,6 +408,7 @@ export class WorkflowService {
         where: { id: requestId, taskId, tenantId }, lock: { mode: 'pessimistic_write' },
       });
       if (!request) throw new NotFoundException('Deadline change request not found');
+      if (request.requesterUserId === reviewerId) throw new ForbiddenException('A requester cannot review their own deadline change request');
       if (request.status !== 'PENDING') throw new ConflictException('Deadline change request has already been reviewed');
       const previousDueAt = task.dueAt;
       if (decision === 'APPROVED') {
