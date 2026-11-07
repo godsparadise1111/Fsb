@@ -18,7 +18,11 @@
 - `GET /api/health`
 
 ### ساختار سازمانی
-- `POST /api/organizations` ایجاد سازمان؛ بدنه: `{ "name": "...", "code": "..." }`
+- `POST /api/platform/tenants` ایجاد مشتری؛ بدنه: `name`, `slug`, `code` و اختیاری `plan`؛ وضعیت اولیه `PENDING` است.
+- `GET /api/platform/tenants` فهرست مشتریان
+- `GET /api/platform/tenants/:id` جزئیات مشتری و سازمان‌های آن
+- `PATCH /api/platform/tenants/:id/status` تغییر وضعیت به `ACTIVE`, `SUSPENDED` یا `CLOSED`
+- `POST /api/organizations` ایجاد سازمان در یک مشتری فعال؛ بدنه: `{ "tenantId": "...", "name": "...", "code": "..." }`
 - `GET /api/organizations` فهرست سازمان‌ها
 - `POST /api/organizations/units` ایجاد واحد؛ بدنه شامل `organizationId`, `name`, `code` و اختیاری `parentId`
 - `GET /api/organizations/:organizationId/units` فهرست واحدهای سازمان
@@ -64,6 +68,8 @@
 - `POST /api/forms/:id/versions/:versionId/publish` انتشار نسخه فرم
 - `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT؛ نمونه فرایند باید متعلق به همان سازمان فرم باشد)
 - `GET /api/forms/versions/:versionId/submissions?organizationId=...` مشاهده ثبت‌های یک نسخه فرم؛ سازمان باید با سازمان تعریف فرم منطبق باشد.
+
+سازمان‌های قدیمی که `tenantId` ندارند تا زمان مهاجرت و تخصیص صریح به مشتری، مجاز به ایجاد فرایند/فرم جدید یا شروع گردش‌کار نیستند. ایجاد سازمان جدید فقط برای Tenant با وضعیت `ACTIVE` ممکن است. تعلیق یا بستن Tenant در مرحله فعلی، ایجاد و شروع فرایند جدید را متوقف می‌کند؛ توقف تمام مسیرهای خواندن/نوشتن داده‌های موجود هنوز کامل نشده است.
 
 ساختار schema فرم به‌صورت JSON نگهداری می‌شود و نسخه‌های منتشرشده مبنای ثبت داده قرار می‌گیرند. اعتبارسنجی معنایی فیلدها و رندرر فرم در لایه بعدی توسعه می‌یابد.
 
