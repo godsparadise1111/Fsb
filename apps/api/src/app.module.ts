@@ -28,6 +28,7 @@ import { WorkflowActionLog } from './workflow/entities/workflow-action-log.entit
 import { FormDefinition } from './forms/entities/form-definition.entity';
 import { FormVersion } from './forms/entities/form-version.entity';
 import { FormSubmission } from './forms/entities/form-submission.entity';
+import { FileAttachment } from './forms/entities/file-attachment.entity';
 import { NotificationOutbox } from './notifications/entities/notification-outbox.entity';
 import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
 
@@ -40,7 +41,7 @@ import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
       username: process.env.POSTGRES_USER ?? 'fsb',
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
-      entities: [TenantAuditLog, NotificationOutbox, Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
+      entities: [TenantAuditLog, NotificationOutbox, Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission, FileAttachment],
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
