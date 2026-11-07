@@ -53,4 +53,5 @@ export class TenantService {
       await this.audit.record(manager, { tenantId: tenant.id, actorUserId, action: 'TENANT_STATUS_CHANGED', resourceType: 'TENANT', resourceId: tenant.id, metadata: { from: previousStatus, to: status } });
       return saved;
     });
-  }}
+  }
+}
