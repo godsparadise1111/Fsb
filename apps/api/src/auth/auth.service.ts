@@ -5,6 +5,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../identity/entities/user.entity';
+import { Role } from '../identity/entities/role.entity';
+import { Permission } from '../identity/entities/permission.entity';
+import { UserRole } from '../identity/entities/user-role.entity';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from '../identity/dto/create-user.dto';
 @Injectable()
@@ -18,7 +21,16 @@ export class AuthService {
     if (await this.users.findOne({ where: [{ email }, { username: dto.username }] })) throw new ConflictException('Email or username already exists');
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const { password, ...profile } = dto;
-    return this.users.save(this.users.create({ ...profile, email, passwordHash, isActive: true }));
+    const user = await this.users.save(this.users.create({ ...profile, email, passwordHash, isActive: true }));
+    const permissionRepo = this.users.manager.getRepository(Permission);
+    const roleRepo = this.users.manager.getRepository(Role);
+    const assignmentRepo = this.users.manager.getRepository(UserRole);
+    let rootPermission = await permissionRepo.findOneBy({ code: '*' });
+    if (!rootPermission) rootPermission = await permissionRepo.save(permissionRepo.create({ code: '*', name: 'تمام مجوزها', description: 'مجوز مدیریتی اولیه سامانه' }));
+    let adminRole = await roleRepo.findOne({ where: { code: 'SYSTEM_ADMIN' }, relations: { permissions: true } });
+    if (!adminRole) adminRole = await roleRepo.save(roleRepo.create({ code: 'SYSTEM_ADMIN', name: 'مدیر سامانه', description: 'نقش مدیریتی اولیه', permissions: [rootPermission] }));
+    await assignmentRepo.save(assignmentRepo.create({ userId: user.id, roleId: adminRole.id, organizationId: null, isActive: true }));
+    return { id: user.id, username: user.username, email: user.email, firstName: user.firstName, lastName: user.lastName, role: 'SYSTEM_ADMIN' };
   }
   async login(dto: LoginDto) {
     const user = await this.users.createQueryBuilder('user')
