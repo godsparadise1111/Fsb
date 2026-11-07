@@ -1,0 +1,113 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { Tenant } from './entities/tenant.entity';
+
+@Injectable()
+export class TenantReportsService {
+  constructor(private readonly dataSource: DataSource) {}
+
+  private parseDate(value: string | undefined, fallback: Date, name: string) {
+    if (!value) return fallback;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException(`${name} must use YYYY-MM-DD`);
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new BadRequestException(`${name} is not a valid calendar date`);
+    return date;
+  }
+
+  async overview(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
+    const tenant = await this.dataSource.getRepository(Tenant).findOne({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    if (tenant.status !== 'ACTIVE') throw new BadRequestException('Reports are available only for active tenants');
+
+    const now = new Date();
+    const defaultTo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const defaultFrom = new Date(defaultTo.getTime() - 30 * 86400000);
+    const from = this.parseDate(options.from, defaultFrom, 'from');
+    const to = this.parseDate(options.to, defaultTo, 'to');
+    if (from >= to) throw new BadRequestException('from must be earlier than to');
+    if (to.getTime() - from.getTime() > 366 * 86400000) throw new BadRequestException('Report range cannot exceed 366 days');
+
+    if (options.organizationId) {
+      const [owned] = await this.dataSource.query(
+        'SELECT id FROM organizations WHERE id = $1 AND "tenantId" = $2 AND "isActive" = true',
+        [options.organizationId, tenantId],
+      );
+      if (!owned) throw new NotFoundException('Organization not found in this customer account');
+    }
+
+    const orgFilter = options.organizationId ?? null;
+    const [summary] = await this.dataSource.query(
+      `SELECT
+        count(*) FILTER (WHERE pi.status = 'RUNNING')::int AS "runningInstances",
+        count(*) FILTER (WHERE pi.status = 'COMPLETED')::int AS "completedInstances",
+        count(*) FILTER (WHERE pi.status = 'CANCELLED')::int AS "cancelledInstances",
+        count(*)::int AS "startedInstances",
+        round(avg(EXTRACT(EPOCH FROM (pi."completedAt" - pi."startedAt")) / 3600)
+          FILTER (WHERE pi.status = 'COMPLETED' AND pi."completedAt" IS NOT NULL)::numeric, 2) AS "averageCompletionHours",
+        count(DISTINCT pi."startedByUserId")::int AS "uniqueStarters"
+       FROM process_instances pi
+       INNER JOIN organizations o ON o.id = pi."organizationId"
+       WHERE o."tenantId" = $1 AND pi."startedAt" >= $2 AND pi."startedAt" < $3
+         AND ($4::uuid IS NULL OR pi."organizationId" = $4)`,
+      [tenantId, from, to, orgFilter],
+    );
+
+    const tasks = await this.dataSource.query(
+      `SELECT wt.status, count(*)::int AS count
+         FROM workflow_tasks wt
+         INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
+         INNER JOIN organizations o ON o.id = pi."organizationId"
+        WHERE o."tenantId" = $1 AND wt."createdAt" >= $2 AND wt."createdAt" < $3
+          AND ($4::uuid IS NULL OR pi."organizationId" = $4)
+        GROUP BY wt.status ORDER BY wt.status`,
+      [tenantId, from, to, orgFilter],
+    );
+
+    const daily = await this.dataSource.query(
+      `SELECT date_trunc('day', pi."startedAt")::date::text AS day,
+              count(*)::int AS started,
+              count(*) FILTER (WHERE pi.status = 'COMPLETED')::int AS completed
+         FROM process_instances pi
+         INNER JOIN organizations o ON o.id = pi."organizationId"
+        WHERE o."tenantId" = $1 AND pi."startedAt" >= $2 AND pi."startedAt" < $3
+          AND ($4::uuid IS NULL OR pi."organizationId" = $4)
+        GROUP BY date_trunc('day', pi."startedAt") ORDER BY day`,
+      [tenantId, from, to, orgFilter],
+    );
+
+    const byOrganization = await this.dataSource.query(
+      `SELECT o.id AS "organizationId", o.name AS "organizationName",
+              count(pi.id)::int AS started,
+              count(pi.id) FILTER (WHERE pi.status = 'COMPLETED')::int AS completed,
+              count(pi.id) FILTER (WHERE pi.status = 'RUNNING')::int AS running
+         FROM organizations o
+         LEFT JOIN process_instances pi ON pi."organizationId" = o.id
+           AND pi."startedAt" >= $2 AND pi."startedAt" < $3
+        WHERE o."tenantId" = $1 AND o."isActive" = true
+          AND ($4::uuid IS NULL OR o.id = $4)
+        GROUP BY o.id, o.name ORDER BY started DESC, o.name ASC LIMIT 100`,
+      [tenantId, from, to, orgFilter],
+    );
+
+    return {
+      tenant: { id: tenant.id, name: tenant.name, plan: tenant.plan },
+      period: { from: from.toISOString(), to: to.toISOString() },
+      filters: { organizationId: orgFilter },
+      processInstances: {
+        started: Number(summary.startedInstances ?? 0),
+        running: Number(summary.runningInstances ?? 0),
+        completed: Number(summary.completedInstances ?? 0),
+        cancelled: Number(summary.cancelledInstances ?? 0),
+        averageCompletionHours: summary.averageCompletionHours == null ? null : Number(summary.averageCompletionHours),
+        uniqueStarters: Number(summary.uniqueStarters ?? 0),
+      },
+      tasksByStatus: tasks.map((item: any) => ({ status: item.status, count: Number(item.count) })),
+      dailyThroughput: daily.map((item: any) => ({ day: item.day, started: Number(item.started), completed: Number(item.completed) })),
+      organizations: byOrganization.map((item: any) => ({
+        organizationId: item.organizationId, organizationName: item.organizationName,
+        started: Number(item.started), completed: Number(item.completed), running: Number(item.running),
+      })),
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}
