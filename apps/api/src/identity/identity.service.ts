@@ -10,6 +10,7 @@ import { UserRole } from './entities/user-role.entity';
 import { Position } from '../organization/entities/position.entity';
 import { Organization } from '../organization/entities/organization.entity';
 import { TenantMembership } from '../tenant/entities/tenant-membership.entity';
+import { Tenant } from '../tenant/entities/tenant.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { AssignPositionDto } from './dto/assign-position.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -46,19 +47,36 @@ export class IdentityService {
     return this.users.save(user);
   }
   async assignPosition(dto: AssignPositionDto) {
-    const user = await this.users.findOneBy({ id: dto.userId, isActive: true });
-    if (!user) throw new NotFoundException('Active user not found');
-    const position = await this.positions.findOne({ where: { id: dto.positionId, isActive: true }, relations: { unit: { organization: { tenant: true } } } });
-    if (!position) throw new NotFoundException('Active position not found');
-    const tenantId = position.unit.organization?.tenantId;
-    if (!tenantId || position.unit.organization.tenant?.status !== 'ACTIVE') throw new BadRequestException('Position must belong to an active tenant organization');
-    const tenantMember = await this.users.manager.getRepository(TenantMembership).exist({ where: { tenantId, userId: user.id, isActive: true } });
-    if (!tenantMember) throw new ForbiddenException('User must be an active member of the position tenant');
-    const validFrom = dto.validFrom ? new Date(dto.validFrom) : new Date();
-    const validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
-    if (validUntil && validUntil <= validFrom) throw new BadRequestException('validUntil must be later than validFrom');
-    if (dto.isPrimary) await this.memberships.update({ userId: user.id, tenantId, isActive: true }, { isPrimary: false });
-    return this.memberships.save(this.memberships.create({ userId: user.id, positionId: position.id, tenantId, validFrom, validUntil, isPrimary: dto.isPrimary ?? false }));
+    return this.users.manager.transaction(async manager => {
+      const user = await manager.findOne(User, { where: { id: dto.userId, isActive: true }, lock: { mode: 'pessimistic_write' } });
+      if (!user) throw new NotFoundException('Active user not found');
+      const position = await manager.findOne(Position, {
+        where: { id: dto.positionId, isActive: true },
+        relations: { unit: { organization: true } },
+      });
+      if (!position) throw new NotFoundException('Active position not found');
+      const organization = position.unit.organization;
+      const tenantId = organization?.tenantId;
+      if (!tenantId || !organization.isActive) throw new BadRequestException('Position must belong to an active organization');
+      const tenant = await manager.findOne(Tenant, { where: { id: tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Position must belong to an active tenant');
+      const tenantMember = await manager.findOne(TenantMembership, {
+        where: { tenantId, userId: user.id, isActive: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!tenantMember) throw new ForbiddenException('User must be an active member of the position tenant');
+
+      const validFrom = dto.validFrom ? new Date(dto.validFrom) : new Date();
+      const validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
+      if (validUntil && validUntil <= validFrom) throw new BadRequestException('validUntil must be later than validFrom');
+      if (dto.isPrimary) {
+        await manager.update(UserPosition, { userId: user.id, tenantId, isActive: true }, { isPrimary: false });
+      }
+      return manager.save(UserPosition, manager.create(UserPosition, {
+        userId: user.id, positionId: position.id, tenantId, validFrom, validUntil,
+        isPrimary: dto.isPrimary ?? false,
+      }));
+    });
   }
   async listUserPositions(userId: string, tenantId?: string | null) {
     if (!await this.users.exist({ where: { id: userId } })) throw new NotFoundException('User not found');
