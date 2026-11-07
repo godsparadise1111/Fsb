@@ -25,19 +25,19 @@ export class PermissionsGuard implements CanActivate {
       where: { userId, isActive: true },
       relations: { role: { permissions: true } },
     });
-    const grantedCodes = new Set<string>();
+    const grantedCodes = new Set<string>();\n    let platformWildcard = false;
     for (const assignment of grants) {
       if (!assignment.role?.isActive) continue;
       if (assignment.role.scope === 'PLATFORM') {
-        for (const permission of assignment.role.permissions ?? []) grantedCodes.add(permission.code);
+        for (const permission of assignment.role.permissions ?? []) {\n          if (permission.code === '*') platformWildcard = true;\n          else grantedCodes.add(permission.code);\n        }
         continue;
       }
       // Organization roles must always be evaluated against an explicit organization context.
       if (!organizationId || assignment.organizationId !== organizationId) continue;
-      for (const permission of assignment.role.permissions ?? []) grantedCodes.add(permission.code);
+      // A wildcard attached to an organization role must never become a platform-wide bypass.\n      for (const permission of assignment.role.permissions ?? []) if (permission.code !== '*') grantedCodes.add(permission.code);
     }
 
-    if (grantedCodes.has('*') || required.every(code => grantedCodes.has(code))) return true;
+    if (platformWildcard || required.every(code => grantedCodes.has(code))) return true;
     throw new ForbiddenException('Insufficient permissions');
   }
 }
