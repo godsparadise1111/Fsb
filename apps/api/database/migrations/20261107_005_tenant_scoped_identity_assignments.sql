@@ -24,9 +24,12 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM user_positions up
      WHERE up."isActive" = true
-       AND NOT EXISTS (
+       AND (
+         NOT EXISTS (SELECT 1 FROM users u WHERE u.id = up."userId" AND u."isActive" = true)
+         OR NOT EXISTS (
          SELECT 1 FROM tenant_memberships tm
           WHERE tm."tenantId" = up."tenantId" AND tm."userId" = up."userId" AND tm."isActive" = true
+         )
        )
   ) THEN
     RAISE EXCEPTION 'Active user positions include users without active membership in the same tenant; reconcile memberships before migration 005';
@@ -90,9 +93,12 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM user_roles ur
      WHERE ur."organizationId" IS NOT NULL AND ur."isActive" = true
-       AND NOT EXISTS (
+       AND (
+         NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ur."userId" AND u."isActive" = true)
+         OR NOT EXISTS (
          SELECT 1 FROM tenant_memberships tm
           WHERE tm."tenantId" = ur."tenantId" AND tm."userId" = ur."userId" AND tm."isActive" = true
+         )
        )
   ) THEN
     RAISE EXCEPTION 'Active organization role assignments include users without active tenant membership; reconcile before migration 005';
