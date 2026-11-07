@@ -6,6 +6,7 @@ import { AssignPositionDto } from './dto/assign-position.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 
 class SetActiveDto { @IsBoolean() isActive: boolean; }
 class GrantRoleDto { @IsUUID() userId: string; @IsUUID() roleId: string; @IsOptional() @IsUUID() organizationId?: string; }
@@ -32,5 +33,5 @@ export class IdentityController {
   @RequirePermissions('roles.manage')
   @Get('roles') listRoles() { return this.identity.listRoles(); }
   @RequirePermissions('assignments.manage')
-  @Post('user-roles') grantRole(@Body() dto: GrantRoleDto) { return this.identity.grantRole(dto.userId, dto.roleId, dto.organizationId); }
+  @Post('user-roles') grantRole(@Body() dto: GrantRoleDto, @CurrentUser() actor: AuthenticatedUser) { return this.identity.grantRole(actor.sub, dto.userId, dto.roleId, dto.organizationId); }
 }
