@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import { DataSource, Repository } from 'typeorm';
 import { FileAttachment } from './entities/file-attachment.entity';
 
@@ -71,6 +71,27 @@ export class FileAttachmentsService {
       await unlink(path).catch(() => undefined);
       throw error;
     }
+  }
+
+
+  async list(versionId: string, submissionId: string, tenantId: string | null | undefined) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const rows = await this.attachments.createQueryBuilder('attachment')
+      .innerJoin('attachment.submission', 'submission')
+      .innerJoin('submission.formVersion', 'version')
+      .innerJoin('version.definition', 'definition')
+      .innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant')
+      .where('submission.id = :submissionId', { submissionId })
+      .andWhere('version.id = :versionId', { versionId })
+      .andWhere('attachment.tenantId = :tenantId', { tenantId })
+      .andWhere('tenant.status = :status', { status: 'ACTIVE' })
+      .orderBy('attachment.createdAt', 'DESC')
+      .getMany();
+    return rows.map(item => ({
+      id: item.id, submissionId: item.submissionId, originalName: item.originalName,
+      mimeType: item.mimeType, size: Number(item.size), sha256: item.sha256, createdAt: item.createdAt,
+    }));
   }
 
   async getForDownload(versionId: string, submissionId: string, attachmentId: string, tenantId: string | null | undefined) {
