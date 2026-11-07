@@ -86,12 +86,28 @@ export class FormsService {
     }
     return this.submissions.save(this.submissions.create({ formVersionId: versionId, submittedByUserId, processInstanceId: dto.processInstanceId ?? null, data: dto.data }));
   }
-  async listSubmissions(versionId: string, tenantId?: string | null) {
+  async listSubmissions(versionId: string, tenantId?: string | null, requestedLimit = 50, requestedOffset = 0) {
     const version = await this.versions.findOne({ where: { id: versionId }, relations: { definition: { organization: { tenant: true } } } });
     if (!version) throw new NotFoundException('Form version not found');
     if (!tenantId || version.definition.organization?.tenantId !== tenantId || version.definition.organization.tenant?.status !== 'ACTIVE') {
       throw new BadRequestException('Form submissions are outside the active customer account');
     }
-    return this.submissions.find({ where: { formVersionId: versionId }, relations: { submittedBy: true }, order: { submittedAt: 'DESC' } });
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(Math.trunc(requestedLimit), 100) : 50;
+    const offset = Number.isFinite(requestedOffset) && requestedOffset >= 0 ? Math.min(Math.trunc(requestedOffset), 100000) : 0;
+    const [items, total] = await this.submissions.createQueryBuilder('submission')
+      .leftJoin('submission.submittedBy', 'submitter')
+      .select([
+        'submission.id', 'submission.formVersionId', 'submission.submittedByUserId',
+        'submission.processInstanceId', 'submission.data', 'submission.submittedAt',
+      ])
+      .addSelect(['submitter.id', 'submitter.firstName', 'submitter.lastName', 'submitter.email'])
+      .where('submission.formVersionId = :versionId', { versionId })
+      .andWhere('submission.tenantId = :tenantId', { tenantId })
+      .orderBy('submission.submittedAt', 'DESC')
+      .addOrderBy('submission.id', 'DESC')
+      .take(limit)
+      .skip(offset)
+      .getManyAndCount();
+    return { items, pagination: { total, limit, offset, hasMore: offset + items.length < total } };
   }
 }
