@@ -78,7 +78,7 @@
 - `POST /api/tasks/:id/delegations` تفویض زمان‌دار وظیفه توسط مسئول اصلی به کاربر دارای عضویت فعال Tenant و سمت فعال در همان سازمان؛ بدنه `{ "toUserId": "<uuid>", "endsAt": "<ISO-8601>" }`؛ حداکثر ۳۰ روز، بدون تغییر مسئول اصلی و همراه با ممیزی.
 - `GET /api/tasks/:id/delegations` مشاهده تاریخچه تفویض برای مسئولان/آغازکننده/نماینده مجاز.
 - `DELETE /api/tasks/:id/delegations/:delegationId` لغو تفویض توسط مسئول اصلی.
-- `GET /api/tasks/deferrals/pending?organizationId=<uuid>` صف درخواست‌های در انتظار بررسی برای سازمانی که مجوز بررسی آن را دارید.
+- `GET /api/tasks/deferrals/pending?organizationId=<uuid>&limit=50&offset=0` صف صفحه‌بندی‌شده درخواست‌های در انتظار بررسی برای سازمانی که مجوز بررسی آن را دارید؛ سقف هر صفحه ۱۰۰ مورد است.
 - `POST /api/tasks/:id/deferrals` درخواست تعویق مهلت توسط مسئول باز یا نماینده معتبر؛ بدنه `{ "proposedDueAt": "<ISO-8601>", "reason": "..." }`. افزایش مهلت حداکثر ۳۰ روز و فقط با تأیید مجوز سازمانی `workflow.tasks.defer.approve` یا مدیر Tenant انجام می‌شود؛ در هر وظیفه فقط یک درخواست باز وجود دارد.
 - `GET /api/tasks/:id/deferrals` مشاهده سوابق درخواست‌های تعویق توسط مسئولان، آغازکننده یا نماینده مجاز.
 - `POST /api/tasks/:id/deferrals/:requestId/approve` و `/reject` بررسی درخواست توسط دارنده مجوز `workflow.tasks.defer.approve`؛ بدنه اختیاری `{ "comment": "..." }`. تغییر هم‌زمان مهلت باعث رد درخواست قدیمی می‌شود؛ تأیید، تغییر مهلت و ثبت Audit در یک تراکنش انجام می‌شوند.
