@@ -5,6 +5,7 @@ const modules = [
   { title: 'طراحی فرایند', description: 'تعریف فرایند و انتشار نسخه‌های مستقل', status: 'نسخه‌بندی و API' },
   { title: 'گردش کار', description: 'نمونه فرایند، کارتابل، ارجاع چندنفره و تاریخچه', status: 'هسته اجرایی اولیه' },
   { title: 'گزارش‌ها و اعلان‌ها', description: 'پایش وضعیت، گزارش عملکرد و اعلان رویدادها', status: 'در نقشه راه' },
+  { title: 'غیبت و جانشینی', description: 'ثبت غیبت کارکنان، تعیین جانشین موقت و حفظ پیوستگی گردش کار', status: 'پنل مدیریتی فعال', href: '/absences' },
 ];
 
 export default function Home() {
@@ -36,7 +37,7 @@ export default function Home() {
               <div className="module-number">{String(index + 1).padStart(2, '0')}</div>
               <h3>{item.title}</h3>
               <p>{item.description}</p>
-              <span className="module-status">{item.status}</span>
+              <span className="module-status">{item.status}</span>{'href' in item && item.href && <a className="module-open-link" href={item.href}>ورود به پنل ←</a>}
             </article>
           ))}
         </div>
