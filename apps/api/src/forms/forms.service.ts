@@ -69,21 +69,29 @@ export class FormsService {
       return version;
     });
   }
-  async submit(versionId: string, submittedByUserId: string, dto: SubmitFormDto) {
-    const version = await this.versions.findOne({ where: { id: versionId, status: 'PUBLISHED' }, relations: { definition: true } });
+  async submit(versionId: string, submittedByUserId: string, dto: SubmitFormDto, tenantId?: string | null) {
+    if (!tenantId) throw new BadRequestException('An active tenant context is required to submit a form');
+    const version = await this.versions.findOne({ where: { id: versionId, status: 'PUBLISHED' }, relations: { definition: { organization: { tenant: true } } } });
     if (!version) throw new NotFoundException('Published form version not found');
+    if (version.definition.organization?.tenantId !== tenantId || version.definition.organization.tenant?.status !== 'ACTIVE') {
+      throw new BadRequestException('Form is outside the active customer account');
+    }
     if (!await this.users.exist({ where: { id: submittedByUserId, isActive: true } })) throw new NotFoundException('Active submitter not found');
     if (dto.processInstanceId) {
-      const instance = await this.instances.findOneBy({ id: dto.processInstanceId });
+      const instance = await this.instances.findOne({ where: { id: dto.processInstanceId }, relations: { organization: { tenant: true } } });
       if (!instance) throw new NotFoundException('Process instance not found');
-      if (instance.organizationId !== version.definition.organizationId) throw new BadRequestException('Form and process instance must belong to the same organization');
+      if (instance.organizationId !== version.definition.organizationId || instance.organization?.tenantId !== tenantId || instance.organization.tenant?.status !== 'ACTIVE') {
+        throw new BadRequestException('Form and process instance must belong to the same active tenant and organization');
+      }
     }
     return this.submissions.save(this.submissions.create({ formVersionId: versionId, submittedByUserId, processInstanceId: dto.processInstanceId ?? null, data: dto.data }));
   }
-  async listSubmissions(versionId: string, organizationId: string) {
-    const version = await this.versions.findOne({ where: { id: versionId }, relations: { definition: true } });
+  async listSubmissions(versionId: string, tenantId?: string | null) {
+    const version = await this.versions.findOne({ where: { id: versionId }, relations: { definition: { organization: { tenant: true } } } });
     if (!version) throw new NotFoundException('Form version not found');
-    if (version.definition.organizationId !== organizationId) throw new BadRequestException('Form does not belong to the selected organization');
+    if (!tenantId || version.definition.organization?.tenantId !== tenantId || version.definition.organization.tenant?.status !== 'ACTIVE') {
+      throw new BadRequestException('Form submissions are outside the active customer account');
+    }
     return this.submissions.find({ where: { formVersionId: versionId }, relations: { submittedBy: true }, order: { submittedAt: 'DESC' } });
   }
 }
