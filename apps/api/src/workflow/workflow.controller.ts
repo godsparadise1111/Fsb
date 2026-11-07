@@ -11,9 +11,9 @@ export class WorkflowController {
   @RequirePermissions('workflow.start')
   @Post('process-instances') start(@Body() dto: StartProcessDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.startProcess({ ...dto, startedByUserId: user.sub }); }
   @RequirePermissions('workflow.tasks.read')
-  @Get('tasks/my') myTasks(@CurrentUser() user: AuthenticatedUser) { return this.workflow.listMyTasks(user.sub); }
+  @Get('tasks/my') myTasks(@CurrentUser() user: AuthenticatedUser) { return this.workflow.listMyTasks(user.sub, user.tenantId); }
   @RequirePermissions('workflow.tasks.act')
-  @Post('tasks/:id/actions') act(@Param('id') id: string, @Body() dto: ActTaskDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.act(id, user.sub, dto); }
+  @Post('tasks/:id/actions') act(@Param('id') id: string, @Body() dto: ActTaskDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.act(id, user.sub, dto, user.tenantId); }
   @RequirePermissions('workflow.history.read')
-  @Get('tasks/:id/history') history(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.taskHistory(id, user.sub); }
+  @Get('tasks/:id/history') history(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.taskHistory(id, user.sub, user.tenantId); }
 }
