@@ -1,6 +1,16 @@
 -- Task deadline changes require an auditable, tenant-scoped approval.
 BEGIN;
 
+INSERT INTO permissions (id, code, name, description, "createdAt")
+VALUES (
+  gen_random_uuid(),
+  'workflow.tasks.defer.approve',
+  'Review task deadline changes',
+  'Approve or reject deadline extension requests within the assigned organization',
+  now()
+)
+ON CONFLICT (code) DO NOTHING;
+
 CREATE TABLE task_deferral_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "tenantId" uuid NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
