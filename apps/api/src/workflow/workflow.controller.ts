@@ -76,5 +76,10 @@ export class WorkflowController {
     return this.workflow.reviewTaskDeferral(id, requestId, user.sub, 'REJECTED', dto, user.tenantId);
   }
   @RequirePermissions('workflow.history.read')
+  @Get('tasks/:id/reassignments')
+  reassignments(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listTaskReassignments(id, user.sub, user.tenantId);
+  }
+  @RequirePermissions('workflow.history.read')
   @Get('tasks/:id/history') history(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.taskHistory(id, user.sub, user.tenantId); }
 }
