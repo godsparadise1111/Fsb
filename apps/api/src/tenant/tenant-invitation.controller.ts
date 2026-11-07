@@ -31,7 +31,7 @@ export class TenantInvitationController {
   @RequirePermissions('tenant.invitations.manage')
   @Delete(':id')
   revoke(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
-    return this.invitations.revoke(this.tenantId(user), id);
+    return this.invitations.revoke(this.tenantId(user), id, user.sub);
   }
 
   @Public()
