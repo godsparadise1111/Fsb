@@ -31,11 +31,16 @@ export class FormsService {
     return this.definitions.find({ where: organizationId ? { organizationId } : {}, order: { name: 'ASC' } });
   }
   async createVersion(definitionId: string, dto: CreateFormVersionDto) {
-    const definition = await this.definitions.findOneBy({ id: definitionId });
-    if (!definition) throw new NotFoundException('Form definition not found');
-    if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived form cannot be changed');
-    const latest = await this.versions.findOne({ where: { definitionId }, order: { versionNumber: 'DESC' } });
-    return this.versions.save(this.versions.create({ definitionId, versionNumber: (latest?.versionNumber ?? 0) + 1, schema: dto.schema, changeNote: dto.changeNote ?? null, status: 'DRAFT' }));
+    return this.dataSource.transaction(async manager => {
+      const definition = await manager.findOne(FormDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      if (!definition) throw new NotFoundException('Form definition not found');
+      if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived form cannot be changed');
+      const latest = await manager.findOne(FormVersion, { where: { definitionId }, order: { versionNumber: 'DESC' } });
+      return manager.save(FormVersion, manager.create(FormVersion, {
+        definitionId, versionNumber: (latest?.versionNumber ?? 0) + 1, schema: dto.schema,
+        changeNote: dto.changeNote ?? null, status: 'DRAFT',
+      }));
+    });
   }
   async listVersions(definitionId: string) {
     if (!await this.definitions.exist({ where: { id: definitionId } })) throw new NotFoundException('Form definition not found');
