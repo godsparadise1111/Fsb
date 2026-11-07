@@ -12,6 +12,7 @@ import { CreatePositionDto } from './dto/create-position.dto';
 export class OrganizationService {
   constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>) {}
   async createOrganization(dto: CreateOrganizationDto) {
+    if (!dto.tenantId) throw new BadRequestException('A tenant must be explicitly selected or derived from the authenticated tenant context');
     const tenant = await this.tenants.findOne({ where: { id: dto.tenantId } });
     if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Organization can only be created for an active tenant');
     if (await this.organizations.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
