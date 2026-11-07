@@ -34,8 +34,7 @@ CREATE TABLE notification_outbox (
 );
 
 CREATE INDEX "IDX_notification_outbox_ready"
-  ON notification_outbox (status, "availableAt", "createdAt")
-  WHERE status IN ('PENDING','PROCESSING');
+  ON notification_outbox (status, "availableAt", "createdAt");
 CREATE INDEX "IDX_notification_outbox_tenant"
   ON notification_outbox ("tenantId", "createdAt" DESC);
 
