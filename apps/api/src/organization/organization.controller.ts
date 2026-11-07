@@ -5,7 +5,6 @@ import { CreatePositionDto } from './dto/create-position.dto';
 import { OrganizationService } from './organization.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
-import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 @Controller('organizations')
 export class OrganizationController {
   constructor(private readonly service: OrganizationService) {}
