@@ -403,13 +403,13 @@ export class WorkflowService {
       });
       if (!request) throw new NotFoundException('Deadline change request not found');
       if (request.status !== 'PENDING') throw new ConflictException('Deadline change request has already been reviewed');
-      if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Closed tasks cannot have their deadline changed');
       const previousDueAt = task.dueAt;
-      const currentDueAt = previousDueAt?.getTime() ?? null;
-      const requestedOriginalDueAt = request.originalDueAt?.getTime() ?? null;
-      if (currentDueAt !== requestedOriginalDueAt) throw new ConflictException('Task deadline changed after this request was submitted; submit a new request');
       if (decision === 'APPROVED') {
-        if (request.proposedDueAt <= new Date()) throw new ConflictException('The proposed deadline has already passed');
+        if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Closed tasks cannot have their deadline changed');
+        const currentDueAt = previousDueAt?.getTime() ?? null;
+        const requestedOriginalDueAt = request.originalDueAt?.getTime() ?? null;
+        if (currentDueAt !== requestedOriginalDueAt) throw new ConflictException('Task deadline changed after this request was submitted; reject the stale request');
+        if (request.proposedDueAt <= new Date()) throw new ConflictException('The proposed deadline has already passed; reject the stale request');
         task.dueAt = request.proposedDueAt;
         await manager.save(task);
       }
