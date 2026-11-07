@@ -57,7 +57,7 @@ export class FormsService {
     if (!version) throw new NotFoundException('Published form version not found');
     if (!await this.users.exist({ where: { id: submittedByUserId, isActive: true } })) throw new NotFoundException('Active submitter not found');
     if (dto.processInstanceId && !await this.instances.exist({ where: { id: dto.processInstanceId } })) throw new NotFoundException('Process instance not found');
-    return this.submissions.save(this.submissions.create({ formVersionId: versionId, submittedByUserId: dto.submittedByUserId, processInstanceId: dto.processInstanceId ?? null, data: dto.data }));
+    return this.submissions.save(this.submissions.create({ formVersionId: versionId, submittedByUserId, processInstanceId: dto.processInstanceId ?? null, data: dto.data }));
   }
   async listSubmissions(versionId: string) {
     if (!await this.versions.exist({ where: { id: versionId } })) throw new NotFoundException('Form version not found');
