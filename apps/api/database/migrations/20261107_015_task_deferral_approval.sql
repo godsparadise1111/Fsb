@@ -51,19 +51,23 @@ BEGIN
       JOIN tenants t ON t.id = NEW."tenantId" AND t.status = 'ACTIVE'
       JOIN tenant_memberships tm ON tm."tenantId" = NEW."tenantId"
         AND tm."userId" = NEW."requesterUserId" AND tm."isActive" = true
+      JOIN users requester ON requester.id = NEW."requesterUserId" AND requester."isActive" = true
       WHERE wt.id = NEW."taskId" AND pi."tenantId" = NEW."tenantId"
         AND wt.status IN ('OPEN', 'IN_PROGRESS')
+        AND wt."dueAt" IS NOT DISTINCT FROM NEW."originalDueAt"
     ) THEN
       RAISE EXCEPTION 'Deferral requester and task must belong to an active tenant and actionable task';
     END IF;
-    IF NEW."proposedDueAt" <= now() THEN
-      RAISE EXCEPTION 'Proposed task deadline must be in the future';
+    IF NEW."proposedDueAt" <= COALESCE(NEW."originalDueAt", now())
+       OR NEW."proposedDueAt" > COALESCE(NEW."originalDueAt", now()) + interval '30 days' THEN
+      RAISE EXCEPTION 'Proposed task deadline must extend the current deadline by no more than 30 days';
     END IF;
   END IF;
 
   IF TG_OP = 'UPDATE' AND NOT EXISTS (
     SELECT 1 FROM tenant_memberships tm
     JOIN users u ON u.id = tm."userId" AND u."isActive" = true
+    JOIN tenants t ON t.id = tm."tenantId" AND t.status = 'ACTIVE'
     WHERE tm."tenantId" = NEW."tenantId" AND tm."userId" = NEW."reviewerUserId" AND tm."isActive" = true
   ) THEN
     RAISE EXCEPTION 'Deferral reviewer must be an active tenant member';
