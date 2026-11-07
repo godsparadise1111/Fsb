@@ -1,0 +1,26 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { HealthModule } from './health/health.module';
+import { OrganizationModule } from './organization/organization.module';
+import { Organization } from './organization/entities/organization.entity';
+import { OrganizationUnit } from './organization/entities/organization-unit.entity';
+import { Position } from './organization/entities/position.entity';
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST ?? 'localhost',
+      port: Number(process.env.DB_PORT ?? 5432),
+      username: process.env.POSTGRES_USER ?? 'fsb',
+      password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
+      database: process.env.POSTGRES_DB ?? 'fsb',
+      entities: [Organization, OrganizationUnit, Position],
+      synchronize: process.env.DB_SYNCHRONIZE === 'true',
+      autoLoadEntities: true,
+    }),
+    HealthModule,
+    OrganizationModule,
+  ],
+})
+export class AppModule {}
