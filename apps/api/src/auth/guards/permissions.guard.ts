@@ -42,7 +42,7 @@ export class PermissionsGuard implements CanActivate {
     if (organizationId) {
       selectedOrganization = await this.organizations.findOne({ where: { id: organizationId, isActive: true } });
       if (!selectedOrganization) throw new ForbiddenException('Organization is unavailable in the current access context');
-      if (user.tenantId && selectedOrganization.tenantId !== user.tenantId) {
+      if (!user.tenantId || selectedOrganization.tenantId !== user.tenantId) {
         throw new ForbiddenException('Cross-tenant access is not allowed');
       }
     }
@@ -55,7 +55,7 @@ export class PermissionsGuard implements CanActivate {
     for (const assignment of grants) {
       if (!assignment.role?.isActive || assignment.role.scope !== 'ORGANIZATION') continue;
       if (!organizationId || assignment.organizationId !== organizationId) continue;
-      if (user.tenantId && assignment.organization?.tenantId !== user.tenantId) continue;
+      if (!user.tenantId || assignment.organization?.tenantId !== user.tenantId) continue;
       for (const permission of assignment.role.permissions ?? []) {
         if (permission.code !== '*') grantedCodes.add(permission.code);
       }
