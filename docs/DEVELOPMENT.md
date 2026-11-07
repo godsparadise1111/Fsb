@@ -87,6 +87,7 @@
 - `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT؛ نمونه فرایند باید متعلق به همان سازمان فرم باشد)
 - `GET /api/forms/versions/:versionId/submissions` مشاهده ثبت‌های یک نسخه فرم؛ Tenant از هویت احراز‌شده استخراج می‌شود.
 - `POST /api/forms/versions/:versionId/submissions/:submissionId/attachments` بارگذاری پیوست با فیلد multipart به نام `file`؛ حداکثر ۱۰ مگابایت و فقط PDF/PNG/JPEG/WEBP با بررسی امضای واقعی فایل.
+- `GET /api/forms/versions/:versionId/submissions/:submissionId/attachments` فهرست metadata پیوست‌های همان پاسخ بدون افشای مسیر ذخیره‌سازی.
 - `GET /api/forms/versions/:versionId/submissions/:submissionId/attachments/:attachmentId/download` دریافت فایل پس از کنترل Tenant، نسخه فرم، ثبت پاسخ و یکپارچگی SHA-256.
 - فایل‌ها با شناسه تصادفی در مسیر خصوصی `FSB_FILE_STORAGE_PATH` ذخیره می‌شوند؛ مسیر فایل از درخواست کاربر دریافت نمی‌شود. پوشه باید خارج از webroot باشد، دسترسی سیستم‌عامل به آن محدود شود و از آن backup امن گرفته شود. اسکن ضدبدافزار و سیاست نگهداری/حذف فایل هنوز به زیرساخت عملیاتی متصل نشده است.
 
