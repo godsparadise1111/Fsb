@@ -85,7 +85,7 @@
 - `GET /api/forms/:id/versions` فهرست نسخه‌ها
 - `POST /api/forms/:id/versions/:versionId/publish` انتشار نسخه فرم
 - `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT؛ نمونه فرایند باید متعلق به همان سازمان فرم باشد)
-- `GET /api/forms/versions/:versionId/submissions` مشاهده ثبت‌های یک نسخه فرم؛ Tenant از هویت احراز‌شده استخراج می‌شود.
+- `GET /api/forms/versions/:versionId/submissions` مشاهده صفحه‌بندی‌شده ثبت‌های یک نسخه فرم؛ Tenant از هویت احراز‌شده استخراج می‌شود؛ `limit` حداکثر ۱۰۰ و پیش‌فرض ۵۰، `offset` پیش‌فرض صفر است. اطلاعات حساس حساب کاربر در پاسخ گزارش برگردانده نمی‌شود.
 - `POST /api/forms/versions/:versionId/submissions/:submissionId/attachments` بارگذاری پیوست با فیلد multipart به نام `file`؛ حداکثر ۱۰ مگابایت و فقط PDF/PNG/JPEG/WEBP با بررسی امضای واقعی فایل.
 - `GET /api/forms/versions/:versionId/submissions/:submissionId/attachments` فهرست metadata پیوست‌های همان پاسخ بدون افشای مسیر ذخیره‌سازی.
 - `GET /api/forms/versions/:versionId/submissions/:submissionId/attachments/:attachmentId/download` دریافت فایل پس از کنترل Tenant، نسخه فرم، ثبت پاسخ و یکپارچگی SHA-256.
