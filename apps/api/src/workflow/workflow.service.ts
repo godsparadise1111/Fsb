@@ -385,7 +385,7 @@ export class WorkflowService {
     });
   }
 
-  async reviewTaskDeferral(taskId: string, requestId: string, reviewerId: string, decision: 'APPROVED' | 'REJECTED', dto: ReviewTaskDeferralDto, tenantId?: string | null) {
+  async reviewTaskDeferral(taskId: string, requestId: string, reviewerId: string, decision: 'APPROVED' | 'REJECTED', dto?: ReviewTaskDeferralDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       const task = await manager.findOne(WorkflowTask, {
@@ -416,7 +416,7 @@ export class WorkflowService {
       request.status = decision;
       request.reviewerUserId = reviewerId;
       request.reviewedAt = new Date();
-      request.reviewerComment = dto.comment?.trim() || null;
+      request.reviewerComment = dto?.comment?.trim() || null;
       await manager.save(request);
       await this.tenantAudit.record(manager, {
         tenantId, actorUserId: reviewerId, targetUserId: request.requesterUserId,
