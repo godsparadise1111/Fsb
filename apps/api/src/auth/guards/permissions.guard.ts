@@ -19,7 +19,6 @@ export class PermissionsGuard implements CanActivate {
   private async resolveOrganizationId(request: any): Promise<string | null> {
     const direct = request.params?.organizationId ?? request.body?.organizationId ??
       request.query?.organizationId ?? null;
-    if (direct) return direct;
 
     const candidates = [
       request.params?.id,
@@ -30,7 +29,7 @@ export class PermissionsGuard implements CanActivate {
       request.body?.formVersionId,
       request.body?.processInstanceId,
     ].filter((value): value is string => typeof value === 'string' && value.length > 0);
-    if (!candidates.length) return null;
+    if (!candidates.length) return direct;
 
     // Resolve resource ownership from the database, never from a caller-supplied tenantId.
     const rows = await this.dataSource.query(
@@ -62,7 +61,10 @@ export class PermissionsGuard implements CanActivate {
       [candidates],
     );
     const found = rows.find((row: { resourceId: string }) => candidates.includes(row.resourceId));
-    return found?.organizationId ?? null;
+    if (!found?.organizationId) return null;
+    // A caller-supplied organizationId is only a consistency assertion, never the source of truth.
+    if (direct && direct !== found.organizationId) throw new ForbiddenException('Requested organization does not own this resource');
+    return found.organizationId;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
