@@ -22,6 +22,11 @@
 - `GET /api/platform/tenants` فهرست مشتریان
 - `GET /api/platform/tenants/:id` جزئیات مشتری و سازمان‌های آن
 - `PATCH /api/platform/tenants/:id/status` تغییر وضعیت به `ACTIVE`, `SUSPENDED` یا `CLOSED`
+- `POST /api/platform/tenants/:tenantId/members` افزودن عضو با `userId` و اختیاری `isTenantAdmin`
+- `GET /api/platform/tenants/:tenantId/members` فهرست اعضای فعال
+- `PATCH /api/platform/tenants/:tenantId/members/:userId/admin` تعیین/لغو مدیر مشتری با `isTenantAdmin`
+- `DELETE /api/platform/tenants/:tenantId/members/:userId` غیرفعال‌کردن عضویت؛ حذف آخرین مدیر فعال ممنوع است
+- برای کاربران عضو مشتری، هدر `X-Tenant-Id` زمینهٔ مشتری را انتخاب می‌کند؛ API عضویت کاربر و فعال‌بودن Tenant را از DB اعتبارسنجی می‌کند. اگر فقط یک عضویت فعال وجود داشته باشد، زمینه خودکار انتخاب می‌شود.
 - `POST /api/organizations` ایجاد سازمان در یک مشتری فعال؛ بدنه: `{ "tenantId": "...", "name": "...", "code": "..." }`
 - `GET /api/organizations` فهرست سازمان‌ها
 - `POST /api/organizations/units` ایجاد واحد؛ بدنه شامل `organizationId`, `name`, `code` و اختیاری `parentId`
@@ -69,7 +74,7 @@
 - `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT؛ نمونه فرایند باید متعلق به همان سازمان فرم باشد)
 - `GET /api/forms/versions/:versionId/submissions?organizationId=...` مشاهده ثبت‌های یک نسخه فرم؛ سازمان باید با سازمان تعریف فرم منطبق باشد.
 
-سازمان‌های قدیمی که `tenantId` ندارند تا زمان مهاجرت و تخصیص صریح به مشتری، مجاز به ایجاد فرایند/فرم جدید یا شروع گردش‌کار نیستند. ایجاد سازمان جدید فقط برای Tenant با وضعیت `ACTIVE` ممکن است. تعلیق یا بستن Tenant در مرحله فعلی، ایجاد و شروع فرایند جدید را متوقف می‌کند؛ توقف تمام مسیرهای خواندن/نوشتن داده‌های موجود هنوز کامل نشده است.
+سازمان‌های قدیمی که `tenantId` ندارند تا زمان مهاجرت و تخصیص صریح به مشتری، مجاز به ایجاد فرایند/فرم جدید یا شروع گردش‌کار نیستند. راهنمای اجرای امن و SQL نسخه‌بندی‌شده در `docs/TENANT_MIGRATION.md` و `apps/api/database/migrations/20261107_001_tenant_membership_and_safe_legacy_scope.sql` قرار دارد؛ SQL هیچ سازمان قدیمی را خودکار به مشتری وصل نمی‌کند. ایجاد سازمان جدید فقط برای Tenant با وضعیت `ACTIVE` ممکن است. درخواست‌های HTTP احراز هویت‌شده با زمینهٔ Tenant تعلیق‌شده/بسته در لایهٔ JWT رد می‌شوند؛ نقش سازمانی نیز بدون زمینهٔ Tenant معتبر پذیرفته نمی‌شود. با این حال فیلتر tenant-aware تمام مسیرهای منابع فرزند، فایل‌ها، صف‌ها، jobها و گزارش‌ها هنوز کامل نیست و عرضه SaaS مجاز نیست.
 
 ساختار schema فرم به‌صورت JSON نگهداری می‌شود و نسخه‌های منتشرشده مبنای ثبت داده قرار می‌گیرند. اعتبارسنجی معنایی فیلدها و رندرر فرم در لایه بعدی توسعه می‌یابد.
 
