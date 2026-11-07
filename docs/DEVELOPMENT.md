@@ -62,8 +62,8 @@
 - `POST /api/forms/:id/versions` ساخت نسخه فرم؛ `schema` و اختیاری `changeNote`
 - `GET /api/forms/:id/versions` فهرست نسخه‌ها
 - `POST /api/forms/:id/versions/:versionId/publish` انتشار نسخه فرم
-- `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT)
-- `GET /api/forms/versions/:versionId/submissions` مشاهده ثبت‌های یک نسخه فرم
+- `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT؛ نمونه فرایند باید متعلق به همان سازمان فرم باشد)
+- `GET /api/forms/versions/:versionId/submissions?organizationId=...` مشاهده ثبت‌های یک نسخه فرم؛ سازمان باید با سازمان تعریف فرم منطبق باشد.
 
 ساختار schema فرم به‌صورت JSON نگهداری می‌شود و نسخه‌های منتشرشده مبنای ثبت داده قرار می‌گیرند. اعتبارسنجی معنایی فیلدها و رندرر فرم در لایه بعدی توسعه می‌یابد.
 
