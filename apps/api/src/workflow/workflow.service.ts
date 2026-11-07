@@ -77,7 +77,8 @@ export class WorkflowService {
       .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId })
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
-      .orderBy('task.createdAt', 'ASC').getMany();
+      .orderBy('task.dueAt', 'ASC', 'NULLS LAST')
+      .addOrderBy('task.createdAt', 'ASC').getMany();
   }
 
   async act(taskId: string, userId: string, dto: ActTaskDto, tenantId?: string | null) {
