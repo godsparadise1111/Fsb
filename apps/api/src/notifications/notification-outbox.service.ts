@@ -128,4 +128,14 @@ export class NotificationOutboxService {
     if (!row) return null;
     return this.decrypt(row);
   }
+
+  async markDead(id: string, workerId: string, reason: string) {
+    const result = await this.outbox.createQueryBuilder().update()
+      .set({ status: 'DEAD', lockedAt: null, lockedBy: null, lastError: reason.slice(0, 2000) })
+      .where('id = :id AND status = :status AND "lockedBy" = :workerId', { id, status: 'PROCESSING', workerId })
+      .execute();
+    return result.affected === 1;
+  }
+
+
 }
