@@ -21,4 +21,5 @@ export class WorkflowTask {
   @CreateDateColumn() createdAt: Date;
   @UpdateDateColumn() updatedAt: Date;
   @Column({ type: 'timestamptz', nullable: true }) completedAt: Date | null;
+  @Column({ type: 'timestamptz', nullable: true }) dueAt: Date | null;
 }
