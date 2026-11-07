@@ -19,7 +19,7 @@ ALTER TABLE task_assignees ADD CONSTRAINT "FK_task_assignees_task_tenant"
 CREATE INDEX "IDX_task_assignees_tenant_user_status"
   ON task_assignees ("tenantId", "userId", status);
 
-CREATE OR REPLACE FUNCTION fsb_set_tenant_from_task_assignee() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION fsb_set_tenant_from_task_assignee() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid;
 BEGIN
   SELECT "tenantId" INTO resolved FROM workflow_tasks WHERE id = NEW."taskId";
@@ -27,7 +27,7 @@ BEGIN
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Task assignee tenant mismatch'; END IF;
   NEW."tenantId" := resolved;
   RETURN NEW;
-END $
+END $$;
 
 CREATE TRIGGER "TR_task_assignees_00_tenant"
   BEFORE INSERT OR UPDATE OF "taskId", "tenantId" ON task_assignees
