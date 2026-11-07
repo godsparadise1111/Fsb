@@ -1,6 +1,7 @@
 import { IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export class RegisterTenantInvitationDto {
+  @IsString() @Length(32, 128) token: string;
   @IsString() @Length(1, 120) firstName: string;
   @IsString() @Length(1, 120) lastName: string;
   @IsString() @Length(3, 80) @Matches(/^[a-zA-Z0-9._-]+$/) username: string;
