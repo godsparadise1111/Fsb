@@ -81,7 +81,7 @@ export class TenantReportsService {
             WHERE o.id = pi."organizationId" AND o."tenantId" = $1
               AND ($4::uuid IS NULL OR pi."organizationId" = $4)
          )
-        GROUP BY days.day ORDER BY days.day\`,
+        GROUP BY days.day ORDER BY days.day`,
       [tenantId, from, to, orgFilter],
     );
 
