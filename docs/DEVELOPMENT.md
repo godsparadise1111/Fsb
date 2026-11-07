@@ -76,7 +76,7 @@
 
 ### اجرای گردش‌کار
 - `POST /api/process-instances` شروع نمونه فرایند؛ شامل `processVersionId`, `organizationId`, `title`, `initialAssigneeUserIds` و اختیاری `data`, `assignmentPolicy`, `firstTaskTitle`
-- `GET /api/tasks/my` کارهای باز کاربر جاری (شناسه از JWT)
+- `GET /api/tasks/my` کارهای باز کاربر جاری (شناسه از JWT) با اولویت مهلت نزدیک‌تر و سپس قدیمی‌ترین وظیفه؛ `dueAt` در پاسخ مشخص است.
 - `POST /api/tasks/:id/actions` اقدام کاربر؛ `action` برابر `APPROVED` یا `REJECTED` و اختیاری `comment` (شناسه کاربر از JWT)
 - `GET /api/tasks/:id/history` تاریخچه اقدامات کار
 
