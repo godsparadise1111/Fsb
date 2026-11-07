@@ -38,6 +38,8 @@ export class TenantInvitationService {
         });
         if (existingMembership) throw new ConflictException('This user is already an active tenant member');
       }
+      // Serialize invitations for the same tenant/email pair to avoid concurrent duplicate sends.
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [tenantId, email]);
       const pending = await manager.getRepository(TenantInvitation).createQueryBuilder('invitation')
         .where('invitation.tenantId = :tenantId AND LOWER(invitation.email) = :email', { tenantId, email })
         .andWhere('invitation.acceptedAt IS NULL AND invitation.revokedAt IS NULL AND invitation.expiresAt > :now', { now: new Date() })
