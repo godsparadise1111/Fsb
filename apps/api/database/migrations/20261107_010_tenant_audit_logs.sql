@@ -14,9 +14,9 @@ CREATE TABLE tenant_audit_logs (
 );
 
 CREATE INDEX "IDX_tenant_audit_tenant_created"
-  ON tenant_audit_logs ("tenantId", "createdAt" DESC);
+  ON tenant_audit_logs ("tenantId", "createdAt");
 CREATE INDEX "IDX_tenant_audit_actor"
-  ON tenant_audit_logs ("tenantId", "actorUserId", "createdAt" DESC);
+  ON tenant_audit_logs ("tenantId", "actorUserId", "createdAt");
 
 CREATE OR REPLACE FUNCTION fsb_tenant_audit_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
