@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { IsNull, Repository } from 'typeorm';
@@ -66,10 +66,25 @@ export class IdentityService {
     return this.roles.save(this.roles.create({ code: dto.code, name: dto.name, description: dto.description ?? null, permissions }));
   }
   listRoles() { return this.roles.find({ where: { isActive: true }, relations: { permissions: true }, order: { name: 'ASC' } }); }
-  async grantRole(userId: string, roleId: string, organizationId?: string) {
+  async grantRole(actorUserId: string, userId: string, roleId: string, organizationId?: string) {
     if (!await this.users.exist({ where: { id: userId, isActive: true } })) throw new NotFoundException('Active user not found');
-    if (!await this.roles.exist({ where: { id: roleId, isActive: true } })) throw new NotFoundException('Active role not found');
-    if (organizationId && !await this.organizations.exist({ where: { id: organizationId, isActive: true } })) throw new NotFoundException('Organization not found');
+    const role = await this.roles.findOne({ where: { id: roleId, isActive: true } });
+    if (!role) throw new NotFoundException('Active role not found');
+
+    if (role.scope === 'PLATFORM') {
+      const actorIsPlatformOperator = await this.userRoles.createQueryBuilder('assignment')
+        .innerJoin('assignment.role', 'role')
+        .where('assignment.userId = :actorUserId', { actorUserId })
+        .andWhere('assignment.isActive = true')
+        .andWhere('role.isActive = true')
+        .andWhere('role.scope = :scope', { scope: 'PLATFORM' })
+        .getCount() > 0;
+      if (!actorIsPlatformOperator || organizationId) throw new ForbiddenException('Only platform operators may grant platform roles, and platform roles cannot be organization-scoped');
+    } else {
+      if (!organizationId) throw new BadRequestException('Organization roles must be assigned to an organization');
+      if (!await this.organizations.exist({ where: { id: organizationId, isActive: true } })) throw new NotFoundException('Organization not found');
+    }
+
     const existing = await this.userRoles.findOne({ where: { userId, roleId, organizationId: organizationId ?? IsNull() } });
     if (existing) { existing.isActive = true; return this.userRoles.save(existing); }
     return this.userRoles.save(this.userRoles.create({ userId, roleId, organizationId: organizationId ?? null }));
