@@ -22,20 +22,20 @@ export class TenantSelfServiceController {
   @Post()
   add(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTenantMembershipDto) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
-    return this.memberships.add(user.tenantId, dto.userId, dto.isTenantAdmin ?? false);
+    return this.memberships.add(user.tenantId, dto.userId, user.sub, dto.isTenantAdmin ?? false);
   }
 
   @RequirePermissions('tenant.members.manage')
   @Patch(':userId/admin')
   setAdmin(@CurrentUser() user: AuthenticatedUser, @Param('userId', new ParseUUIDPipe()) userId: string, @Body() dto: UpdateTenantAdminDto) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
-    return this.memberships.setAdmin(user.tenantId, userId, dto.isTenantAdmin);
+    return this.memberships.setAdmin(user.tenantId, userId, user.sub, dto.isTenantAdmin);
   }
 
   @RequirePermissions('tenant.members.manage')
   @Delete(':userId')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('userId', new ParseUUIDPipe()) userId: string) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
-    return this.memberships.remove(user.tenantId, userId);
+    return this.memberships.remove(user.tenantId, userId, user.sub);
   }
 }
