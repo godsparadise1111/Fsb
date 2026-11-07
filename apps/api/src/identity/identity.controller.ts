@@ -17,13 +17,13 @@ export class IdentityController {
   @RequirePermissions('users.manage')
   @Post('users') createUser(@Body() dto: CreateUserDto) { return this.identity.createUser(dto); }
   @RequirePermissions('users.read')
-  @Get('users') listUsers() { return this.identity.listUsers(); }
+  @Get('users') listUsers(@CurrentUser() user: AuthenticatedUser) { return this.identity.listUsers(user.tenantId); }
   @RequirePermissions('users.manage')
   @Patch('users/:id/active') setUserActive(@Param('id') id: string, @Body() dto: SetActiveDto) { return this.identity.setUserActive(id, dto.isActive); }
   @RequirePermissions('assignments.manage')
   @Post('user-positions') assignPosition(@Body() dto: AssignPositionDto) { return this.identity.assignPosition(dto); }
   @RequirePermissions('users.read')
-  @Get('users/:id/positions') listUserPositions(@Param('id') id: string) { return this.identity.listUserPositions(id); }
+  @Get('users/:id/positions') listUserPositions(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.identity.listUserPositions(id, user.tenantId); }
   @RequirePermissions('permissions.manage')
   @Post('permissions') createPermission(@Body() dto: CreatePermissionDto) { return this.identity.createPermission(dto); }
   @RequirePermissions('permissions.manage')
