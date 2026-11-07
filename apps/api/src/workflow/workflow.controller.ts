@@ -5,6 +5,7 @@ import { ActTaskDto } from './dto/act-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { CreateOrganizationSubstitutionDto } from './dto/create-organization-substitution.dto';
+import { CreateOrganizationAbsenceDto } from './dto/create-organization-absence.dto';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 
@@ -48,6 +49,22 @@ export class WorkflowController {
   @Delete('organizations/:organizationId/substitutions/:substitutionId')
   revokeSubstitution(@Param('organizationId') organizationId: string, @Param('substitutionId') substitutionId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.revokeOrganizationSubstitution(organizationId, substitutionId, user.sub, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organization-absences')
+  createAbsence(@Body() dto: CreateOrganizationAbsenceDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.createOrganizationAbsence(user.sub, dto, user.tenantId);
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/absences')
+  absences(@Param('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listOrganizationAbsences(organizationId, user.tenantId, limit, offset);
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Delete('organizations/:organizationId/absences/:absenceId')
+  cancelAbsence(@Param('organizationId') organizationId: string, @Param('absenceId') absenceId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.cancelOrganizationAbsence(organizationId, absenceId, user.sub, user.tenantId);
   }
 
   @RequirePermissions('workflow.tasks.defer.approve')
