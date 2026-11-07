@@ -41,10 +41,26 @@ export class IdentityService {
       .where('user.isActive = true').orderBy('user.lastName', 'ASC').addOrderBy('user.firstName', 'ASC').getMany();
   }
   async setUserActive(id: string, isActive: boolean) {
-    const user = await this.users.findOneBy({ id });
-    if (!user) throw new NotFoundException('User not found');
-    user.isActive = isActive;
-    return this.users.save(user);
+    return this.users.manager.transaction(async manager => {
+      const user = await manager.findOne(User, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!user) throw new NotFoundException('User not found');
+      if (!isActive && user.isActive) {
+        const adminMemberships = await manager.find(TenantMembership, {
+          where: { userId: id, isActive: true, isTenantAdmin: true },
+        });
+        for (const membership of adminMemberships) {
+          await manager.findOne(Tenant, { where: { id: membership.tenantId }, lock: { mode: 'pessimistic_write' } });
+          const otherAdmins = await manager.getRepository(TenantMembership).createQueryBuilder('membership')
+            .innerJoin('membership.user', 'adminUser', 'adminUser.isActive = true')
+            .where('membership.tenantId = :tenantId AND membership.isActive = true AND membership.isTenantAdmin = true', { tenantId: membership.tenantId })
+            .andWhere('membership.userId <> :userId', { userId: id })
+            .getCount();
+          if (otherAdmins === 0) throw new BadRequestException('Transfer tenant administration before deactivating the last active tenant administrator');
+        }
+      }
+      user.isActive = isActive;
+      return manager.save(user);
+    });
   }
   async assignPosition(dto: AssignPositionDto) {
     return this.users.manager.transaction(async manager => {
