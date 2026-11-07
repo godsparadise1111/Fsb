@@ -23,7 +23,7 @@ export class WorkflowService {
     @InjectRepository(TaskAssignee) private readonly assignees: Repository<TaskAssignee>,
   ) {}
 
-  async startProcess(dto: StartProcessDto) {
+  async startProcess(dto: StartProcessDto & { startedByUserId: string }) {
     return this.dataSource.transaction(async manager => {
       const version = await manager.findOne(ProcessVersion, { where: { id: dto.processVersionId, status: 'PUBLISHED' }, relations: { definition: true } });
       if (!version) throw new NotFoundException('Published process version not found');
