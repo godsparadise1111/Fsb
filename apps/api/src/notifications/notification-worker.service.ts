@@ -161,6 +161,11 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
 }
 
           AND t."dueAt" + ((pv.schema->'steps'->pi."currentStepIndex"->>'escalateAfterHours')::numeric * interval '1 hour') <= now()
+          AND NOT EXISTS (
+            SELECT 1 FROM notification_outbox queued
+             WHERE queued."tenantId" = pi."tenantId"
+               AND queued."dedupeKey" LIKE ('sla:' || t.id::text || ':%')
+          )
         ORDER BY t."dueAt" ASC LIMIT 100`,
     ) as Array<{ taskId: string; taskTitle: string; dueAt: Date; instanceId: string; processTitle: string; tenantId: string; organizationId: string; step: Record<string, unknown> }>;
 
