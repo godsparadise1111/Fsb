@@ -2,6 +2,8 @@ import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPip
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CreateTenantInvitationDto } from './dto/create-tenant-invitation.dto';
+import { RegisterTenantInvitationDto } from './dto/register-tenant-invitation.dto';
+import { Public } from '../auth/decorators/public.decorator';
 import { AcceptTenantInvitationDto } from './dto/accept-tenant-invitation.dto';
 import { TenantInvitationService } from './tenant-invitation.service';
 
@@ -30,6 +32,12 @@ export class TenantInvitationController {
   @Delete(':id')
   revoke(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.invitations.revoke(this.tenantId(user), id);
+  }
+
+  @Public()
+  @Post('register')
+  register(@Body() dto: RegisterTenantInvitationDto & { token: string }) {
+    return this.invitations.register(dto.token, dto);
   }
 
   // Authentication is required, but no tenant membership is required yet:
