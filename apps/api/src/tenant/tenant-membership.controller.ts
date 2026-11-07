@@ -1,5 +1,4 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
-import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CreateTenantMembershipDto } from './dto/create-tenant-membership.dto';
 import { TenantMembershipService } from './tenant-membership.service';
