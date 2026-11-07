@@ -11,9 +11,10 @@ import { TenantService } from './tenant.service';
 import { TenantMembershipService } from './tenant-membership.service';
 import { TenantInvitationController } from './tenant-invitation.controller';
 import { TenantInvitationService } from './tenant-invitation.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Tenant, TenantMembership, TenantInvitation, User])],
+  imports: [TypeOrmModule.forFeature([Tenant, TenantMembership, TenantInvitation, User]), NotificationsModule],
   controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController],
   providers: [TenantService, TenantMembershipService, TenantInvitationService],
   exports: [TenantService, TenantMembershipService, TenantInvitationService],
