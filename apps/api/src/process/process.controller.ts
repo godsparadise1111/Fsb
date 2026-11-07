@@ -3,6 +3,7 @@ import { ProcessService } from './process.service';
 import { CreateProcessDto } from './dto/create-process.dto';
 import { CreateProcessVersionDto } from './dto/create-process-version.dto';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('process-definitions')
 export class ProcessController {
@@ -10,7 +11,7 @@ export class ProcessController {
   @RequirePermissions('processes.manage')
   @Post() create(@Body() dto: CreateProcessDto) { return this.processes.createDefinition(dto); }
   @RequirePermissions('processes.read')
-  @Get() list(@Query('organizationId') organizationId?: string) { return this.processes.listDefinitions(organizationId); }
+  @Get() list(@Query('organizationId') organizationId: string | undefined, @CurrentUser() user: AuthenticatedUser) { return this.processes.listDefinitions(organizationId, user.tenantId); }
   @RequirePermissions('processes.manage')
   @Post(':id/versions') createVersion(@Param('id') id: string, @Body() dto: CreateProcessVersionDto) { return this.processes.createVersion(id, dto); }
   @RequirePermissions('processes.read')
