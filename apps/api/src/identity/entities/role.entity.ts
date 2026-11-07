@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinTable, ManyToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { Permission } from './permission.entity';
 
 @Entity('roles')
@@ -8,6 +8,8 @@ export class Role {
   @Column({ length: 160 }) name: string;
   @Column({ nullable: true, length: 500 }) description: string | null;
   @Column({ default: true }) isActive: boolean;
-  @ManyToMany(() => Permission, permission => permission.roles) permissions: Permission[];
+  @ManyToMany(() => Permission, permission => permission.roles)
+  @JoinTable({ name: 'role_permissions', joinColumn: { name: 'roleId', referencedColumnName: 'id' }, inverseJoinColumn: { name: 'permissionId', referencedColumnName: 'id' } })
+  permissions: Permission[];
   @CreateDateColumn() createdAt: Date;
 }
