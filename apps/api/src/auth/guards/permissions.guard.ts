@@ -119,7 +119,7 @@ export class PermissionsGuard implements CanActivate {
       if (organization && required.every(code =>
         ['organization.read', 'organization.manage', 'processes.read', 'processes.manage', 'processes.publish',
          'forms.read', 'forms.manage', 'forms.publish', 'forms.submit', 'workflow.start',
-         'workflow.tasks.read', 'workflow.tasks.act', 'workflow.history.read', 'assignments.manage'].includes(code),
+         'workflow.tasks.read', 'workflow.tasks.act', 'workflow.history.read', 'workflow.tasks.defer.approve', 'assignments.manage'].includes(code),
       )) return true;
     }
 
