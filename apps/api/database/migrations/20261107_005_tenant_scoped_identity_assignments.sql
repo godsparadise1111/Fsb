@@ -18,6 +18,21 @@ BEGIN
 END $$;
 
 ALTER TABLE user_positions ALTER COLUMN "tenantId" SET NOT NULL;
+
+DO $
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM user_positions up
+     WHERE up."isActive" = true
+       AND NOT EXISTS (
+         SELECT 1 FROM tenant_memberships tm
+          WHERE tm."tenantId" = up."tenantId" AND tm."userId" = up."userId" AND tm."isActive" = true
+       )
+  ) THEN
+    RAISE EXCEPTION 'Active user positions include users without active membership in the same tenant; reconcile memberships before migration 005';
+  END IF;
+END $;
+
 ALTER TABLE user_positions ADD CONSTRAINT "FK_user_positions_tenant"
   FOREIGN KEY ("tenantId") REFERENCES tenants(id) ON DELETE RESTRICT;
 CREATE INDEX "IDX_user_positions_tenant_user_active"
@@ -34,6 +49,9 @@ BEGIN
    WHERE p.id = NEW."positionId" AND p."isActive" = true AND ou."isActive" = true AND o."isActive" = true;
   IF resolved_tenant IS NULL THEN RAISE EXCEPTION 'Position must belong to an active organization in an active tenant'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved_tenant THEN RAISE EXCEPTION 'User position tenant mismatch'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM users u WHERE u.id = NEW."userId" AND u."isActive" = true) THEN
+    RAISE EXCEPTION 'User position recipient must be active';
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM tenant_memberships tm
      WHERE tm."tenantId" = resolved_tenant AND tm."userId" = NEW."userId" AND tm."isActive" = true
@@ -49,6 +67,27 @@ CREATE TRIGGER "TR_user_positions_tenant_guard"
 ALTER TABLE user_roles ADD COLUMN "tenantId" uuid NULL;
 UPDATE user_roles ur SET "tenantId" = o."tenantId"
 FROM organizations o WHERE o.id = ur."organizationId";
+
+DO $
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM user_roles ur INNER JOIN roles r ON r.id = ur."roleId"
+     WHERE (ur."organizationId" IS NULL AND r.scope <> 'PLATFORM')
+        OR (ur."organizationId" IS NOT NULL AND r.scope <> 'ORGANIZATION')
+  ) THEN
+    RAISE EXCEPTION 'Existing user role scope does not match its organization scope; reconcile before migration 005';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM user_roles ur
+     WHERE ur."organizationId" IS NOT NULL AND ur."isActive" = true
+       AND NOT EXISTS (
+         SELECT 1 FROM tenant_memberships tm
+          WHERE tm."tenantId" = ur."tenantId" AND tm."userId" = ur."userId" AND tm."isActive" = true
+       )
+  ) THEN
+    RAISE EXCEPTION 'Active organization role assignments include users without active tenant membership; reconcile before migration 005';
+  END IF;
+END $;
 
 ALTER TABLE user_roles ADD CONSTRAINT "CHK_user_roles_tenant_scope"
   CHECK (("organizationId" IS NULL AND "tenantId" IS NULL) OR ("organizationId" IS NOT NULL AND "tenantId" IS NOT NULL));
@@ -77,6 +116,9 @@ BEGIN
    WHERE o.id = NEW."organizationId" AND o."isActive" = true;
   IF resolved_tenant IS NULL THEN RAISE EXCEPTION 'Role organization must belong to an active tenant'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved_tenant THEN RAISE EXCEPTION 'User role tenant mismatch'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM users u WHERE u.id = NEW."userId" AND u."isActive" = true) THEN
+    RAISE EXCEPTION 'Role recipient must be active';
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM tenant_memberships tm
      WHERE tm."tenantId" = resolved_tenant AND tm."userId" = NEW."userId" AND tm."isActive" = true
