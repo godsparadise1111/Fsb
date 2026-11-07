@@ -135,8 +135,9 @@ export class FormsService {
     );
     const cell = (value: unknown) => {
       let text = value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
-      if (/^[\\s]*[=+\\-@]/.test(text) || /^[\\t\\r]/.test(text)) text = `'${text}`;
-      return `"${text.replace(/"/g, '""')}"`;
+      const first = text.trimStart()[0];
+      if ((first !== undefined && '=+-@'.includes(first)) || text.startsWith('\t') || text.startsWith('\r')) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
     };
     const headers = ['شناسه ثبت', 'تاریخ ثبت', 'شناسه نمونه فرایند', 'نام ثبت‌کننده', 'ایمیل ثبت‌کننده', 'داده‌های فرم'];
     const lines = [
@@ -146,7 +147,7 @@ export class FormsService {
         row.processInstanceId, [row.firstName, row.lastName].filter(Boolean).join(' '), row.email, row.data,
       ].map(cell).join(',')),
     ];
-    return '\\uFEFF' + lines.join('\\r\\n') + '\\r\\n';
+    return '\uFEFF' + lines.join('\r\n') + '\r\n';
   }
 
 }
