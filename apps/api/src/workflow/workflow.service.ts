@@ -356,9 +356,13 @@ export class WorkflowService {
   }
 
 
-  async listPendingTaskDeferrals(organizationId: string, tenantId?: string | null) {
+  async listPendingTaskDeferrals(organizationId: string, tenantId?: string | null, requestedLimit?: string, requestedOffset?: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     if (!organizationId) throw new BadRequestException('organizationId is required');
+    const limit = requestedLimit === undefined ? 50 : Number(requestedLimit);
+    const offset = requestedOffset === undefined ? 0 : Number(requestedOffset);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be an integer between 1 and 100');
+    if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new BadRequestException('offset must be a non-negative integer no greater than 100000');
     const organization = await this.organizations.findOne({ where: { id: organizationId, isActive: true } });
     if (!organization || organization.tenantId !== tenantId) throw new NotFoundException('Organization not found');
     return this.dataSource.getRepository(TaskDeferralRequest).createQueryBuilder('request')
@@ -367,7 +371,9 @@ export class WorkflowService {
       .where('request."tenantId" = :tenantId AND request.status = :status', { tenantId, status: 'PENDING' })
       .andWhere('instance."organizationId" = :organizationId', { organizationId })
       .orderBy('request."createdAt"', 'ASC')
-      .getMany();
+      .take(limit).skip(offset)
+      .getManyAndCount()
+      .then(([items, total]) => ({ items, total, limit, offset }));
   }
 
   async listTaskDeferrals(taskId: string, requesterId: string, tenantId?: string | null) {
