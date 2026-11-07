@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcryptjs';
 import { IsNull, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UserPosition } from './entities/user-position.entity';
@@ -27,7 +28,9 @@ export class IdentityService {
 
   async createUser(dto: CreateUserDto) {
     if (await this.users.findOne({ where: [{ email: dto.email.toLowerCase() }, { username: dto.username }] })) throw new ConflictException('Email or username already exists');
-    return this.users.save(this.users.create({ ...dto, email: dto.email.toLowerCase() }));
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const { password, ...profile } = dto;
+    return this.users.save(this.users.create({ ...profile, passwordHash, email: dto.email.toLowerCase() }));
   }
   listUsers() { return this.users.find({ where: { isActive: true }, order: { lastName: 'ASC', firstName: 'ASC' } }); }
   async setUserActive(id: string, isActive: boolean) {
