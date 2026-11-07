@@ -22,5 +22,5 @@ export class FormsController {
   @RequirePermissions('forms.submit')
   @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto, user.tenantId); }
   @RequirePermissions('forms.read')
-  @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @Query('organizationId') organizationId?: string) { if (!organizationId) throw new BadRequestException('organizationId query parameter is required'); return this.forms.listSubmissions(versionId, organizationId); }
+  @Get('versions/:versionId/submissions') submissions(@Param('versionId') versionId: string, @CurrentUser() user: AuthenticatedUser) { return this.forms.listSubmissions(versionId, user.tenantId); }
 }
