@@ -324,7 +324,7 @@ export class WorkflowService {
       });
       if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Only open tasks can be deferred');
-      const direct = await manager.exist(TaskAssignee, { where: { taskId, userId: requesterId, status: 'PENDING' } });
+      const direct = await manager.getRepository(TaskAssignee).exist({ where: { taskId, userId: requesterId, status: 'PENDING' } });
       const delegated = await manager.createQueryBuilder(TaskDelegation, 'delegation')
         .where('delegation.taskId = :taskId AND delegation.tenantId = :tenantId', { taskId, tenantId })
         .andWhere('delegation.toUserId = :requesterId AND delegation."revokedAt" IS NULL', { requesterId })
@@ -384,7 +384,8 @@ export class WorkflowService {
       if (!request) throw new NotFoundException('Deadline change request not found');
       if (request.status !== 'PENDING') throw new ConflictException('Deadline change request has already been reviewed');
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Closed tasks cannot have their deadline changed');
-      const currentDueAt = task.dueAt?.getTime() ?? null;
+      const previousDueAt = task.dueAt;
+      const currentDueAt = previousDueAt?.getTime() ?? null;
       const requestedOriginalDueAt = request.originalDueAt?.getTime() ?? null;
       if (currentDueAt !== requestedOriginalDueAt) throw new ConflictException('Task deadline changed after this request was submitted; submit a new request');
       if (decision === 'APPROVED') {
@@ -401,7 +402,7 @@ export class WorkflowService {
         tenantId, actorUserId: reviewerId, targetUserId: request.requesterUserId,
         action: decision === 'APPROVED' ? 'workflow.task.deferral_approved' : 'workflow.task.deferral_rejected',
         resourceType: 'TASK_DEFERRAL', resourceId: request.id,
-        metadata: { taskId, previousDueAt: task.dueAt?.toISOString() ?? null, proposedDueAt: request.proposedDueAt.toISOString(), comment: request.reviewerComment },
+        metadata: { taskId, previousDueAt: previousDueAt?.toISOString() ?? null, effectiveDueAt: decision === 'APPROVED' ? request.proposedDueAt.toISOString() : previousDueAt?.toISOString() ?? null, proposedDueAt: request.proposedDueAt.toISOString(), comment: request.reviewerComment },
       });
       return request;
     });
