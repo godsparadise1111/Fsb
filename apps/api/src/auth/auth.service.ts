@@ -28,7 +28,10 @@ export class AuthService {
     let rootPermission = await permissionRepo.findOneBy({ code: '*' });
     if (!rootPermission) rootPermission = await permissionRepo.save(permissionRepo.create({ code: '*', name: 'تمام مجوزها', description: 'مجوز مدیریتی اولیه سامانه' }));
     let adminRole = await roleRepo.findOne({ where: { code: 'SYSTEM_ADMIN' }, relations: { permissions: true } });
-    if (!adminRole) adminRole = await roleRepo.save(roleRepo.create({ code: 'SYSTEM_ADMIN', name: 'مدیر سامانه', description: 'نقش مدیریتی اولیه', scope: 'PLATFORM', permissions: [rootPermission] }));
+    if (!adminRole) adminRole = roleRepo.create({ code: 'SYSTEM_ADMIN', name: 'مدیر سامانه', description: 'نقش مدیریتی اولیه', scope: 'PLATFORM', permissions: [rootPermission] });
+    adminRole.scope = 'PLATFORM';
+    if (!adminRole.permissions?.some(permission => permission.id === rootPermission.id)) adminRole.permissions = [...(adminRole.permissions ?? []), rootPermission];
+    adminRole = await roleRepo.save(adminRole);
     await assignmentRepo.save(assignmentRepo.create({ userId: user.id, roleId: adminRole.id, organizationId: null, isActive: true }));
     return { id: user.id, username: user.username, email: user.email, firstName: user.firstName, lastName: user.lastName, role: 'SYSTEM_ADMIN' };
   }
