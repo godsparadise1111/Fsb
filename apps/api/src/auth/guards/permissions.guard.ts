@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { UserRole } from '../../identity/entities/user-role.entity';
 import { Organization } from '../../organization/entities/organization.entity';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -11,6 +11,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '../decorators/require-permissions.deco
 export class PermissionsGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
+    private readonly dataSource: DataSource,
     @InjectRepository(UserRole) private readonly assignments: Repository<UserRole>,
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
   ) {}
@@ -26,7 +27,20 @@ export class PermissionsGuard implements CanActivate {
     if (!user?.sub) throw new ForbiddenException('Authenticated user context is missing');
 
     const platformOnly = required.some(code => code.startsWith('tenants.'));
-    const organizationId = request.params?.organizationId ?? request.body?.organizationId ?? request.query?.organizationId ?? null;
+    let organizationId = request.params?.organizationId ?? request.body?.organizationId ?? request.query?.organizationId ?? null;
+    const resourceId = request.params?.id ?? request.params?.versionId ?? null;
+    if (!organizationId && resourceId) {
+      const rows = await this.dataSource.query(
+        `SELECT "organizationId" AS "organizationId" FROM process_definitions WHERE id = $1
+         UNION SELECT fd."organizationId" AS "organizationId" FROM form_versions fv
+           INNER JOIN form_definitions fd ON fd.id = fv."definitionId" WHERE fv.id = $1
+         UNION SELECT pi."organizationId" AS "organizationId" FROM workflow_tasks wt
+           INNER JOIN process_instances pi ON pi.id = wt."processInstanceId" WHERE wt.id = $1
+         LIMIT 1`,
+        [resourceId],
+      );
+      organizationId = rows[0]?.organizationId ?? null;
+    }
     const grants = await this.assignments.find({
       where: { userId: user.sub, isActive: true },
       relations: { role: { permissions: true }, organization: true },
