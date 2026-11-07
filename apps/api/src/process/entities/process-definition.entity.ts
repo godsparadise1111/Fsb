@@ -6,6 +6,7 @@ import { ProcessVersion } from './process-version.entity';
 @Index(['organizationId', 'code'], { unique: true })
 export class ProcessDefinition {
   @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('uuid', { insert: false, update: false }) tenantId: string;
   @Column('uuid') organizationId: string;
   @ManyToOne(() => Organization, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'organizationId' }) organization: Organization;
