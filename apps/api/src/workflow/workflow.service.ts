@@ -4,6 +4,8 @@ import { DataSource, In, Repository } from 'typeorm';
 import { ProcessVersion } from '../process/entities/process-version.entity';
 import { Organization } from '../organization/entities/organization.entity';
 import { User } from '../identity/entities/user.entity';
+import { UserPosition } from '../identity/entities/user-position.entity';
+import { ForbiddenException } from '@nestjs/common';
 import { ProcessInstance } from './entities/process-instance.entity';
 import { WorkflowTask } from './entities/workflow-task.entity';
 import { TaskAssignee } from './entities/task-assignee.entity';
@@ -32,7 +34,14 @@ export class WorkflowService {
       const uniqueIds = [...new Set(dto.initialAssigneeUserIds)];
       const users = await manager.find(User, { where: { id: In(uniqueIds), isActive: true } });
       if (users.length !== uniqueIds.length) throw new BadRequestException('Every assignee must be an active user');
-      if (!await manager.getRepository(User).exist({ where: { id: dto.startedByUserId, isActive: true } })) throw new NotFoundException('Active starter user not found');
+      const membershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
+        .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+        .where('membership.userId IN (:...userIds)', { userIds: [...uniqueIds, dto.startedByUserId] })
+        .andWhere('unit.organizationId = :organizationId', { organizationId: dto.organizationId })
+        .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
+        .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
+        .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
+      if (Number(membershipCount?.count ?? 0) !== new Set([...uniqueIds, dto.startedByUserId]).size) throw new BadRequestException('Starter and every assignee must have an active position in the selected organization');
       const instance = await manager.save(ProcessInstance, manager.create(ProcessInstance, {
         processVersionId: version.id, organizationId: dto.organizationId, startedByUserId: dto.startedByUserId,
         title: dto.title, data: dto.data ?? {}, status: 'RUNNING', currentStepIndex: 0,
@@ -92,6 +101,14 @@ export class WorkflowService {
           if (!nextUserIds.length) throw new BadRequestException('Every configured workflow step must have at least one assignee');
           const nextUsers = await manager.find(User, { where: { id: In(nextUserIds), isActive: true } });
           if (nextUsers.length !== nextUserIds.length) throw new BadRequestException('Every next-step assignee must be an active user');
+          const nextMembershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
+            .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+            .where('membership.userId IN (:...userIds)', { userIds: nextUserIds })
+            .andWhere('unit.organizationId = :organizationId', { organizationId: instance.organizationId })
+            .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
+            .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
+            .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
+          if (Number(nextMembershipCount?.count ?? 0) !== nextUserIds.length) throw new BadRequestException('Every next-step assignee must have an active position in the process organization');
           const nextTask = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
             processInstanceId: instance.id,
             title: next.title ?? `مرحله ${nextIndex + 1}`,
@@ -120,7 +137,7 @@ export class WorkflowService {
     if (!await this.tasks.exist({ where: { id: taskId } })) throw new NotFoundException('Task not found');
     const assigned = await this.assignees.exist({ where: { taskId, userId: requesterId } });
     const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: true } });
-    if (!task || (!assigned && task.processInstance.startedByUserId !== requesterId)) throw new BadRequestException('You are not allowed to view this task history');
+    if (!task || (!assigned && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
     return this.dataSource.getRepository(WorkflowActionLog).find({ where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' } });
   }
 }
