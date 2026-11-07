@@ -12,6 +12,9 @@ import { TaskAssignee } from './entities/task-assignee.entity';
 import { WorkflowActionLog } from './entities/workflow-action-log.entity';
 import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
+import { DelegateTaskDto } from './dto/delegate-task.dto';
+import { TaskDelegation } from './entities/task-delegation.entity';
+import { TenantAuditService } from '../tenant/tenant-audit.service';
 
 @Injectable()
 export class WorkflowService {
@@ -23,6 +26,7 @@ export class WorkflowService {
     @InjectRepository(ProcessInstance) private readonly instances: Repository<ProcessInstance>,
     @InjectRepository(WorkflowTask) private readonly tasks: Repository<WorkflowTask>,
     @InjectRepository(TaskAssignee) private readonly assignees: Repository<TaskAssignee>,
+    private readonly tenantAudit: TenantAuditService,
   ) {}
 
 
@@ -72,11 +76,19 @@ export class WorkflowService {
   listMyTasks(userId: string, tenantId?: string | null) {
     if (!tenantId) return Promise.resolve([]);
     return this.tasks.createQueryBuilder('task')
-      .innerJoin('task.assignees', 'assignment', 'assignment.userId = :userId', { userId })
+      .leftJoin('task.assignees', 'assignment', 'assignment.userId = :userId AND assignment.status = :pending', { userId, pending: 'PENDING' })
       .leftJoinAndSelect('task.processInstance', 'instance')
       .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId })
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
+      .andWhere(`(assignment.id IS NOT NULL OR EXISTS (
+        SELECT 1 FROM task_delegations delegation
+         JOIN task_assignees original ON original."taskId" = delegation."taskId"
+          AND original."userId" = delegation."fromUserId" AND original.status = 'PENDING'
+        WHERE delegation."taskId" = task.id AND delegation."toUserId" = :userId
+          AND delegation."tenantId" = :tenantId AND delegation."revokedAt" IS NULL
+          AND delegation."startsAt" <= now() AND delegation."endsAt" > now()
+      ))`)
       .orderBy('task.dueAt', 'ASC', 'NULLS LAST')
       .addOrderBy('task.createdAt', 'ASC').getMany();
   }
@@ -88,13 +100,36 @@ export class WorkflowService {
       if (!task) throw new NotFoundException('Task not found');
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
-      const assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
-      if (!assignment) throw new BadRequestException('User is not assigned to this task');
-      if (assignment.status !== 'PENDING') throw new ConflictException('This user has already acted on the task');
+      let assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
+      let actingDelegation: TaskDelegation | null = null;
+      if (!assignment) {
+        const delegations = await manager.find(TaskDelegation, {
+          where: { taskId, tenantId, toUserId: userId, revokedAt: null },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const active = delegations.filter(item => item.startsAt <= new Date() && item.endsAt > new Date());
+        if (active.length > 1) throw new ConflictException('Multiple active delegations exist for this task; administrator review is required');
+        actingDelegation = active[0] ?? null;
+        if (actingDelegation) {
+          assignment = await manager.findOne(TaskAssignee, {
+            where: { taskId, userId: actingDelegation.fromUserId, status: 'PENDING' },
+            lock: { mode: 'pessimistic_write' },
+          });
+        }
+      }
+      if (!assignment) throw new BadRequestException('User is not assigned or an active delegate for this task');
+      if (assignment.status !== 'PENDING') throw new ConflictException('This assignment has already been acted on');
       assignment.status = dto.action;
-      assignment.comment = dto.comment ?? null;
+      assignment.comment = actingDelegation
+        ? `Delegated action by ${userId}: ${dto.comment ?? ''}`.slice(0, 4000)
+        : dto.comment ?? null;
       assignment.actedAt = new Date();
       await manager.save(assignment);
+      if (actingDelegation) {
+        actingDelegation.revokedAt = new Date();
+        actingDelegation.revokedByUserId = userId;
+        await manager.save(actingDelegation);
+      }
       await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null }));
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
@@ -154,13 +189,108 @@ export class WorkflowService {
     });
   }
 
+  async delegateTask(taskId: string, actorUserId: string, dto: DelegateTaskDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required for task delegation');
+    const endsAt = new Date(dto.endsAt);
+    const now = new Date();
+    if (!Number.isFinite(endsAt.getTime()) || endsAt <= now || endsAt.getTime() - now.getTime() > 30 * 86400000) {
+      throw new BadRequestException('Delegation end time must be in the future and no more than 30 days away');
+    }
+    if (dto.toUserId === actorUserId) throw new BadRequestException('A task cannot be delegated to the same user');
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, {
+        where: { id: taskId },
+        relations: { processInstance: { organization: true } },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!task) throw new NotFoundException('Task not found');
+      if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
+      if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Only open tasks can be delegated');
+      const ownAssignment = await manager.findOne(TaskAssignee, {
+        where: { taskId, userId: actorUserId, status: 'PENDING' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!ownAssignment) throw new ForbiddenException('Only the original pending assignee may delegate their assignment');
+      const existing = await manager.findOne(TaskDelegation, {
+        where: { taskId, fromUserId: actorUserId, revokedAt: null },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (existing && existing.endsAt > now) throw new ConflictException('An active delegation already exists for this assignment');
+      const target = await manager.findOne(User, { where: { id: dto.toUserId, isActive: true } });
+      if (!target) throw new BadRequestException('Delegate must be an active user');
+      const eligible = await manager.createQueryBuilder(UserPosition, 'membership')
+        .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+        .innerJoin('tenant_memberships', 'tm', 'tm."userId" = membership."userId" AND tm."tenantId" = :tenantId AND tm."isActive" = true', { tenantId })
+        .where('membership.userId = :userId', { userId: dto.toUserId })
+        .andWhere('unit.organizationId = :organizationId', { organizationId: task.processInstance.organizationId })
+        .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
+        .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
+        .getCount();
+      if (!eligible) throw new BadRequestException('Delegate must have an active position in the task organization and active tenant membership');
+      const delegation = await manager.save(TaskDelegation, manager.create(TaskDelegation, {
+        tenantId, taskId, fromUserId: actorUserId, toUserId: dto.toUserId,
+        startsAt: now, endsAt, revokedAt: null, revokedByUserId: null,
+      }));
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, targetUserId: dto.toUserId, action: 'workflow.task.delegated',
+        resourceType: 'TASK_DELEGATION', resourceId: delegation.id,
+        metadata: { taskId, originalAssigneeId: actorUserId, startsAt: now.toISOString(), endsAt: endsAt.toISOString() },
+      });
+      return delegation;
+    });
+  }
+
+  async listTaskDelegations(taskId: string, requesterId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: true } });
+    if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+    const [assigned, started] = await Promise.all([
+      this.assignees.exist({ where: { taskId, userId: requesterId } }),
+      this.instances.exist({ where: { id: task.processInstanceId, startedByUserId: requesterId } }),
+    ]);
+    const delegated = await this.dataSource.getRepository(TaskDelegation).exist({ where: { taskId, tenantId, toUserId: requesterId } });
+    if (!assigned && !started && !delegated) throw new ForbiddenException('You are not allowed to view task delegations');
+    return this.dataSource.getRepository(TaskDelegation).find({
+      where: { taskId, tenantId }, order: { createdAt: 'DESC' },
+    });
+  }
+
+  async revokeTaskDelegation(taskId: string, delegationId: string, actorUserId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, {
+        where: { id: taskId }, relations: { processInstance: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      const delegation = await manager.findOne(TaskDelegation, {
+        where: { id: delegationId, taskId, tenantId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!delegation) throw new NotFoundException('Task delegation not found');
+      if (delegation.fromUserId !== actorUserId) throw new ForbiddenException('Only the original assignee may revoke this delegation');
+      if (delegation.revokedAt) throw new ConflictException('Delegation has already been revoked');
+      delegation.revokedAt = new Date();
+      delegation.revokedByUserId = actorUserId;
+      await manager.save(delegation);
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, targetUserId: delegation.toUserId,
+        action: 'workflow.task.delegation_revoked', resourceType: 'TASK_DELEGATION', resourceId: delegation.id,
+        metadata: { taskId },
+      });
+      return delegation;
+    });
+  }
+
   async taskHistory(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required to view workflow history');
     if (!await this.tasks.exist({ where: { id: taskId } })) throw new NotFoundException('Task not found');
     const assigned = await this.assignees.exist({ where: { taskId, userId: requesterId } });
+    const delegated = await this.dataSource.getRepository(TaskDelegation).exist({
+      where: { taskId, tenantId, toUserId: requesterId, revokedAt: null },
+    });
     const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
     if (task?.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task history is outside the active tenant');
-    if (!task || (!assigned && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
+    if (!task || (!assigned && !delegated && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
     return this.dataSource.getRepository(WorkflowActionLog).find({ where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' } });
   }
 }
