@@ -1,13 +1,1 @@
-{
-  "name": "fsb-bpms",
-  "version": "0.1.0",
-  "private": true,
-  "description": "F-S organizational business process management system",
-  "workspaces": ["apps/*", "packages/*"],
-  "scripts": {
-    "dev": "npm run dev --workspace @fsb/api",
-    "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
-  }
-}
+{"name":"fsb-bpms","version":"0.1.0","private":true,"description":"F-S organizational business process management system","workspaces":["apps/*","packages/*"],"scripts":{"dev":"npm run dev --workspace @fsb/api","dev:api":"npm run dev --workspace @fsb/api","dev:web":"npm run dev --workspace @fsb/web","build":"npm run build --workspaces --if-present","lint":"npm run lint --workspaces --if-present","test":"npm run test --workspaces --if-present"}}
