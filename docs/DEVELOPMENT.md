@@ -49,9 +49,9 @@
 - `PATCH /api/process-definitions/:id/archive` بایگانی تعریف فرایند
 
 ### اجرای گردش‌کار
-- `POST /api/process-instances` شروع نمونه فرایند؛ شامل `processVersionId`, `organizationId`, `startedByUserId`, `title`, `initialAssigneeUserIds` و اختیاری `data`, `assignmentPolicy`, `firstTaskTitle`
-- `GET /api/tasks/my?userId=...` کارهای باز کاربر
-- `POST /api/tasks/:id/actions` اقدام کاربر؛ `userId`, `action` برابر `APPROVED` یا `REJECTED` و اختیاری `comment`
+- `POST /api/process-instances` شروع نمونه فرایند؛ شامل `processVersionId`, `organizationId`, `title`, `initialAssigneeUserIds` و اختیاری `data`, `assignmentPolicy`, `firstTaskTitle`
+- `GET /api/tasks/my` کارهای باز کاربر جاری (شناسه از JWT)
+- `POST /api/tasks/:id/actions` اقدام کاربر؛ `action` برابر `APPROVED` یا `REJECTED` و اختیاری `comment` (شناسه کاربر از JWT)
 - `GET /api/tasks/:id/history` تاریخچه اقدامات کار
 
 سیاست `ALL_ASSIGNEES` فقط پس از تأیید همه افراد منتسب، کار را کامل می‌کند. سیاست `ANY_ASSIGNEE` با اولین تأیید کامل می‌شود. رد هر یک از افراد در نسخه فعلی، کار و نمونه فرایند را لغو می‌کند. پس از تکمیل هر کار، اگر در `processVersion.schema.steps` مرحله بعدی تعریف شده باشد، کار بعدی به‌صورت خودکار ساخته می‌شود. هر مرحله می‌تواند `title`, `instructions`, `assigneeUserIds` و `assignmentPolicy` داشته باشد؛ مرحله بعدی فقط به کاربران فعال قابل ارجاع است.
@@ -62,10 +62,10 @@
 - `POST /api/forms/:id/versions` ساخت نسخه فرم؛ `schema` و اختیاری `changeNote`
 - `GET /api/forms/:id/versions` فهرست نسخه‌ها
 - `POST /api/forms/:id/versions/:versionId/publish` انتشار نسخه فرم
-- `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `submittedByUserId`, `data` و اختیاری `processInstanceId`
+- `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT)
 - `GET /api/forms/versions/:versionId/submissions` مشاهده ثبت‌های یک نسخه فرم
 
 ساختار schema فرم به‌صورت JSON نگهداری می‌شود و نسخه‌های منتشرشده مبنای ثبت داده قرار می‌گیرند. اعتبارسنجی معنایی فیلدها و رندرر فرم در لایه بعدی توسعه می‌یابد.
 
 ## هشدارهای فعلی
-تمام مسیرها به‌جز سلامت، ورود و bootstrap نیازمند JWT هستند. رمز عبور با bcrypt هش می‌شود و هویت شروع فرایند، اقدام کار و ثبت فرم از توکن استخراج می‌شود؛ شناسه کاربر ارسالی برای این عملیات‌ها پذیرفته نمی‌شود. bootstrap فقط یک‌بار و پیش از ایجاد اولین کاربر قابل استفاده است و آن حساب نقش SYSTEM_ADMIN می‌گیرد. توکن bootstrap و JWT_SECRET را حتماً با مقادیر تصادفی قوی جایگزین کنید. کنترل مجوزها در سطح تک‌تک عملیات‌ها و محدودسازی دسترسی داده‌ها در حال تکمیل است؛ تا تکمیل آن API را در شبکه عمومی منتشر نکنید. تنظیم `DB_SYNCHRONIZE=true` فقط برای توسعه محلی است؛ برای محیط عملیاتی باید migrationهای TypeORM استفاده شوند. اجرای build و تست هنوز انجام نشده و عمداً به مرحله‌ای که درخواست کرده‌اید موکول است.
+تمام مسیرها به‌جز سلامت، ورود و bootstrap نیازمند JWT هستند. رمز عبور با bcrypt هش می‌شود و هویت شروع فرایند، اقدام کار و ثبت فرم از توکن استخراج می‌شود. مجوزهای عملیاتی از طریق `RequirePermissions` و `PermissionsGuard` کنترل می‌شوند؛ مجوزهای اولیه شامل `organization.read/manage`، `users.read/manage`، `roles.manage`، `permissions.manage`، `assignments.manage`، `processes.read/manage/publish`، `forms.read/manage/publish/submit` و `workflow.start/tasks.read/tasks.act/history.read` هستند. حساب bootstrap نقش `SYSTEM_ADMIN` با مجوز `*` می‌گیرد. اعطای نقش می‌تواند با `organizationId` محدود شود، اما کنترل دسترسی در سطح رکورد و جداسازی کامل tenant هنوز تکمیل نشده است؛ تا آن زمان API را در شبکه عمومی یا به‌صورت SaaS عرضه نکنید. در Production، `JWT_SECRET` باید حداقل ۳۲ کاراکتر و تصادفی باشد. `BOOTSTRAP_TOKEN` نیز باید محرمانه و جدا از JWT_SECRET نگهداری شود. تنظیم `DB_SYNCHRONIZE=true` فقط برای توسعه محلی است؛ برای محیط عملیاتی باید migrationهای TypeORM استفاده شوند. اجرای build و تست هنوز انجام نشده و عمداً به مرحله‌ای که درخواست کرده‌اید موکول است.
