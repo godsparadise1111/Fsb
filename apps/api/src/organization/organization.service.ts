@@ -17,7 +17,7 @@ export class OrganizationService {
     if (await this.organizations.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
     return this.organizations.save(this.organizations.create({ ...dto, tenant }));
   }
-  listOrganizations() { return this.organizations.find({ where: { isActive: true }, order: { name: 'ASC' } }); }
+  listOrganizations(tenantId?: string | null) { return this.organizations.find({ where: tenantId ? { tenantId, isActive: true } : { isActive: true }, order: { name: 'ASC' } }); }
   async createUnit(dto: CreateUnitDto) {
     const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true } });
     if (!organization) throw new NotFoundException('Organization not found');
