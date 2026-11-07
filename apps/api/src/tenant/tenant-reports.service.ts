@@ -64,7 +64,7 @@ export class TenantReportsService {
     );
 
     const daily = await this.dataSource.query(
-      \`WITH days AS (
+      `WITH days AS (
          SELECT generate_series(date_trunc('day', $2::timestamptz),
                                 date_trunc('day', $3::timestamptz - interval '1 millisecond'),
                                 interval '1 day') AS day
