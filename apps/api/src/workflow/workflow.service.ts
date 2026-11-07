@@ -32,7 +32,7 @@ export class WorkflowService {
       const uniqueIds = [...new Set(dto.initialAssigneeUserIds)];
       const users = await manager.find(User, { where: { id: In(uniqueIds), isActive: true } });
       if (users.length !== uniqueIds.length) throw new BadRequestException('Every assignee must be an active user');
-      if (!users.some(user => user.id === dto.startedByUserId)) throw new BadRequestException('The starter must be an active user');
+      if (!await manager.getRepository(User).exist({ where: { id: dto.startedByUserId, isActive: true } })) throw new NotFoundException('Active starter user not found');
       const instance = await manager.save(ProcessInstance, manager.create(ProcessInstance, {
         processVersionId: version.id, organizationId: dto.organizationId, startedByUserId: dto.startedByUserId,
         title: dto.title, data: dto.data ?? {}, status: 'RUNNING',
