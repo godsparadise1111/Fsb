@@ -564,7 +564,12 @@ export class WorkflowService {
     });
     const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
     if (task?.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task history is outside the active tenant');
-    if (!task || (!assigned && !delegated && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
+    const substituted = task ? await this.dataSource.getRepository(OrganizationSubstitution).createQueryBuilder('s')
+      .innerJoin(TaskAssignee, 'original', 'original.taskId = :taskId AND original.userId = s.originalUserId', { taskId })
+      .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.substituteUserId = :requesterId', {
+        tenantId, organizationId: task.processInstance.organizationId, requesterId,
+      }).getCount() > 0 : false;
+    if (!task || (!assigned && !delegated && !substituted && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
     return this.dataSource.getRepository(WorkflowActionLog).find({ where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' } });
   }
 }
