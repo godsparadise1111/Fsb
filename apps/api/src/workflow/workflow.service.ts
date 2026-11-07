@@ -30,7 +30,9 @@ export class WorkflowService {
       const version = await manager.findOne(ProcessVersion, { where: { id: dto.processVersionId, status: 'PUBLISHED' }, relations: { definition: true } });
       if (!version) throw new NotFoundException('Published process version not found');
       if (version.definition.organizationId !== dto.organizationId) throw new BadRequestException('Process version does not belong to the selected organization');
-      if (!await manager.getRepository(Organization).exist({ where: { id: dto.organizationId, isActive: true } })) throw new NotFoundException('Active organization not found');
+      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+      if (!organization) throw new NotFoundException('Active organization not found');
+      if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
       const uniqueIds = [...new Set(dto.initialAssigneeUserIds)];
       const users = await manager.find(User, { where: { id: In(uniqueIds), isActive: true } });
       if (users.length !== uniqueIds.length) throw new BadRequestException('Every assignee must be an active user');
