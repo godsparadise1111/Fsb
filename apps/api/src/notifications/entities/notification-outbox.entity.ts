@@ -23,6 +23,6 @@ export class NotificationOutbox {
   @Column({ type: 'timestamptz', nullable: true }) lockedAt: Date | null;
   @Column({ type: 'timestamptz', nullable: true }) deliveredAt: Date | null;
   @Column({ type: 'text', nullable: true }) lastError: string | null;
-  @CreateDateColumn() createdAt: Date;
-  @UpdateDateColumn() updatedAt: Date;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt: Date;
+  @UpdateDateColumn({ type: 'timestamptz' }) updatedAt: Date;
 }
