@@ -12,7 +12,7 @@ export class FormsController {
   @RequirePermissions('forms.manage')
   @Post() create(@Body() dto: CreateFormDto) { return this.forms.createDefinition(dto); }
   @RequirePermissions('forms.read')
-  @Get() list(@Query('organizationId') organizationId?: string) { return this.forms.listDefinitions(organizationId); }
+  @Get() list(@Query('organizationId') organizationId: string | undefined, @CurrentUser() user: AuthenticatedUser) { return this.forms.listDefinitions(organizationId, user.tenantId); }
   @RequirePermissions('forms.manage')
   @Post(':id/versions') createVersion(@Param('id') id: string, @Body() dto: CreateFormVersionDto) { return this.forms.createVersion(id, dto); }
   @RequirePermissions('forms.read')
