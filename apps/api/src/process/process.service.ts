@@ -94,12 +94,20 @@ export class ProcessService {
         if (Array.isArray(config.reassignUserIds) && new Set(config.reassignUserIds).size !== config.reassignUserIds.length) {
           throw new BadRequestException(`Process step ${index + 1} reassignUserIds cannot contain duplicates`);
         }
-        if (config.reassignUserIds !== undefined && (reassignAfterHours === undefined || reassignAfterHours === null)) {
-          throw new BadRequestException(`Process step ${index + 1} must configure reassignAfterHours when reassignUserIds are set`);
+        if (config.reassignOnInactiveAssignee !== undefined && typeof config.reassignOnInactiveAssignee !== 'boolean') {
+          throw new BadRequestException(`Process step ${index + 1} reassignOnInactiveAssignee must be a boolean`);
+        }
+        if (config.reassignUserIds !== undefined &&
+            (reassignAfterHours === undefined || reassignAfterHours === null) &&
+            config.reassignOnInactiveAssignee !== true) {
+          throw new BadRequestException(`Process step ${index + 1} reassignUserIds requires an SLA threshold or reassignOnInactiveAssignee=true`);
         }
         if (reassignAfterHours !== undefined && reassignAfterHours !== null &&
             (dueInHours === undefined || dueInHours === null || config.reassignUserIds === undefined)) {
-          throw new BadRequestException(`Process step ${index + 1} automatic reassignment requires dueInHours and reassignUserIds`);
+          throw new BadRequestException(`Process step ${index + 1} SLA reassignment requires dueInHours and reassignUserIds`);
+        }
+        if (config.reassignOnInactiveAssignee === true && config.reassignUserIds === undefined) {
+          throw new BadRequestException(`Process step ${index + 1} inactive-assignee reassignment requires reassignUserIds`);
         }
       }
       version.status = 'PUBLISHED';
