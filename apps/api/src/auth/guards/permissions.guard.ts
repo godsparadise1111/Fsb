@@ -102,6 +102,11 @@ export class PermissionsGuard implements CanActivate {
       }
     }
 
+    // The personal inbox is safe for every active tenant member: the service constrains
+    // rows by the authenticated user id and the verified tenant id.
+    const requestPath = String(request.path ?? request.url ?? '').split('?')[0];
+    if (request.method === 'GET' && requestPath.endsWith('/tasks/my') && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
+
     // Tenant administrators get only explicitly listed tenant-level capabilities.
     if (user.isTenantAdmin) {
       if (required.every(code => ['tenant.members.read', 'tenant.members.manage', 'tenant.organizations.manage'].includes(code))) return true;
