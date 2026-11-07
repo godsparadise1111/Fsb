@@ -16,7 +16,9 @@ export class ProcessService {
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
   ) {}
   async createDefinition(dto: CreateProcessDto) {
-    if (!await this.organizations.exist({ where: { id: dto.organizationId, isActive: true } })) throw new NotFoundException('Active organization not found');
+    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+    if (!organization) throw new NotFoundException('Active organization not found');
+    if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
     if (await this.definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) throw new ConflictException('Process code already exists in this organization');
     return this.definitions.save(this.definitions.create({ ...dto, status: 'DRAFT' }));
   }
