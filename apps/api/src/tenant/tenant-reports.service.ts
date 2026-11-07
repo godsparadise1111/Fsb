@@ -201,7 +201,7 @@ export class TenantReportsService {
     for (const item of report.taskAging.oldestOpenTasks) {
       lines.push(['وظایف قدیمی', item.taskId, `${item.title} | ${item.organizationName} | ${item.ageHours} ساعت`]);
     }
-    return '\uFEFF' + lines.map(row => row.map(cell).join(',')).join('\\r\\n') + '\\r\\n';
+    return '\uFEFF' + lines.map(row => row.map(cell).join(',')).join('\r\n') + '\r\n';
   }
 
 }
