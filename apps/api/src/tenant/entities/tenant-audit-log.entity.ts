@@ -12,5 +12,5 @@ export class TenantAuditLog {
   @Column({ length: 80 }) resourceType: string;
   @Column('uuid', { nullable: true }) resourceId: string | null;
   @Column({ type: 'jsonb', nullable: true }) metadata: Record<string, unknown> | null;
-  @CreateDateColumn() createdAt: Date;
+  @CreateDateColumn({ type: 'timestamptz' }) createdAt: Date;
 }
