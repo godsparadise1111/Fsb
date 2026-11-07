@@ -23,7 +23,9 @@ export class FormsService {
     @InjectRepository(ProcessInstance) private readonly instances: Repository<ProcessInstance>,
   ) {}
   async createDefinition(dto: CreateFormDto) {
-    if (!await this.organizations.exist({ where: { id: dto.organizationId, isActive: true } })) throw new NotFoundException('Active organization not found');
+    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+    if (!organization) throw new NotFoundException('Active organization not found');
+    if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
     if (await this.definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) throw new ConflictException('Form code already exists in this organization');
     return this.definitions.save(this.definitions.create({ ...dto, status: 'DRAFT', description: dto.description ?? null }));
   }
