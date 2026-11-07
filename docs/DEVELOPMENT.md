@@ -31,6 +31,11 @@
 - `POST /api/tenant/members` افزودن کاربر موجود به Tenant جاری با `userId` و اختیاری `isTenantAdmin`
 - `PATCH /api/tenant/members/:userId/admin` تغییر وضعیت مدیر مشتری با `isTenantAdmin`
 - `DELETE /api/tenant/members/:userId` غیرفعال‌سازی عضویت؛ آخرین مدیر قابل حذف نیست
+- `POST /api/tenant/invitations` ایجاد دعوت برای ایمیل با اختیاری `isTenantAdmin`؛ پاسخ شامل توکن یک‌بارمصرف است و باید از کانال امن برای دعوت‌شده ارسال شود.
+- `GET /api/tenant/invitations` فهرست دعوت‌ها بدون نمایش هش یا توکن.
+- `DELETE /api/tenant/invitations/:id` لغو دعوت پذیرفته‌نشده.
+- `POST /api/tenant/invitations/accept` پذیرش با `{ "token": "..." }`؛ کاربر باید وارد حسابی شده باشد که ایمیل آن دقیقاً با ایمیل دعوت برابر است. پس از پذیرش، برای دریافت زمینه Tenant جدید درخواست بعدی را با `X-Tenant-Id` بفرستید.
+- توکن خام فقط هنگام ایجاد برگردانده می‌شود؛ در DB فقط SHA-256 آن ذخیره می‌شود. تحویل ایمیل خودکار هنوز به سرویس اعلان متصل نشده است.
 - `POST /api/organizations` ایجاد سازمان در یک مشتری فعال؛ بدنه: `{ "tenantId": "...", "name": "...", "code": "..." }`
 - `GET /api/organizations` فهرست سازمان‌ها
 - `POST /api/organizations/units` ایجاد واحد؛ بدنه شامل `organizationId`, `name`, `code` و اختیاری `parentId`
