@@ -12,11 +12,13 @@ import { WorkflowService } from './workflow.service';
 import { TaskDelegation } from './entities/task-delegation.entity';
 import { TaskDeferralRequest } from './entities/task-deferral-request.entity';
 import { OrganizationSubstitution } from './entities/organization-substitution.entity';
+import { WorkflowTaskReassignment } from './entities/workflow-task-reassignment.entity';
+import { WorkflowAutomationWorker } from './workflow-automation.worker';
 import { TenantModule } from '../tenant/tenant.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProcessVersion, Organization, User, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, TaskDelegation, TaskDeferralRequest, OrganizationSubstitution]), TenantModule],
+  imports: [TypeOrmModule.forFeature([ProcessVersion, Organization, User, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, TaskDelegation, TaskDeferralRequest, OrganizationSubstitution, WorkflowTaskReassignment]), TenantModule],
   controllers: [WorkflowController],
-  providers: [WorkflowService],
+  providers: [WorkflowService, WorkflowAutomationWorker],
 })
 export class WorkflowModule {}
