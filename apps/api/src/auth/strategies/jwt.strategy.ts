@@ -30,11 +30,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { userId: payload.sub, isActive: true },
       relations: { tenant: true },
     });
-    const eligible = memberships.filter(item => item.tenant?.status === 'ACTIVE');
-    let selected = requestedTenantId ? eligible.find(item => item.tenantId === requestedTenantId) : undefined;
-    if (requestedTenantId && !selected) throw new UnauthorizedException('User is not an active member of the selected tenant');
-    if (!requestedTenantId && eligible.length === 1) selected = eligible[0];
-    if (!requestedTenantId && eligible.length > 1) throw new UnauthorizedException('X-Tenant-Id is required when the user belongs to multiple active tenants');
+    let selected = requestedTenantId ? memberships.find(item => item.tenantId === requestedTenantId) : undefined;
+    if (requestedTenantId && (!selected || selected.tenant?.status !== 'ACTIVE')) throw new UnauthorizedException('User is not an active member of an active selected tenant');
+    if (!requestedTenantId && memberships.length === 1) selected = memberships[0];
+    if (!requestedTenantId && memberships.length > 1) throw new UnauthorizedException('X-Tenant-Id is required when the user belongs to multiple tenants');
+    if (selected && selected.tenant?.status !== 'ACTIVE') throw new UnauthorizedException('The selected customer account is suspended or closed');
 
     return {
       sub: payload.sub,
