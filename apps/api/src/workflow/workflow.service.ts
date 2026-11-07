@@ -55,19 +55,19 @@ export class WorkflowService {
       .orderBy('task.createdAt', 'ASC').getMany();
   }
 
-  async act(taskId: string, dto: ActTaskDto) {
+  async act(taskId: string, userId: string, dto: ActTaskDto) {
     return this.dataSource.transaction(async manager => {
       const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
-      const assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId: dto.userId }, lock: { mode: 'pessimistic_write' } });
+      const assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
       if (!assignment) throw new BadRequestException('User is not assigned to this task');
       if (assignment.status !== 'PENDING') throw new ConflictException('This user has already acted on the task');
       assignment.status = dto.action;
       assignment.comment = dto.comment ?? null;
       assignment.actedAt = new Date();
       await manager.save(assignment);
-      await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId: dto.userId, action: dto.action, comment: dto.comment ?? null }));
+      await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null }));
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
       const completed = task.assignmentPolicy === 'ANY_ASSIGNEE'
@@ -116,8 +116,11 @@ export class WorkflowService {
     });
   }
 
-  async taskHistory(taskId: string) {
+  async taskHistory(taskId: string, requesterId: string) {
     if (!await this.tasks.exist({ where: { id: taskId } })) throw new NotFoundException('Task not found');
+    const assigned = await this.assignees.exist({ where: { taskId, userId: requesterId } });
+    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: true } });
+    if (!task || (!assigned && task.processInstance.startedByUserId !== requesterId)) throw new BadRequestException('You are not allowed to view this task history');
     return this.dataSource.getRepository(WorkflowActionLog).find({ where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' } });
   }
 }
