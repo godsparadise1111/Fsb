@@ -113,11 +113,8 @@ export class PermissionsGuard implements CanActivate {
       )) return true;
     }
 
-    // Collection reads are scoped by the service query; all mutation and resource reads
-    // must resolve to an organization belonging to the selected tenant.
-    const collectionRead = !organizationId && request.method === 'GET' &&
-      required.every(code => ['organization.read', 'processes.read', 'forms.read', 'workflow.tasks.read'].includes(code));
-    if (collectionRead) return true;
+    // Non-admin users must have an explicit organization-scoped grant. Collection
+    // endpoints without an organization filter are intentionally not implicitly granted.
 
     const grantedCodes = new Set<string>();
     for (const assignment of grants) {
