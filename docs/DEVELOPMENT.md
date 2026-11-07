@@ -75,6 +75,10 @@
 - `PATCH /api/process-definitions/:id/archive` بایگانی تعریف فرایند
 
 ### اجرای گردش‌کار
+- `POST /api/tasks/:id/delegations` تفویض زمان‌دار وظیفه توسط مسئول اصلی به کاربر دارای عضویت فعال Tenant و سمت فعال در همان سازمان؛ بدنه `{ "toUserId": "<uuid>", "endsAt": "<ISO-8601>" }`؛ حداکثر ۳۰ روز، بدون تغییر مسئول اصلی و همراه با ممیزی.
+- `GET /api/tasks/:id/delegations` مشاهده تاریخچه تفویض برای مسئولان/آغازکننده/نماینده مجاز.
+- `DELETE /api/tasks/:id/delegations/:delegationId` لغو تفویض توسط مسئول اصلی.
+- نماینده در بازه معتبر می‌تواند اقدام کند؛ اقدام به نام حساب نماینده ثبت می‌شود و وضعیت انتساب اصلی را تکمیل می‌کند. تفویض پس از اقدام خودکار باطل می‌شود؛ تفویض زنجیره‌ای و اقدام خارج از بازه مجاز نیست.
 - `POST /api/process-instances` شروع نمونه فرایند؛ شامل `processVersionId`, `organizationId`, `title`, `initialAssigneeUserIds` و اختیاری `data`, `assignmentPolicy`, `firstTaskTitle`
 - `GET /api/tasks/my` کارهای باز کاربر جاری (شناسه از JWT) با اولویت مهلت نزدیک‌تر و سپس قدیمی‌ترین وظیفه؛ `dueAt` در پاسخ مشخص است.
 - `POST /api/tasks/:id/actions` اقدام کاربر؛ `action` برابر `APPROVED` یا `REJECTED` و اختیاری `comment` (شناسه کاربر از JWT)
