@@ -4,7 +4,7 @@ BEGIN;
 
 -- Reconcile already-disabled accounts first. If one is the only active admin
 -- of a tenant, stop and require an explicit administrator transfer.
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
@@ -22,7 +22,7 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'An inactive account is the only tenant administrator; transfer administration before migration 007';
   END IF;
-END $;
+END $$;
 
 UPDATE tenant_memberships tm
    SET "isActive" = false, "isTenantAdmin" = false
