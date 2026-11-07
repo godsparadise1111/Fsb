@@ -34,8 +34,8 @@ export class WorkflowController {
 
   @RequirePermissions('workflow.tasks.defer.approve')
   @Get('tasks/deferrals/pending')
-  pendingDeferrals(@Query('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.workflow.listPendingTaskDeferrals(organizationId, user.tenantId);
+  pendingDeferrals(@Query('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listPendingTaskDeferrals(organizationId, user.tenantId, limit, offset);
   }
   @RequirePermissions('workflow.tasks.act')
   @Post('tasks/:id/deferrals')
