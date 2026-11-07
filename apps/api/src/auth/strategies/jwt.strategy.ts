@@ -31,7 +31,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     let selected = requestedTenantId ? memberships.find(item => item.tenantId === requestedTenantId) : undefined;
     if (requestedTenantId && (!selected || selected.tenant?.status !== 'ACTIVE')) throw new UnauthorizedException('User is not an active member of an active selected tenant');
     if (!requestedTenantId && memberships.length === 1) selected = memberships[0];
-    if (!requestedTenantId && memberships.length > 1) throw new UnauthorizedException('X-Tenant-Id is required when the user belongs to multiple tenants');
+    const invitationAcceptance = String((request as any).url ?? (request as any).path ?? '').split('?')[0].endsWith('/tenant/invitations/accept');
+    if (!requestedTenantId && memberships.length > 1 && !invitationAcceptance) throw new UnauthorizedException('X-Tenant-Id is required when the user belongs to multiple tenants');
     if (selected && selected.tenant?.status !== 'ACTIVE') throw new UnauthorizedException('The selected customer account is suspended or closed');
 
     return {
