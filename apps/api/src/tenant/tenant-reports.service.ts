@@ -162,4 +162,46 @@ export class TenantReportsService {
       generatedAt: new Date().toISOString(),
     };
   }
+
+  async overviewCsv(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
+    const report = await this.overview(tenantId, options);
+    const cell = (value: unknown) => {
+      let text = value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
+      const first = text.trimStart()[0];
+      if ((first !== undefined && '=+-@'.includes(first)) || text.startsWith('\\t') || text.startsWith('\\r')) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const lines: string[][] = [
+      ['بخش', 'شاخص', 'مقدار'],
+      ['اطلاعات گزارش', 'مشتری', report.tenant.name],
+      ['اطلاعات گزارش', 'از تاریخ', report.period.from],
+      ['اطلاعات گزارش', 'تا تاریخ (غیرشامل)', report.period.to],
+      ['فرایندها', 'شروع‌شده', String(report.processInstances.started)],
+      ['فرایندها', 'در جریان', String(report.processInstances.running)],
+      ['فرایندها', 'تکمیل‌شده', String(report.processInstances.completed)],
+      ['فرایندها', 'لغوشده', String(report.processInstances.cancelled)],
+      ['فرایندها', 'میانگین زمان تکمیل (ساعت)', String(report.processInstances.averageCompletionHours ?? '')],
+      ['فرایندها', 'آغازکنندگان یکتا', String(report.processInstances.uniqueStarters)],
+      ['وظایف باز', 'کل', String(report.taskAging.openTasks)],
+      ['وظایف باز', 'قدیمی‌تر از ۳ روز', String(report.taskAging.olderThan3Days)],
+      ['وظایف باز', 'قدیمی‌تر از ۷ روز', String(report.taskAging.olderThan7Days)],
+      ['وظایف باز', 'قدیمی‌تر از ۱۴ روز', String(report.taskAging.olderThan14Days)],
+      ['وظایف باز', 'میانگین سن (ساعت)', String(report.taskAging.averageOpenHours ?? '')],
+    ];
+    for (const item of report.tasksByStatus) lines.push(['وضعیت وظایف', item.status, String(item.count)]);
+    for (const item of report.dailyThroughput) {
+      lines.push(['روند روزانه', `${item.day} - شروع`, String(item.started)]);
+      lines.push(['روند روزانه', `${item.day} - تکمیل`, String(item.completed)]);
+    }
+    for (const item of report.organizations) {
+      lines.push(['سازمان', `${item.organizationName} - شروع`, String(item.started)]);
+      lines.push(['سازمان', `${item.organizationName} - تکمیل`, String(item.completed)]);
+      lines.push(['سازمان', `${item.organizationName} - در جریان`, String(item.running)]);
+    }
+    for (const item of report.taskAging.oldestOpenTasks) {
+      lines.push(['وظایف قدیمی', item.taskId, `${item.title} | ${item.organizationName} | ${item.ageHours} ساعت`]);
+    }
+    return '\\uFEFF' + lines.map(row => row.map(cell).join(',')).join('\\r\\n') + '\\r\\n';
+  }
+
 }
