@@ -93,6 +93,13 @@ export class WorkflowService {
           AND substitution."tenantId" = :tenantId AND substitution."substituteUserId" = :userId
           AND substitution."revokedAt" IS NULL
           AND substitution."startsAt" <= now() AND substitution."endsAt" > now()
+          AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users su ON su.id = tm."userId" AND su."isActive" = true
+                       WHERE tm."tenantId" = substitution."tenantId" AND tm."userId" = :userId AND tm."isActive" = true)
+          AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId"
+                       JOIN organization_units ou ON ou.id = p."organizationUnitId"
+                      WHERE up."userId" = :userId AND ou."organizationId" = substitution."organizationId"
+                        AND up."isActive" = true AND p."isActive" = true AND ou."isActive" = true
+                        AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now()))
       ) OR EXISTS (
         SELECT 1 FROM task_delegations delegation
          JOIN task_assignees original ON original."taskId" = delegation."taskId"
@@ -121,6 +128,8 @@ export class WorkflowService {
           .where('substitution.organizationId = :organizationId AND substitution.tenantId = :tenantId', { organizationId: task.processInstance.organizationId, tenantId })
           .andWhere('substitution.substituteUserId = :userId AND substitution."revokedAt" IS NULL', { userId })
           .andWhere('substitution."startsAt" <= :now AND substitution."endsAt" > :now', { now: new Date() })
+          .andWhere(`EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users su ON su.id = tm."userId" AND su."isActive" = true WHERE tm."tenantId" = substitution."tenantId" AND tm."userId" = :userId AND tm."isActive" = true)`, { userId })
+          .andWhere(`EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId" JOIN organization_units ou ON ou.id = p."organizationUnitId" WHERE up."userId" = :userId AND ou."organizationId" = substitution."organizationId" AND up."isActive" = true AND p."isActive" = true AND ou."isActive" = true AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now()))`, { userId })
           .setLock('pessimistic_write')
           .getMany();
         if (substitutions.length > 1) throw new ConflictException('Multiple active substitutions match this task; administrator review is required');
