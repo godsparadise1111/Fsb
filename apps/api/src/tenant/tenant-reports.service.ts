@@ -88,6 +88,7 @@ export class TenantReportsService {
     const taskAging = await this.dataSource.query(
       `SELECT
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS'))::int AS "openTasks",
+         count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."dueAt" IS NOT NULL AND wt."dueAt" < now())::int AS "overdueTasks",
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '3 days')::int AS "olderThan3Days",
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '7 days')::int AS "olderThan7Days",
          count(*) FILTER (WHERE wt.status IN ('OPEN', 'IN_PROGRESS') AND wt."createdAt" < now() - interval '14 days')::int AS "olderThan14Days",
@@ -101,7 +102,7 @@ export class TenantReportsService {
     );
 
     const oldestOpenTasks = await this.dataSource.query(
-      `SELECT wt.id AS "taskId", wt.title, wt.status, wt."createdAt",
+      `SELECT wt.id AS "taskId", wt.title, wt.status, wt."createdAt", wt."dueAt", (wt."dueAt" IS NOT NULL AND wt."dueAt" < now()) AS overdue,
               pi.id AS "processInstanceId", pi.title AS "processTitle",
               o.id AS "organizationId", o.name AS "organizationName",
               round((EXTRACT(EPOCH FROM (now() - wt."createdAt")) / 3600)::numeric, 1) AS "ageHours"
@@ -143,15 +144,17 @@ export class TenantReportsService {
       tasksByStatus: tasks.map((item: any) => ({ status: item.status, count: Number(item.count) })),
       taskAging: {
         openTasks: Number(taskAging[0]?.openTasks ?? 0),
+        overdueTasks: Number(taskAging[0]?.overdueTasks ?? 0),
         olderThan3Days: Number(taskAging[0]?.olderThan3Days ?? 0),
         olderThan7Days: Number(taskAging[0]?.olderThan7Days ?? 0),
         olderThan14Days: Number(taskAging[0]?.olderThan14Days ?? 0),
         averageOpenHours: taskAging[0]?.averageOpenHours == null ? null : Number(taskAging[0].averageOpenHours),
         oldestOpenTasks: oldestOpenTasks.map((item: any) => ({
           taskId: item.taskId, title: item.title, status: item.status,
-          createdAt: item.createdAt, processInstanceId: item.processInstanceId,
-          processTitle: item.processTitle, organizationId: item.organizationId,
-          organizationName: item.organizationName, ageHours: Number(item.ageHours),
+          createdAt: item.createdAt, dueAt: item.dueAt, overdue: item.overdue,
+          processInstanceId: item.processInstanceId, processTitle: item.processTitle,
+          organizationId: item.organizationId, organizationName: item.organizationName,
+          ageHours: Number(item.ageHours),
         })),
       },
       dailyThroughput: daily.map((item: any) => ({ day: item.day, started: Number(item.started), completed: Number(item.completed) })),
@@ -183,6 +186,7 @@ export class TenantReportsService {
       ['فرایندها', 'میانگین زمان تکمیل (ساعت)', String(report.processInstances.averageCompletionHours ?? '')],
       ['فرایندها', 'آغازکنندگان یکتا', String(report.processInstances.uniqueStarters)],
       ['وظایف باز', 'کل', String(report.taskAging.openTasks)],
+      ['وظایف باز', 'مهلت‌گذشته', String(report.taskAging.overdueTasks)],
       ['وظایف باز', 'قدیمی‌تر از ۳ روز', String(report.taskAging.olderThan3Days)],
       ['وظایف باز', 'قدیمی‌تر از ۷ روز', String(report.taskAging.olderThan7Days)],
       ['وظایف باز', 'قدیمی‌تر از ۱۴ روز', String(report.taskAging.olderThan14Days)],
@@ -199,7 +203,7 @@ export class TenantReportsService {
       lines.push(['سازمان', `${item.organizationName} - در جریان`, String(item.running)]);
     }
     for (const item of report.taskAging.oldestOpenTasks) {
-      lines.push(['وظایف قدیمی', item.taskId, `${item.title} | ${item.organizationName} | ${item.ageHours} ساعت`]);
+      lines.push(['وظایف قدیمی', item.taskId, `${item.title} | ${item.organizationName} | ${item.ageHours} ساعت | ${item.overdue ? 'مهلت‌گذشته' : 'در مهلت'}`]);
     }
     return '\uFEFF' + lines.map(row => row.map(cell).join(',')).join('\r\n') + '\r\n';
   }
