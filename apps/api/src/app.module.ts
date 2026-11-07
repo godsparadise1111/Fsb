@@ -9,6 +9,7 @@ import { FormsModule } from './forms/forms.module';
 import { AuthModule } from './auth/auth.module';
 import { TenantModule } from './tenant/tenant.module';
 import { Tenant } from './tenant/entities/tenant.entity';
+import { TenantMembership } from './tenant/entities/tenant-membership.entity';
 import { Organization } from './organization/entities/organization.entity';
 import { OrganizationUnit } from './organization/entities/organization-unit.entity';
 import { Position } from './organization/entities/position.entity';
@@ -36,18 +37,11 @@ import { FormSubmission } from './forms/entities/form-submission.entity';
       username: process.env.POSTGRES_USER ?? 'fsb',
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
-      entities: [Tenant, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
+      entities: [Tenant, TenantMembership, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
-    HealthModule,
-    OrganizationModule,
-    IdentityModule,
-    ProcessModule,
-    WorkflowModule,
-    FormsModule,
-    AuthModule,
-    TenantModule,
+    HealthModule, OrganizationModule, IdentityModule, ProcessModule, WorkflowModule, FormsModule, AuthModule, TenantModule,
   ],
 })
 export class AppModule {}
