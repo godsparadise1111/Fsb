@@ -30,6 +30,7 @@ import { FormVersion } from './forms/entities/form-version.entity';
 import { FormSubmission } from './forms/entities/form-submission.entity';
 import { NotificationOutbox } from './notifications/entities/notification-outbox.entity';
 import { NotificationsModule } from './notifications/notifications.module';
+import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
 
 @Module({
   imports: [
@@ -40,7 +41,7 @@ import { NotificationsModule } from './notifications/notifications.module';
       username: process.env.POSTGRES_USER ?? 'fsb',
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
-      entities: [NotificationOutbox, Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
+      entities: [TenantAuditLog, NotificationOutbox, Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
