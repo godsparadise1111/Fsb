@@ -47,6 +47,7 @@ export class IdentityService {
       if (!isActive && user.isActive) {
         const adminMemberships = await manager.find(TenantMembership, {
           where: { userId: id, isActive: true, isTenantAdmin: true },
+          order: { tenantId: 'ASC' },
         });
         for (const membership of adminMemberships) {
           await manager.findOne(Tenant, { where: { id: membership.tenantId }, lock: { mode: 'pessimistic_write' } });
