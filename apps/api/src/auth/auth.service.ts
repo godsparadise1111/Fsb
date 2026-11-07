@@ -1,13 +1,25 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../identity/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
+import { CreateUserDto } from '../identity/dto/create-user.dto';
 @Injectable()
 export class AuthService {
   constructor(@InjectRepository(User) private readonly users: Repository<User>, private readonly jwt: JwtService) {}
+  async bootstrap(dto: CreateUserDto, suppliedToken?: string) {
+    const expected = process.env.BOOTSTRAP_TOKEN ?? '';
+    if (!expected || !suppliedToken || expected.length !== suppliedToken.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(suppliedToken))) throw new ForbiddenException('Invalid bootstrap token');
+    if (await this.users.count() !== 0) throw new ConflictException('Bootstrap is closed because users already exist');
+    const email = dto.email.toLowerCase();
+    if (await this.users.findOne({ where: [{ email }, { username: dto.username }] })) throw new ConflictException('Email or username already exists');
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const { password, ...profile } = dto;
+    return this.users.save(this.users.create({ ...profile, email, passwordHash, isActive: true }));
+  }
   async login(dto: LoginDto) {
     const user = await this.users.createQueryBuilder('user')
       .addSelect('user.passwordHash')
