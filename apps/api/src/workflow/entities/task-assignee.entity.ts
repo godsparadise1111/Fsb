@@ -6,6 +6,7 @@ import { User } from '../../identity/entities/user.entity';
 @Unique('UQ_task_assignee_user', ['taskId', 'userId'])
 export class TaskAssignee {
   @PrimaryGeneratedColumn('uuid') id: string;
+  @Column('uuid', { insert: false, update: false }) tenantId: string;
   @Column('uuid') taskId: string;
   @ManyToOne(() => WorkflowTask, task => task.assignees, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'taskId' }) task: WorkflowTask;
