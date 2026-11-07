@@ -4,7 +4,6 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Repository } from 'typeorm';
 import { User } from '../../identity/entities/user.entity';
-import { Tenant } from '../../tenant/entities/tenant.entity';
 import { TenantMembership } from '../../tenant/entities/tenant-membership.entity';
 
 const jwtSecret = process.env.JWT_SECRET ?? (process.env.NODE_ENV === 'production' ? '' : 'development-only-change-this-secret');
@@ -15,7 +14,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(TenantMembership) private readonly memberships: Repository<TenantMembership>,
-    @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
   ) {
     super({ jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), ignoreExpiration: false, secretOrKey: jwtSecret, passReqToCallback: true });
   }
