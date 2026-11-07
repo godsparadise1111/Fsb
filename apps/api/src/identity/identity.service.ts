@@ -11,6 +11,7 @@ import { Organization } from '../organization/entities/organization.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { AssignPositionDto } from './dto/assign-position.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
+import { CreatePermissionDto } from './dto/create-permission.dto';
 
 @Injectable()
 export class IdentityService {
@@ -50,6 +51,11 @@ export class IdentityService {
     if (!await this.users.exist({ where: { id: userId } })) throw new NotFoundException('User not found');
     return this.memberships.find({ where: { userId, isActive: true }, relations: { position: { unit: true } }, order: { isPrimary: 'DESC', validFrom: 'DESC' } });
   }
+  async createPermission(dto: CreatePermissionDto) {
+    if (await this.permissions.findOneBy({ code: dto.code })) throw new ConflictException('Permission code already exists');
+    return this.permissions.save(this.permissions.create({ ...dto, description: dto.description ?? null }));
+  }
+  listPermissions() { return this.permissions.find({ order: { code: 'ASC' } }); }
   async createRole(dto: CreateRoleDto) {
     if (await this.roles.findOneBy({ code: dto.code })) throw new ConflictException('Role code already exists');
     const permissions = dto.permissionIds?.length ? await this.permissions.findByIds(dto.permissionIds) : [];
