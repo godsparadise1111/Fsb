@@ -107,7 +107,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       const retained = pending.map(a => a.userId).filter(id => !displaced.includes(id)); const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) return;
       const newTargets = targets.filter(id => !byUser.has(id));
       await manager.query(\`UPDATE task_assignees SET status='REASSIGNED', comment='Automatically reassigned because assignee is inactive or no longer eligible' WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])\`, [candidate.taskId,displaced]);
-      if (newTargets.length) await manager.query(\`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,x,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) x ON CONFLICT ("taskId","userId") DO NOTHING\`, [candidate.taskId,newTargets]);
+      if (newTargets.length) await manager.query(\`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,target_id,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) AS targets(target_id) ON CONFLICT ("taskId","userId") DO NOTHING\`, [candidate.taskId,newTargets]);
       await manager.query(\`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)\`, [candidate.tenantId,candidate.taskId,JSON.stringify(displaced),JSON.stringify(finalIds),'Automatic reassignment because pending assignees became inactive or lost valid tenant/organization membership']);
     });
   }
