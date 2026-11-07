@@ -35,7 +35,7 @@ export class WorkflowService {
       if (!await manager.getRepository(User).exist({ where: { id: dto.startedByUserId, isActive: true } })) throw new NotFoundException('Active starter user not found');
       const instance = await manager.save(ProcessInstance, manager.create(ProcessInstance, {
         processVersionId: version.id, organizationId: dto.organizationId, startedByUserId: dto.startedByUserId,
-        title: dto.title, data: dto.data ?? {}, status: 'RUNNING',
+        title: dto.title, data: dto.data ?? {}, status: 'RUNNING', currentStepIndex: 0,
       }));
       const task = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
         processInstanceId: instance.id, title: dto.firstTaskTitle ?? 'بررسی و اقدام اولیه',
@@ -81,10 +81,33 @@ export class WorkflowService {
       } else if (completed) {
         task.status = 'COMPLETED';
         task.completedAt = new Date();
-        const instance = await manager.findOneByOrFail(ProcessInstance, { id: task.processInstanceId });
-        instance.status = 'COMPLETED';
-        instance.completedAt = new Date();
-        await manager.save(instance);
+        const instance = await manager.findOne({ where: { id: task.processInstanceId }, relations: { processVersion: true } });
+        if (!instance) throw new NotFoundException('Process instance not found');
+        const rawSteps = instance.processVersion.schema?.steps;
+        const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES' }> : [];
+        const nextIndex = instance.currentStepIndex + 1;
+        if (nextIndex < steps.length) {
+          const next = steps[nextIndex];
+          const nextUserIds = [...new Set(next.assigneeUserIds ?? [])];
+          if (!nextUserIds.length) throw new BadRequestException('Every configured workflow step must have at least one assignee');
+          const nextUsers = await manager.find(User, { where: { id: In(nextUserIds), isActive: true } });
+          if (nextUsers.length !== nextUserIds.length) throw new BadRequestException('Every next-step assignee must be an active user');
+          const nextTask = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
+            processInstanceId: instance.id,
+            title: next.title ?? `مرحله ${nextIndex + 1}`,
+            instructions: next.instructions ?? null,
+            assignmentPolicy: next.assignmentPolicy ?? 'ALL_ASSIGNEES',
+            status: 'OPEN',
+            createdByUserId: instance.startedByUserId,
+          }));
+          await manager.save(TaskAssignee, nextUserIds.map(userId => manager.create(TaskAssignee, { taskId: nextTask.id, userId, status: 'PENDING' })));
+          instance.currentStepIndex = nextIndex;
+          await manager.save(instance);
+        } else {
+          instance.status = 'COMPLETED';
+          instance.completedAt = new Date();
+          await manager.save(instance);
+        }
       } else {
         task.status = 'IN_PROGRESS';
       }
