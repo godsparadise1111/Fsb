@@ -4,13 +4,14 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
 import { OrganizationService } from './organization.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 @Controller('organizations')
 export class OrganizationController {
   constructor(private readonly service: OrganizationService) {}
   @RequirePermissions('tenants.manage')
   @Post() create(@Body() dto: CreateOrganizationDto) { return this.service.createOrganization(dto); }
   @RequirePermissions('organization.read')
-  @Get() list() { return this.service.listOrganizations(); }
+  @Get() list(@CurrentUser() user: AuthenticatedUser) { return this.service.listOrganizations(user.tenantId); }
   @RequirePermissions('organization.manage')
   @Post('units') createUnit(@Body() dto: CreateUnitDto) { return this.service.createUnit(dto); }
   @RequirePermissions('organization.read')
