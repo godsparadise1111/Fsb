@@ -4,15 +4,18 @@ import { Repository } from 'typeorm';
 import { Organization } from './entities/organization.entity';
 import { OrganizationUnit } from './entities/organization-unit.entity';
 import { Position } from './entities/position.entity';
+import { Tenant } from '../tenant/entities/tenant.entity';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
 @Injectable()
 export class OrganizationService {
-  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>) {}
+  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>) {}
   async createOrganization(dto: CreateOrganizationDto) {
+    const tenant = await this.tenants.findOne({ where: { id: dto.tenantId } });
+    if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Organization can only be created for an active tenant');
     if (await this.organizations.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
-    return this.organizations.save(this.organizations.create(dto));
+    return this.organizations.save(this.organizations.create({ ...dto, tenant }));
   }
   listOrganizations() { return this.organizations.find({ where: { isActive: true }, order: { name: 'ASC' } }); }
   async createUnit(dto: CreateUnitDto) {
