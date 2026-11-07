@@ -255,7 +255,7 @@ export class WorkflowService {
 
   async listTaskDelegations(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: true } });
+    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
     if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
     const [assigned, started] = await Promise.all([
       this.assignees.exist({ where: { taskId, userId: requesterId } }),
@@ -272,7 +272,7 @@ export class WorkflowService {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       const task = await manager.findOne(WorkflowTask, {
-        where: { id: taskId }, relations: { processInstance: true },
+        where: { id: taskId }, relations: { processInstance: { organization: true } },
         lock: { mode: 'pessimistic_write' },
       });
       if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
