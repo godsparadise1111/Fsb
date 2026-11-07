@@ -62,10 +62,24 @@ export class ProcessService {
         if (!step || typeof step !== 'object' || Array.isArray(step)) {
           throw new BadRequestException(`Process step ${index + 1} must be an object`);
         }
-        const dueInHours = (step as Record<string, unknown>).dueInHours;
+        const config = step as Record<string, unknown>;
+        const dueInHours = config.dueInHours;
         if (dueInHours !== undefined && dueInHours !== null &&
             (typeof dueInHours !== 'number' || !Number.isFinite(dueInHours) || dueInHours <= 0 || dueInHours > 8760)) {
           throw new BadRequestException(`Process step ${index + 1} dueInHours must be greater than 0 and no more than 8760`);
+        }
+        const escalateAfterHours = config.escalateAfterHours;
+        if (escalateAfterHours !== undefined && escalateAfterHours !== null &&
+            (typeof escalateAfterHours !== 'number' || !Number.isFinite(escalateAfterHours) || escalateAfterHours < 0 || escalateAfterHours > 8760)) {
+          throw new BadRequestException(`Process step ${index + 1} escalateAfterHours must be between 0 and 8760`);
+        }
+        if (config.escalationUserIds !== undefined &&
+            (!Array.isArray(config.escalationUserIds) || config.escalationUserIds.length > 50 ||
+             config.escalationUserIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) {
+          throw new BadRequestException(`Process step ${index + 1} escalationUserIds must be an array of at most 50 UUIDs`);
+        }
+        if (config.escalationUserIds !== undefined && (escalateAfterHours === undefined || escalateAfterHours === null)) {
+          throw new BadRequestException(`Process step ${index + 1} must configure escalateAfterHours when escalationUserIds are set`);
         }
       }
       version.status = 'PUBLISHED';
