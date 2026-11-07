@@ -53,5 +53,16 @@
 
 سیاست `ALL_ASSIGNEES` فقط پس از تأیید همه افراد منتسب، کار را کامل می‌کند. سیاست `ANY_ASSIGNEE` با اولین تأیید کامل می‌شود. رد هر یک از افراد در نسخه فعلی، کار و نمونه فرایند را لغو می‌کند.
 
+### فرم‌ساز و ثبت اطلاعات
+- `POST /api/forms` تعریف فرم؛ `organizationId`, `code`, `name` و اختیاری `description`
+- `GET /api/forms?organizationId=...` فهرست فرم‌ها
+- `POST /api/forms/:id/versions` ساخت نسخه فرم؛ `schema` و اختیاری `changeNote`
+- `GET /api/forms/:id/versions` فهرست نسخه‌ها
+- `POST /api/forms/:id/versions/:versionId/publish` انتشار نسخه فرم
+- `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `submittedByUserId`, `data` و اختیاری `processInstanceId`
+- `GET /api/forms/versions/:versionId/submissions` مشاهده ثبت‌های یک نسخه فرم
+
+ساختار schema فرم به‌صورت JSON نگهداری می‌شود و نسخه‌های منتشرشده مبنای ثبت داده قرار می‌گیرند. اعتبارسنجی معنایی فیلدها و رندرر فرم در لایه بعدی توسعه می‌یابد.
+
 ## هشدارهای فعلی
 این API در این مرحله برای توسعه است و هنوز احراز هویت، کنترل دسترسی اجرایی و مدیریت نشست ندارد؛ شناسه کاربر در درخواست‌ها صرفاً ورودی است و هویت اثبات‌شده محسوب نمی‌شود. تا تکمیل لایه امنیتی، آن را در شبکه عمومی منتشر نکنید. تنظیم `DB_SYNCHRONIZE=true` فقط برای توسعه محلی است؛ برای محیط عملیاتی باید migrationهای TypeORM استفاده شوند. اجرای build و تست هنوز انجام نشده و عمداً به مرحله‌ای که درخواست کرده‌اید موکول است.
