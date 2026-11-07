@@ -105,7 +105,9 @@ CREATE INDEX "IDX_form_submissions_tenant_submitted" ON form_submissions ("tenan
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_organization() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid;
 BEGIN
-  SELECT "tenantId" INTO resolved FROM organizations WHERE id = NEW."organizationId";
+  SELECT o."tenantId" INTO resolved FROM organizations o
+    INNER JOIN tenants t ON t.id = o."tenantId" AND t.status = 'ACTIVE'
+   WHERE o.id = NEW."organizationId";
   IF resolved IS NULL THEN RAISE EXCEPTION 'Organization has no active tenant mapping'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Cross-tenant organization reference rejected'; END IF;
   NEW."tenantId" := resolved;
@@ -115,7 +117,9 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_process_definition() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid;
 BEGIN
-  SELECT "tenantId" INTO resolved FROM process_definitions WHERE id = NEW."definitionId";
+  SELECT pd."tenantId" INTO resolved FROM process_definitions pd
+    INNER JOIN tenants t ON t.id = pd."tenantId" AND t.status = 'ACTIVE'
+   WHERE pd.id = NEW."definitionId";
   IF resolved IS NULL THEN RAISE EXCEPTION 'Process definition tenant not found'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Cross-tenant process version rejected'; END IF;
   NEW."tenantId" := resolved;
@@ -125,7 +129,9 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_form_definition() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid;
 BEGIN
-  SELECT "tenantId" INTO resolved FROM form_definitions WHERE id = NEW."definitionId";
+  SELECT fd."tenantId" INTO resolved FROM form_definitions fd
+    INNER JOIN tenants t ON t.id = fd."tenantId" AND t.status = 'ACTIVE'
+   WHERE fd.id = NEW."definitionId";
   IF resolved IS NULL THEN RAISE EXCEPTION 'Form definition tenant not found'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Cross-tenant form version rejected'; END IF;
   NEW."tenantId" := resolved;
@@ -150,7 +156,9 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_instance() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid;
 BEGIN
-  SELECT "tenantId" INTO resolved FROM process_instances WHERE id = NEW."processInstanceId";
+  SELECT pi."tenantId" INTO resolved FROM process_instances pi
+    INNER JOIN tenants t ON t.id = pi."tenantId" AND t.status = 'ACTIVE'
+   WHERE pi.id = NEW."processInstanceId";
   IF resolved IS NULL THEN RAISE EXCEPTION 'Process instance tenant not found'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Cross-tenant workflow task rejected'; END IF;
   NEW."tenantId" := resolved;
@@ -160,7 +168,9 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_task() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid;
 BEGIN
-  SELECT "tenantId" INTO resolved FROM workflow_tasks WHERE id = NEW."taskId";
+  SELECT wt."tenantId" INTO resolved FROM workflow_tasks wt
+    INNER JOIN tenants t ON t.id = wt."tenantId" AND t.status = 'ACTIVE'
+   WHERE wt.id = NEW."taskId";
   IF resolved IS NULL THEN RAISE EXCEPTION 'Workflow task tenant not found'; END IF;
   IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved THEN RAISE EXCEPTION 'Cross-tenant workflow action rejected'; END IF;
   NEW."tenantId" := resolved;
@@ -170,7 +180,9 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_set_tenant_from_form_submission() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE resolved uuid; process_tenant uuid;
 BEGIN
-  SELECT "tenantId" INTO resolved FROM form_versions WHERE id = NEW."formVersionId";
+  SELECT fv."tenantId" INTO resolved FROM form_versions fv
+    INNER JOIN tenants t ON t.id = fv."tenantId" AND t.status = 'ACTIVE'
+   WHERE fv.id = NEW."formVersionId";
   IF resolved IS NULL THEN RAISE EXCEPTION 'Form version tenant not found'; END IF;
   IF NEW."processInstanceId" IS NOT NULL THEN
     SELECT "tenantId" INTO process_tenant FROM process_instances WHERE id = NEW."processInstanceId";
