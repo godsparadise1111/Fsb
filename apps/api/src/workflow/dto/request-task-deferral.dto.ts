@@ -1,4 +1,4 @@
-import { IsDateString, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RequestTaskDeferralDto {
   @IsDateString()
@@ -11,7 +11,8 @@ export class RequestTaskDeferralDto {
 }
 
 export class ReviewTaskDeferralDto {
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
-  comment: string;
+  comment?: string;
 }
