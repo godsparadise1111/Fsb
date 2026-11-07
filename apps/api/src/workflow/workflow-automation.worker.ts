@@ -143,7 +143,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       if (!Number.isFinite(reassignAfterHours) || new Date(task.dueAt).getTime() + reassignAfterHours * 3600000 > Date.now()) return;
       if (Number(instance.step?.reassignAfterHours) !== Number(candidate.step?.reassignAfterHours) ||
           JSON.stringify(instance.step?.reassignUserIds) !== JSON.stringify(candidate.step?.reassignUserIds)) return;
-      const [existing] = await manager.query('SELECT id FROM workflow_task_reassignments WHERE "taskId" = $1', [candidate.taskId]);
+      const [existing] = await manager.query('SELECT id FROM workflow_task_reassignments WHERE "taskId" = $1 AND "triggerType" = 'SLA'', [candidate.taskId]);
       if (existing) return;
 
       const eligible = await manager.query(
