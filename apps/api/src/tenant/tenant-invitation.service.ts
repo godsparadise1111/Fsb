@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
+import { RegisterTenantInvitationDto } from './dto/register-tenant-invitation.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
@@ -74,6 +76,51 @@ export class TenantInvitationService {
     invitation.revokedAt = new Date();
     await this.invitations.save(invitation);
     return { id: invitation.id, revoked: true };
+  }
+
+  async register(token: string, dto: RegisterTenantInvitationDto) {
+    const tokenHash = this.hashToken(token);
+    return this.dataSource.transaction(async manager => {
+      const repository = manager.getRepository(TenantInvitation);
+      const invitation = await repository.createQueryBuilder('invitation')
+        .addSelect('invitation.tokenHash')
+        .where('invitation.tokenHash = :tokenHash', { tokenHash })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!invitation) throw new NotFoundException('Invitation is invalid or no longer available');
+      if (invitation.acceptedAt || invitation.revokedAt) throw new BadRequestException('Invitation has already been used or revoked');
+      if (invitation.expiresAt.getTime() <= Date.now()) throw new BadRequestException('Invitation has expired');
+
+      const tenant = await manager.findOne(Tenant, { where: { id: invitation.tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('The invited tenant is not active');
+      const userRepository = manager.getRepository(User);
+      const existingEmail = await userRepository.createQueryBuilder('user')
+        .where('LOWER(user.email) = :email', { email: invitation.email }).getOne();
+      if (existingEmail) throw new ConflictException('An account already exists for this email; sign in and accept the invitation instead');
+      if (await userRepository.exist({ where: { username: dto.username } })) throw new ConflictException('Username already exists');
+
+      const passwordHash = await bcrypt.hash(dto.password, 12);
+      const user = await userRepository.save(userRepository.create({
+        firstName: dto.firstName.trim(), lastName: dto.lastName.trim(),
+        email: invitation.email, username: dto.username, passwordHash,
+        phone: dto.phone ?? null, isActive: true,
+      }));
+      const membershipRepository = manager.getRepository(TenantMembership);
+      const membership = await membershipRepository.save(membershipRepository.create({
+        tenantId: invitation.tenantId, userId: user.id, isActive: true,
+        isTenantAdmin: invitation.isTenantAdmin, acceptedAt: new Date(),
+      }));
+      invitation.acceptedAt = new Date();
+      invitation.acceptedByUserId = user.id;
+      await repository.save(invitation);
+      return {
+        registered: true,
+        user: { id: user.id, email: user.email, username: user.username },
+        tenant: { id: tenant.id, name: tenant.name },
+        isTenantAdmin: membership.isTenantAdmin,
+        nextStep: 'Sign in, then send X-Tenant-Id with the tenant id on subsequent requests.',
+      };
+    });
   }
 
   async accept(token: string, userId: string) {
