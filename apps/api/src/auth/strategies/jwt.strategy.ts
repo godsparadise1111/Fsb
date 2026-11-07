@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Repository } from 'typeorm';
+import { User } from '../../identity/entities/user.entity';
 
 const jwtSecret = process.env.JWT_SECRET ?? (process.env.NODE_ENV === 'production' ? '' : 'development-only-change-this-secret');
 if (jwtSecret.length < 32) {
@@ -9,10 +12,13 @@ if (jwtSecret.length < 32) {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(@InjectRepository(User) private readonly users: Repository<User>) {
     super({ jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), ignoreExpiration: false, secretOrKey: jwtSecret });
   }
-  validate(payload: { sub: string; username: string; email: string }) {
+
+  async validate(payload: { sub: string; username: string; email: string }) {
+    const activeUser = await this.users.exist({ where: { id: payload.sub, isActive: true } });
+    if (!activeUser) throw new UnauthorizedException('User account is inactive or no longer exists');
     return { sub: payload.sub, username: payload.username, email: payload.email };
   }
 }
