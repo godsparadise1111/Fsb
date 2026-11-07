@@ -25,6 +25,15 @@ export class WorkflowService {
     @InjectRepository(TaskAssignee) private readonly assignees: Repository<TaskAssignee>,
   ) {}
 
+
+  private deadlineFromHours(value: unknown): Date | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 8760) {
+      throw new BadRequestException('Step dueInHours must be a number greater than 0 and no more than 8760');
+    }
+    return new Date(Date.now() + value * 3600000);
+  }
+
   async startProcess(dto: StartProcessDto & { startedByUserId: string }) {
     return this.dataSource.transaction(async manager => {
       const version = await manager.findOne(ProcessVersion, { where: { id: dto.processVersionId, status: 'PUBLISHED' }, relations: { definition: true } });
@@ -45,13 +54,15 @@ export class WorkflowService {
         .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
         .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
       if (Number(membershipCount?.count ?? 0) !== new Set([...uniqueIds, dto.startedByUserId]).size) throw new BadRequestException('Starter and every assignee must have an active position in the selected organization');
+      const configuredSteps = Array.isArray(version.schema?.steps) ? version.schema.steps as Array<{ dueInHours?: unknown }> : [];
+      const firstDueAt = this.deadlineFromHours(configuredSteps[0]?.dueInHours);
       const instance = await manager.save(ProcessInstance, manager.create(ProcessInstance, {
         processVersionId: version.id, organizationId: dto.organizationId, startedByUserId: dto.startedByUserId,
         title: dto.title, data: dto.data ?? {}, status: 'RUNNING', currentStepIndex: 0,
       }));
       const task = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
         processInstanceId: instance.id, title: dto.firstTaskTitle ?? 'بررسی و اقدام اولیه',
-        assignmentPolicy: dto.assignmentPolicy ?? 'ALL_ASSIGNEES', status: 'OPEN', createdByUserId: dto.startedByUserId,
+        assignmentPolicy: dto.assignmentPolicy ?? 'ALL_ASSIGNEES', status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
       return manager.findOne(WorkflowTask, { where: { id: task.id }, relations: { assignees: { user: true }, processInstance: true } });
@@ -100,7 +111,7 @@ export class WorkflowService {
         const instance = await manager.findOne({ where: { id: task.processInstanceId }, relations: { processVersion: true } });
         if (!instance) throw new NotFoundException('Process instance not found');
         const rawSteps = instance.processVersion.schema?.steps;
-        const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES' }> : [];
+        const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
         const nextIndex = instance.currentStepIndex + 1;
         if (nextIndex < steps.length) {
           const next = steps[nextIndex];
@@ -124,6 +135,7 @@ export class WorkflowService {
             assignmentPolicy: next.assignmentPolicy ?? 'ALL_ASSIGNEES',
             status: 'OPEN',
             createdByUserId: instance.startedByUserId,
+            dueAt: this.deadlineFromHours(next.dueInHours),
           }));
           await manager.save(TaskAssignee, nextUserIds.map(userId => manager.create(TaskAssignee, { taskId: nextTask.id, userId, status: 'PENDING' })));
           instance.currentStepIndex = nextIndex;
