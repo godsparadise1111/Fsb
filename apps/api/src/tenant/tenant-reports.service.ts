@@ -168,7 +168,7 @@ export class TenantReportsService {
     const cell = (value: unknown) => {
       let text = value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value);
       const first = text.trimStart()[0];
-      if ((first !== undefined && '=+-@'.includes(first)) || text.startsWith('\\t') || text.startsWith('\\r')) text = "'" + text;
+      if ((first !== undefined && '=+-@'.includes(first)) || text.startsWith('\t') || text.startsWith('\r')) text = "'" + text;
       return '"' + text.replace(/"/g, '""') + '"';
     };
     const lines: string[][] = [
@@ -201,7 +201,7 @@ export class TenantReportsService {
     for (const item of report.taskAging.oldestOpenTasks) {
       lines.push(['وظایف قدیمی', item.taskId, `${item.title} | ${item.organizationName} | ${item.ageHours} ساعت`]);
     }
-    return '\\uFEFF' + lines.map(row => row.map(cell).join(',')).join('\\r\\n') + '\\r\\n';
+    return '\uFEFF' + lines.map(row => row.map(cell).join(',')).join('\\r\\n') + '\\r\\n';
   }
 
 }
