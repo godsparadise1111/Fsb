@@ -12,13 +12,46 @@
 5. وب: `npm run dev:web` (پورت 3000)
 
 ## API پایه
-- `GET /api/health` وضعیت سلامت API
-- `POST /api/organizations` ایجاد سازمان؛ بدنه: `{ "name": "...", "code": "..." }
+تمام مسیرهای زیر زیر پیشوند `/api` هستند.
+
+### سلامت
+- `GET /api/health`
+
+### ساختار سازمانی
+- `POST /api/organizations` ایجاد سازمان؛ بدنه: `{ "name": "...", "code": "..." }`
 - `GET /api/organizations` فهرست سازمان‌ها
 - `POST /api/organizations/units` ایجاد واحد؛ بدنه شامل `organizationId`, `name`, `code` و اختیاری `parentId`
 - `GET /api/organizations/:organizationId/units` فهرست واحدهای سازمان
 - `POST /api/organizations/positions` ایجاد سمت؛ بدنه شامل `organizationUnitId`, `title`, `code`
 - `GET /api/organizations/units/:unitId/positions` فهرست سمت‌های واحد
 
+### کاربران، عضویت سازمانی و دسترسی
+- `POST /api/users` ایجاد کاربر؛ `firstName`, `lastName`, `email`, `username` و اختیاری `phone`
+- `GET /api/users` فهرست کاربران فعال
+- `PATCH /api/users/:id/active` فعال/غیرفعال کردن؛ بدنه `{ "isActive": true }`
+- `POST /api/user-positions` انتساب کاربر به سمت؛ `userId`, `positionId`, اختیاری `validFrom`, `validUntil`, `isPrimary`
+- `GET /api/users/:id/positions` سمت‌های کاربر
+- `POST /api/permissions` تعریف مجوز؛ `code`, `name`, اختیاری `description`
+- `GET /api/permissions` فهرست مجوزها
+- `POST /api/roles` ایجاد نقش با `code`, `name`, اختیاری `description`, `permissionIds`
+- `GET /api/roles` فهرست نقش‌ها و مجوزهایشان
+- `POST /api/user-roles` اعطای نقش؛ `userId`, `roleId` و اختیاری `organizationId`
+
+### تعریف و نسخه‌بندی فرایند
+- `POST /api/process-definitions` تعریف فرایند؛ `organizationId`, `code`, `name`, اختیاری `description`
+- `GET /api/process-definitions?organizationId=...` فهرست فرایندها
+- `POST /api/process-definitions/:id/versions` ساخت نسخه جدید پیش‌نویس؛ `schema` و اختیاری `changeNote`
+- `GET /api/process-definitions/:id/versions` فهرست نسخه‌ها
+- `POST /api/process-definitions/:id/versions/:versionId/publish` انتشار نسخه پیش‌نویس
+- `PATCH /api/process-definitions/:id/archive` بایگانی تعریف فرایند
+
+### اجرای گردش‌کار
+- `POST /api/process-instances` شروع نمونه فرایند؛ شامل `processVersionId`, `organizationId`, `startedByUserId`, `title`, `initialAssigneeUserIds` و اختیاری `data`, `assignmentPolicy`, `firstTaskTitle`
+- `GET /api/tasks/my?userId=...` کارهای باز کاربر
+- `POST /api/tasks/:id/actions` اقدام کاربر؛ `userId`, `action` برابر `APPROVED` یا `REJECTED` و اختیاری `comment`
+- `GET /api/tasks/:id/history` تاریخچه اقدامات کار
+
+سیاست `ALL_ASSIGNEES` فقط پس از تأیید همه افراد منتسب، کار را کامل می‌کند. سیاست `ANY_ASSIGNEE` با اولین تأیید کامل می‌شود. رد هر یک از افراد در نسخه فعلی، کار و نمونه فرایند را لغو می‌کند.
+
 ## هشدارهای فعلی
-تنظیم `DB_SYNCHRONIZE=true` فقط برای توسعه محلی است؛ در محیط عملیاتی باید migrationهای TypeORM استفاده شوند. API فعلی هنوز احراز هویت و مجوزدهی ندارد و نباید بدون لایه امنیتی در شبکه عمومی منتشر شود. قبل از اجرای محلی، نصب وابستگی‌ها و تست build لازم است؛ این مخزن از راه دور و در این مرحله روی محیط کاربر اجرا نشده است.
+این API در این مرحله برای توسعه است و هنوز احراز هویت، کنترل دسترسی اجرایی و مدیریت نشست ندارد؛ شناسه کاربر در درخواست‌ها صرفاً ورودی است و هویت اثبات‌شده محسوب نمی‌شود. تا تکمیل لایه امنیتی، آن را در شبکه عمومی منتشر نکنید. تنظیم `DB_SYNCHRONIZE=true` فقط برای توسعه محلی است؛ برای محیط عملیاتی باید migrationهای TypeORM استفاده شوند. اجرای build و تست هنوز انجام نشده و عمداً به مرحله‌ای که درخواست کرده‌اید موکول است.
