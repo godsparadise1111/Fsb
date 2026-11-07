@@ -41,6 +41,16 @@ export class FormsController {
   }
 
   @RequirePermissions('forms.read')
+  @Get('versions/:versionId/submissions/:submissionId/attachments')
+  listAttachments(
+    @Param('versionId') versionId: string,
+    @Param('submissionId') submissionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.fileAttachments.list(versionId, submissionId, user.tenantId);
+  }
+
+  @RequirePermissions('forms.read')
   @Get('versions/:versionId/submissions/:submissionId/attachments/:attachmentId/download')
   async downloadAttachment(
     @Param('versionId') versionId: string,
