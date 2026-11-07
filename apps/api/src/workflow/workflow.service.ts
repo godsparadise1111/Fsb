@@ -333,7 +333,7 @@ export class WorkflowService {
         .getCount() > 0;
       if (!direct && !delegated) throw new ForbiddenException('Only a pending assignee or active delegate may request a deadline change');
 
-      const baseline = task.dueAt ?? now;
+      const baseline = task.dueAt && task.dueAt > now ? task.dueAt : now;
       if (proposedDueAt <= baseline || proposedDueAt.getTime() - baseline.getTime() > 30 * 86400000) {
         throw new BadRequestException('A deferral may extend the current deadline by no more than 30 days');
       }
