@@ -81,6 +81,23 @@ export class ProcessService {
         if (config.escalationUserIds !== undefined && (escalateAfterHours === undefined || escalateAfterHours === null)) {
           throw new BadRequestException(`Process step ${index + 1} must configure escalateAfterHours when escalationUserIds are set`);
         }
+        const reassignAfterHours = config.reassignAfterHours;
+        if (reassignAfterHours !== undefined && reassignAfterHours !== null &&
+            (typeof reassignAfterHours !== 'number' || !Number.isFinite(reassignAfterHours) || reassignAfterHours < 0 || reassignAfterHours > 8760)) {
+          throw new BadRequestException(`Process step ${index + 1} reassignAfterHours must be between 0 and 8760`);
+        }
+        if (config.reassignUserIds !== undefined &&
+            (!Array.isArray(config.reassignUserIds) || config.reassignUserIds.length < 1 || config.reassignUserIds.length > 50 ||
+             config.reassignUserIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) {
+          throw new BadRequestException(`Process step ${index + 1} reassignUserIds must be an array of 1 to 50 UUIDs`);
+        }
+        if (config.reassignUserIds !== undefined && (reassignAfterHours === undefined || reassignAfterHours === null)) {
+          throw new BadRequestException(`Process step ${index + 1} must configure reassignAfterHours when reassignUserIds are set`);
+        }
+        if (reassignAfterHours !== undefined && reassignAfterHours !== null &&
+            (dueInHours === undefined || dueInHours === null || config.reassignUserIds === undefined)) {
+          throw new BadRequestException(`Process step ${index + 1} automatic reassignment requires dueInHours and reassignUserIds`);
+        }
       }
       version.status = 'PUBLISHED';
       version.publishedAt = new Date();
