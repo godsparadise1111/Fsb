@@ -5,6 +5,7 @@ import { OrganizationModule } from './organization/organization.module';
 import { IdentityModule } from './identity/identity.module';
 import { ProcessModule } from './process/process.module';
 import { WorkflowModule } from './workflow/workflow.module';
+import { FormsModule } from './forms/forms.module';
 import { Organization } from './organization/entities/organization.entity';
 import { OrganizationUnit } from './organization/entities/organization-unit.entity';
 import { Position } from './organization/entities/position.entity';
@@ -19,6 +20,9 @@ import { ProcessInstance } from './workflow/entities/process-instance.entity';
 import { WorkflowTask } from './workflow/entities/workflow-task.entity';
 import { TaskAssignee } from './workflow/entities/task-assignee.entity';
 import { WorkflowActionLog } from './workflow/entities/workflow-action-log.entity';
+import { FormDefinition } from './forms/entities/form-definition.entity';
+import { FormVersion } from './forms/entities/form-version.entity';
+import { FormSubmission } from './forms/entities/form-submission.entity';
 
 @Module({
   imports: [
@@ -29,7 +33,7 @@ import { WorkflowActionLog } from './workflow/entities/workflow-action-log.entit
       username: process.env.POSTGRES_USER ?? 'fsb',
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
-      entities: [Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog],
+      entities: [Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission],
       synchronize: process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
@@ -38,6 +42,7 @@ import { WorkflowActionLog } from './workflow/entities/workflow-action-log.entit
     IdentityModule,
     ProcessModule,
     WorkflowModule,
+    FormsModule,
   ],
 })
 export class AppModule {}
