@@ -22,11 +22,17 @@ CREATE INDEX "IDX_task_delegations_active_target"
   ON task_delegations ("tenantId", "toUserId", "endsAt") WHERE "revokedAt" IS NULL;
 CREATE INDEX "IDX_task_delegations_task"
   ON task_delegations ("tenantId", "taskId", "createdAt" DESC);
+CREATE UNIQUE INDEX "UQ_task_delegations_active_original"
+  ON task_delegations ("taskId", "fromUserId") WHERE "revokedAt" IS NULL;
 
 CREATE OR REPLACE FUNCTION fsb_validate_task_delegation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   -- Revocation is always permitted, including after task closure or membership expiry.
-  IF TG_OP = 'UPDATE' AND NEW."revokedAt" IS DISTINCT FROM OLD."revokedAt" THEN
+  IF TG_OP = 'UPDATE'
+     AND NEW."revokedAt" IS DISTINCT FROM OLD."revokedAt"
+     AND ROW(NEW."taskId", NEW."tenantId", NEW."fromUserId", NEW."toUserId", NEW."startsAt", NEW."endsAt")
+         IS NOT DISTINCT FROM
+         ROW(OLD."taskId", OLD."tenantId", OLD."fromUserId", OLD."toUserId", OLD."startsAt", OLD."endsAt") THEN
     RETURN NEW;
   END IF;
   IF NOT EXISTS (
