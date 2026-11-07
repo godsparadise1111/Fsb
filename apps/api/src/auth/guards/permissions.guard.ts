@@ -28,6 +28,8 @@ export class PermissionsGuard implements CanActivate {
       request.body?.processVersionId,
       request.body?.formVersionId,
       request.body?.processInstanceId,
+      request.body?.organizationUnitId,
+      request.body?.parentId,
     ].filter((value): value is string => typeof value === 'string' && value.length > 0);
     if (!candidates.length) return direct;
 
