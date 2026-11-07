@@ -59,6 +59,17 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       return false;
     }
     if (item.eventType !== 'tenant.invitation.created') throw new Error(`Unsupported notification event: ${item.eventType}`);
+    const invitationId = String(item.payload.invitationId ?? '');
+    const [invitation] = await this.dataSource.query(
+      `SELECT id FROM tenant_invitations
+        WHERE id = $1 AND "tenantId" = $2
+          AND "acceptedAt" IS NULL AND "revokedAt" IS NULL AND "expiresAt" > now()`,
+      [invitationId, item.tenantId],
+    );
+    if (!invitation) {
+      await this.outbox.markDead(item.id, this.workerId, 'Invitation is expired, revoked, or already accepted');
+      return false;
+    }
     const tenantName = String(item.payload.tenantName ?? 'F-S');
     const acceptPath = String(item.payload.acceptPath ?? '');
     if (!acceptPath.startsWith('/invite?token=')) throw new Error('Invitation link is invalid');
