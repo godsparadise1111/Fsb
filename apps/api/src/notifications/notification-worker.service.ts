@@ -26,12 +26,16 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('FSB_SMTP_PORT is invalid');
     const authUser = process.env.FSB_SMTP_USER;
     const authPass = process.env.FSB_SMTP_PASS;
+    if (Boolean(authUser) !== Boolean(authPass)) throw new Error('Configure both FSB_SMTP_USER and FSB_SMTP_PASS, or neither');
+    const parsedPublicUrl = new URL(publicUrl);
+    if (process.env.NODE_ENV === 'production' && parsedPublicUrl.protocol !== 'https:') throw new Error('FSB_PUBLIC_APP_URL must use HTTPS in production');
     this.transporter = nodemailer.createTransport({
       host, port, secure: process.env.FSB_SMTP_SECURE === 'true',
       ...(authUser && authPass ? { auth: { user: authUser, pass: authPass } } : {}),
       connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
     });
-    const interval = Math.min(60000, Math.max(1000, Number(process.env.FSB_NOTIFICATION_POLL_MS ?? 5000)));
+    const requestedInterval = Number(process.env.FSB_NOTIFICATION_POLL_MS ?? 5000);
+    const interval = Number.isFinite(requestedInterval) ? Math.min(60000, Math.max(1000, requestedInterval)) : 5000;
     this.timer = setInterval(() => void this.processBatch(), interval);
     this.timer.unref();
     void this.processBatch();
@@ -44,15 +48,15 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private escapeHtml(value: string) {
-    return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  private async send(item: { id: string; tenantId: string; eventType: string; recipient: string; subject: string | null; payload: Record<string, unknown> }) {
+  private async send(item: { id: string; tenantId: string; eventType: string; recipient: string; subject: string | null; payload: Record<string, unknown> }): Promise<boolean> {
     if (!this.transporter) throw new Error('SMTP transport is unavailable');
     const [tenant] = await this.dataSource.query('SELECT status FROM tenants WHERE id = $1', [item.tenantId]);
     if (!tenant || tenant.status !== 'ACTIVE') {
       await this.outbox.markDead(item.id, this.workerId, 'Tenant is not active; notification was not sent');
-      return;
+      return false;
     }
     if (item.eventType !== 'tenant.invitation.created') throw new Error(`Unsupported notification event: ${item.eventType}`);
     const tenantName = String(item.payload.tenantName ?? 'F-S');
@@ -62,13 +66,14 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     const invitationUrl = new URL(acceptPath, baseUrl).toString();
     const safeTenant = this.escapeHtml(tenantName);
     const safeUrl = this.escapeHtml(invitationUrl);
-    const subject = item.subject ?? `Invitation to join ${tenantName}`;
+    const subject = (item.subject ?? `Invitation to join ${tenantName}`).replaceAll('\r', ' ').replaceAll('\n', ' ').slice(0, 160);
     const text = `You have been invited to join ${tenantName}. Open this link to accept the invitation: ${invitationUrl}`;
     const html = `<p>You have been invited to join <strong>${safeTenant}</strong>.</p><p><a href="${safeUrl}">Accept invitation</a></p><p>This link expires in seven days and can only be used once.</p>`;
     await this.transporter.sendMail({
       from: process.env.FSB_EMAIL_FROM, to: item.recipient, subject, text, html,
       messageId: `<fsb-${item.id}@${baseUrl.hostname}>`,
     });
+    return true;
   }
 
   private async processBatch() {
@@ -78,8 +83,11 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const items = await this.outbox.claimBatch(this.workerId, 20);
       for (const item of items) {
         try {
-          await this.send(item);
-          await this.outbox.markDelivered(item.id, this.workerId);
+          const sent = await this.send(item);
+          if (sent) {
+            const acknowledged = await this.outbox.markDelivered(item.id, this.workerId);
+            if (!acknowledged) this.logger.warn(`Notification ${item.id} was sent but its lease could not be acknowledged`);
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.logger.warn(`Notification ${item.id} failed: ${message.slice(0, 300)}`);
