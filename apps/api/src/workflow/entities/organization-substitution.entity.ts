@@ -1,8 +1,6 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('organization_substitutions')
-@Index('IDX_org_substitutions_substitute_active', ['tenantId', 'substituteUserId', 'startsAt', 'endsAt'])
-@Index('IDX_org_substitutions_original_active', ['tenantId', 'originalUserId', 'startsAt', 'endsAt'])
 export class OrganizationSubstitution {
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column('uuid') tenantId: string;
