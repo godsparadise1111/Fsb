@@ -1,11 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { IsBoolean } from 'class-validator';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CreateTenantMembershipDto } from './dto/create-tenant-membership.dto';
 import { TenantMembershipService } from './tenant-membership.service';
 
 class UpdateTenantAdminDto { @IsBoolean() isTenantAdmin: boolean; }
-import { IsBoolean } from 'class-validator';
 
 @Controller('tenant/members')
 export class TenantSelfServiceController {
