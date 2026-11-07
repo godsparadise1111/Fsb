@@ -49,10 +49,10 @@
 - `POST /api/auth/login` ورود با `username` (یا ایمیل) و `password`؛ خروجی شامل JWT.
 - `GET /api/auth/me` دریافت مشخصات کاربر جاری؛ نیازمند `Authorization: Bearer <token>`.
 - `POST /api/users` ایجاد کاربر توسط کاربر واردشده؛ شامل `firstName`, `lastName`, `email`, `username`, `password` و اختیاری `phone`
-- `GET /api/users` فهرست کاربران فعال
+- `GET /api/users` فهرست کاربران فعال؛ برای اعضای Tenant فقط کاربران دارای عضویت فعال در همان Tenant برگردانده می‌شوند
 - `PATCH /api/users/:id/active` فعال/غیرفعال کردن؛ بدنه `{ "isActive": true }`
 - `POST /api/user-positions` انتساب کاربر به سمت؛ `userId`, `positionId`, اختیاری `validFrom`, `validUntil`, `isPrimary`
-- `GET /api/users/:id/positions` سمت‌های کاربر
+- `GET /api/users/:id/positions` سمت‌های کاربر؛ در زمینه Tenant فقط سمت‌های همان مشتری برگردانده می‌شوند
 - `POST /api/permissions` تعریف مجوز؛ `code`, `name`, اختیاری `description`
 - `GET /api/permissions` فهرست مجوزها
 - `POST /api/roles` ایجاد نقش با `code`, `name`, اختیاری `description`, `permissionIds`
@@ -84,7 +84,7 @@
 - `POST /api/forms/versions/:versionId/submissions` ثبت داده فرم؛ `data` و اختیاری `processInstanceId` (ثبت‌کننده از JWT؛ نمونه فرایند باید متعلق به همان سازمان فرم باشد)
 - `GET /api/forms/versions/:versionId/submissions?organizationId=...` مشاهده ثبت‌های یک نسخه فرم؛ سازمان باید با سازمان تعریف فرم منطبق باشد.
 
-سازمان‌های قدیمی که `tenantId` ندارند تا زمان مهاجرت و تخصیص صریح به مشتری، مجاز به ایجاد فرایند/فرم جدید یا شروع گردش‌کار نیستند. راهنمای اجرای امن و SQL نسخه‌بندی‌شده در `docs/TENANT_MIGRATION.md` و `apps/api/database/migrations/20261107_001_tenant_membership_and_safe_legacy_scope.sql` قرار دارد؛ SQL هیچ سازمان قدیمی را خودکار به مشتری وصل نمی‌کند. ایجاد سازمان جدید فقط برای Tenant با وضعیت `ACTIVE` ممکن است. درخواست‌های HTTP احراز هویت‌شده با زمینهٔ Tenant تعلیق‌شده/بسته در لایهٔ JWT رد می‌شوند؛ نقش سازمانی نیز بدون زمینهٔ Tenant معتبر پذیرفته نمی‌شود. با این حال فیلتر tenant-aware تمام مسیرهای منابع فرزند، فایل‌ها، صف‌ها، jobها و گزارش‌ها هنوز کامل نیست و عرضه SaaS مجاز نیست.
+سازمان‌های قدیمی که `tenantId` ندارند تا زمان مهاجرت و تخصیص صریح به مشتری، مجاز به ایجاد فرایند/فرم جدید یا شروع گردش‌کار نیستند. راهنمای اجرای امن و SQL نسخه‌بندی‌شده در `docs/TENANT_MIGRATION.md` و `apps/api/database/migrations/20261107_001_tenant_membership_and_safe_legacy_scope.sql` قرار دارد؛ SQL هیچ سازمان قدیمی را خودکار به مشتری وصل نمی‌کند. ایجاد سازمان جدید فقط برای Tenant با وضعیت `ACTIVE` ممکن است. درخواست‌های HTTP احراز هویت‌شده با زمینهٔ Tenant تعلیق‌شده/بسته در لایهٔ JWT رد می‌شوند؛ انتساب سمت و نقش سازمانی نیز باید به عضویت فعال همان Tenant تعلق داشته باشد؛ نقش سازمانی نیز بدون زمینهٔ Tenant معتبر پذیرفته نمی‌شود. با این حال فیلتر tenant-aware تمام مسیرهای منابع فرزند، فایل‌ها، صف‌ها، jobها و گزارش‌ها هنوز کامل نیست و عرضه SaaS مجاز نیست.
 
 ساختار schema فرم به‌صورت JSON نگهداری می‌شود و نسخه‌های منتشرشده مبنای ثبت داده قرار می‌گیرند. اعتبارسنجی معنایی فیلدها و رندرر فرم در لایه بعدی توسعه می‌یابد.
 
