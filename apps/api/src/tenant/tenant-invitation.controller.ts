@@ -36,7 +36,7 @@ export class TenantInvitationController {
 
   @Public()
   @Post('register')
-  register(@Body() dto: RegisterTenantInvitationDto & { token: string }) {
+  register(@Body() dto: RegisterTenantInvitationDto) {
     return this.invitations.register(dto.token, dto);
   }
 
