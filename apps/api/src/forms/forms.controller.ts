@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors, StreamableFile, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors, StreamableFile, NotFoundException, Header } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FormsService } from './forms.service';
 import { FileAttachmentsService } from './file-attachments.service';
@@ -52,6 +52,8 @@ export class FormsController {
 
   @RequirePermissions('forms.read')
   @Get('versions/:versionId/submissions/:submissionId/attachments/:attachmentId/download')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
   async downloadAttachment(
     @Param('versionId') versionId: string,
     @Param('submissionId') submissionId: string,
