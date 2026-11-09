@@ -18,7 +18,7 @@ export interface WorkflowAssignmentTargets {
 }
 
 export interface ProcessStepDefinition extends WorkflowAssignmentTargets {
-  title: string;
+  title?: string;
   instructions?: string;
   assignmentPolicy?: AssignmentPolicy;
   dueInHours?: number;
