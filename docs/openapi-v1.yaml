@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: F-S Tenant Public API
+  version: 1.0.0
+  description: >
+    Initial versioned tenant API. Credentials are tenant-scoped, hashed at rest,
+    revocable and limited to explicit scopes. Never send keys in URLs.
+servers:
+  - url: https://{host}/api
+    variables:
+      host:
+        default: bpms.example.com
+security:
+  - TenantApiKey: []
+paths:
+  /v1/tenant/profile:
+    get:
+      operationId: getTenantProfileV1
+      summary: Read the authenticated tenant profile
+      security:
+        - TenantApiKey: []
+      responses:
+        '200':
+          description: Tenant profile and credential scopes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, tenant, scopes]
+                properties:
+                  apiVersion:
+                    type: string
+                    const: v1
+                  tenant:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+                      code: { type: string }
+                      status: { type: string }
+                      plan: { type: string }
+                  scopes:
+                    type: array
+                    items: { type: string }
+        '401': { description: Invalid, expired or revoked API key }
+        '403': { description: Missing tenant.read scope or inactive entitlement }
+  /v1/tenant/reports/overview:
+    get:
+      operationId: getTenantReportOverviewV1
+      summary: Read tenant-scoped operational overview
+      security:
+        - TenantApiKey: []
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+          description: Inclusive UTC date in YYYY-MM-DD format
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+          description: Exclusive UTC date in YYYY-MM-DD format
+      responses:
+        '200': { description: Tenant-scoped report }
+        '401': { description: Invalid, expired or revoked API key }
+        '403': { description: Missing reports.read scope or subscription entitlement }
+components:
+  securitySchemes:
+    TenantApiKey:
+      type: apiKey
+      in: header
+      name: X-FSB-API-Key
