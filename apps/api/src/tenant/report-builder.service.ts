@@ -179,7 +179,7 @@ export class ReportBuilderService {
       const excluded = /password|secret|file|attachment|signature|hidden|image|camera|document/.test(rawType) || item.sensitive === true || item.isSensitive === true || item.isHidden === true;
       const type: Field['type'] | null = /number|numeric|decimal|integer|currency|amount|rating/.test(rawType) ? 'number'
         : /date|time/.test(rawType) ? 'date'
-        : /text|string|email|phone|select|radio|checkbox|boolean|lookup/.test(rawType) ? 'text' : null;
+        : /text|string|email|phone|select|radio|checkbox|boolean|lookup|dropdown|switch|combobox|autocomplete|url/.test(rawType) ? 'text' : null;
       if (!excluded && fieldId && label && type && /^[A-Za-z0-9_-]{1,100}$/.test(fieldId)) {
         const key = 'custom_' + version.versionId.replace(/-/g, '') + '_' + fieldId.replace(/[^A-Za-z0-9_]/g, '_');
         if (!seen.has(key)) {
@@ -187,7 +187,7 @@ export class ReportBuilderService {
           const json = "fs.data ->> '" + fieldId + "'";
           let expression = json;
           if (type === 'number') expression = "CASE WHEN COALESCE(" + json + ",'') ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (" + json + ")::numeric END";
-          if (type === 'date') expression = "CASE WHEN COALESCE(" + json + ",'') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (" + json + ")::date END";
+          if (type === 'date') expression = "CASE WHEN pg_input_is_valid(" + json + ",'date') THEN (" + json + ")::date END";
           source.fields[key] = {
             label: version.formName + ' · v' + version.versionNumber + ' · ' + label,
             expression, type, groupable: type === 'text', filterable: true,
