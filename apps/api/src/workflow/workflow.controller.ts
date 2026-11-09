@@ -20,16 +20,19 @@ export class WorkflowController {
   @RequirePermissions('workflow.tasks.act')
   @Post('tasks/:id/actions') act(@Param('id') id: string, @Body() dto: ActTaskDto, @Headers('idempotency-key') idempotencyKey: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.act(id, user.sub, dto, user.tenantId, idempotencyKey); }
   @RequirePermissions('workflow.tasks.act')
+  @RequiresFeature('delegation')
   @Post('tasks/:id/delegations')
   delegate(@Param('id') id: string, @Body() dto: DelegateTaskDto, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.delegateTask(id, user.sub, dto, user.tenantId);
   }
   @RequirePermissions('workflow.history.read')
+  @RequiresFeature('delegation')
   @Get('tasks/:id/delegations')
   delegations(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listTaskDelegations(id, user.sub, user.tenantId);
   }
   @RequirePermissions('workflow.tasks.act')
+  @RequiresFeature('delegation')
   @Delete('tasks/:id/delegations/:delegationId')
   revokeDelegation(@Param('id') id: string, @Param('delegationId') delegationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.revokeTaskDelegation(id, delegationId, user.sub, user.tenantId);
