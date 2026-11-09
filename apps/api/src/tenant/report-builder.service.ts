@@ -262,7 +262,7 @@ export class ReportBuilderService {
     const dimension = spec.groupBy ? source.fields[spec.groupBy] : undefined;
     const measure = spec.aggregate === 'count' ? null : source.fields[spec.measure as string];
     const metric = spec.aggregate === 'count' ? 'COUNT(*)' : spec.aggregate.toUpperCase() + '(' + measure!.expression + ')';
-    const select = dimension ? dimension.expression + ' AS "dimension",' + metric + ' AS "value" : metric + ' AS "value";
+    const select = dimension ? dimension.expression + ' AS "dimension",' + metric + ' AS "value"' : metric + ' AS "value";
     const group = dimension ? ' GROUP BY ' + dimension.expression + ' ORDER BY "value" DESC NULLS LAST' : '';
     const sql = 'SELECT ' + select + ' FROM ' + source.from + ' WHERE ' + clauses.join(' AND ') + group + ' LIMIT ' + (spec.limit ?? 100);
     const rows = await this.dataSource.transaction(async manager => {
