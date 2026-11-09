@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED';
@@ -159,12 +159,13 @@ export class CommercialService {
       if (!subscription) throw new NotFoundException('Tenant subscription not found');
       if (subscription.status === 'CANCELLED') throw new BadRequestException('Cancelled subscriptions cannot be renewed; assign a new subscription first');
       const [invoice] = await manager.query(
-        `SELECT id,status,"totalMinor","currencyCode","invoiceNumber"
+        `SELECT id,status,"totalMinor","currencyCode","invoiceNumber","renewedAt"
            FROM tenant_invoices WHERE id=$1 AND "tenantId"=$2 AND "subscriptionId"=$3 FOR UPDATE`,
         [invoiceId, tenantId, subscription.id],
       );
       if (!invoice) throw new NotFoundException('Invoice not found for this tenant subscription');
       if (invoice.status !== 'PAID') throw new BadRequestException('Subscription renewal requires a PAID invoice');
+      if (invoice.renewedAt) throw new ConflictException('This paid invoice has already been applied to a subscription renewal');
       const [renewed] = await manager.query(
         `UPDATE tenant_subscriptions
             SET status='ACTIVE',
@@ -181,6 +182,13 @@ export class CommercialService {
           RETURNING id,status,"billingCycle","currentPeriodStart","currentPeriodEnd"`,
         [subscription.id],
       );
+      const [receipt] = await manager.query(
+        `UPDATE tenant_invoices SET "renewedAt"=now()
+          WHERE id=$1 AND "tenantId"=$2 AND status='PAID' AND "renewedAt" IS NULL
+          RETURNING id`,
+        [invoice.id, tenantId],
+      );
+      if (!receipt) throw new ConflictException('Paid invoice has already been used for renewal');
       await manager.query(
         `INSERT INTO tenant_audit_logs ("tenantId","actorUserId",action,"resourceType","resourceId",metadata)
          VALUES ($1,$2,'SUBSCRIPTION_RENEWED','TENANT_SUBSCRIPTION',$3,$4::jsonb)`,
