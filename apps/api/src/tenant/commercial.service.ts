@@ -46,7 +46,7 @@ export class CommercialService {
     if (!tenant) throw new NotFoundException('Tenant not found');
     const invoices = await this.dataSource.query(
       `SELECT id, "invoiceNumber", status, "currencyCode", "subtotalMinor", "taxMinor", "totalMinor",
-              description, "issuedAt", "dueAt", "paidAt", "createdAt"
+              description, "issuedAt", "dueAt", "paidAt", "renewedAt", "createdAt"
          FROM tenant_invoices WHERE "tenantId" = $1 ORDER BY "createdAt" DESC LIMIT 50`,
       [tenantId],
     );
