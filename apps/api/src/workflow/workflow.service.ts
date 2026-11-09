@@ -476,6 +476,60 @@ export class WorkflowService {
     });
   }
 
+  private async readOrganizationWorkloadPolicy(organizationId: string, tenantId: string, manager = this.dataSource.manager) {
+    const rows = await manager.query(
+      `SELECT "maxOpenTasksPerSubstitute", "warningThresholdPercent", "enforceLimit"
+         FROM organization_workload_policies WHERE "tenantId" = $1 AND "organizationId" = $2`,
+      [tenantId, organizationId],
+    );
+    const row = rows[0];
+    return row ? {
+      configured: true,
+      maxOpenTasksPerSubstitute: Number(row.maxOpenTasksPerSubstitute),
+      warningThresholdPercent: Number(row.warningThresholdPercent),
+      enforceLimit: Boolean(row.enforceLimit),
+    } : { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false };
+  }
+
+  async getOrganizationWorkloadPolicy(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    return { organizationId, policy: await this.readOrganizationWorkloadPolicy(organizationId, tenantId) };
+  }
+
+  async updateOrganizationWorkloadPolicy(
+    organizationId: string, tenantId: string | null | undefined, actorUserId: string,
+    input: { maxOpenTasksPerSubstitute: number; warningThresholdPercent: number; enforceLimit: boolean },
+  ) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const max = Number(input.maxOpenTasksPerSubstitute), warning = Number(input.warningThresholdPercent);
+    if (!Number.isInteger(max) || max < 1 || max > 500) throw new BadRequestException('maxOpenTasksPerSubstitute must be between 1 and 500');
+    if (!Number.isInteger(warning) || warning < 1 || warning > 100) throw new BadRequestException('warningThresholdPercent must be between 1 and 100');
+    if (typeof input.enforceLimit !== 'boolean') throw new BadRequestException('enforceLimit must be a boolean');
+    return this.dataSource.transaction(async manager => {
+      const organization = await manager.findOne(Organization, { where: { id: organizationId, tenantId, isActive: true } });
+      if (!organization) throw new NotFoundException('Organization not found');
+      await manager.query(
+        `INSERT INTO organization_workload_policies
+          ("tenantId","organizationId","maxOpenTasksPerSubstitute","warningThresholdPercent","enforceLimit","updatedByUserId","updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,now())
+         ON CONFLICT ("tenantId","organizationId") DO UPDATE SET
+          "maxOpenTasksPerSubstitute"=EXCLUDED."maxOpenTasksPerSubstitute",
+          "warningThresholdPercent"=EXCLUDED."warningThresholdPercent",
+          "enforceLimit"=EXCLUDED."enforceLimit",
+          "updatedByUserId"=EXCLUDED."updatedByUserId","updatedAt"=now()`,
+        [tenantId, organizationId, max, warning, input.enforceLimit, actorUserId],
+      );
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, action: 'workflow.organization_workload_policy.updated',
+        resourceType: 'ORGANIZATION', resourceId: organizationId,
+        metadata: { maxOpenTasksPerSubstitute: max, warningThresholdPercent: warning, enforceLimit: input.enforceLimit },
+      });
+      return { organizationId, policy: await this.readOrganizationWorkloadPolicy(organizationId, tenantId, manager) };
+    });
+  }
+
   async getOrganizationWorkload(organizationId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
