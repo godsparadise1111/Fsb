@@ -273,27 +273,41 @@ export class WorkflowService {
       const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
       if (!organization) throw new NotFoundException('Active organization not found');
       if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
-      const uniqueIds = [...new Set(dto.initialAssigneeUserIds)];
-      const users = await manager.find(User, { where: { id: In(uniqueIds), isActive: true } });
-      if (users.length !== uniqueIds.length) throw new BadRequestException('Every assignee must be an active user');
-      const membershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
-        .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
-        .innerJoin('tenant_memberships', 'tenantMembership', 'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true', { tenantId: organization.tenantId })
-        .where('membership.userId IN (:...userIds)', { userIds: [...uniqueIds, dto.startedByUserId] })
-        .andWhere('unit.organizationId = :organizationId', { organizationId: dto.organizationId })
-        .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
-        .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
-        .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
-      if (Number(membershipCount?.count ?? 0) !== new Set([...uniqueIds, dto.startedByUserId]).size) throw new BadRequestException('Starter and every assignee must have an active position in the selected organization');
-      const configuredSteps = Array.isArray(version.schema?.steps) ? version.schema.steps as Array<{ dueInHours?: unknown }> : [];
+      const configuredSteps = Array.isArray(version.schema?.steps) ? version.schema.steps as Array<Record<string, unknown>> : [];
+      const firstStep = configuredSteps[0] ?? {};
+      const hasRequestTargets = [
+        dto.initialAssigneeUserIds, dto.initialAssigneePositionIds, dto.initialAssigneeUnitIds,
+      ].some(values => Array.isArray(values) && values.length > 0);
+      const firstStepTargets: Record<string, unknown> = hasRequestTargets
+        ? {
+            assigneeUserIds: dto.initialAssigneeUserIds ?? [],
+            assigneePositionIds: dto.initialAssigneePositionIds ?? [],
+            assigneeUnitIds: dto.initialAssigneeUnitIds ?? [],
+          }
+        : firstStep;
+      const uniqueIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, firstStepTargets);
+      const starterPosition = await manager.query(
+        `SELECT 1 FROM user_positions up
+           JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+           JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
+           JOIN tenant_memberships tm ON tm."tenantId"=$2 AND tm."userId"=up."userId" AND tm."isActive"=true
+           JOIN users u ON u.id=up."userId" AND u."isActive"=true
+          WHERE up."userId"=$3 AND up."isActive"=true AND up."validFrom"<=now()
+            AND (up."validUntil" IS NULL OR up."validUntil">=now()) LIMIT 1`,
+        [dto.organizationId, organization.tenantId, dto.startedByUserId],
+      );
+      if (!starterPosition.length) throw new BadRequestException('The process starter must have an active tenant membership and position in the selected organization');
       const firstDueAt = this.deadlineFromHours(configuredSteps[0]?.dueInHours);
       const instance = await manager.save(ProcessInstance, manager.create(ProcessInstance, {
         processVersionId: version.id, organizationId: dto.organizationId, startedByUserId: dto.startedByUserId,
         title: dto.title, data: dto.data ?? {}, status: 'RUNNING', currentStepIndex: 0,
       }));
       const task = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
-        processInstanceId: instance.id, title: dto.firstTaskTitle ?? 'بررسی و اقدام اولیه',
-        assignmentPolicy: dto.assignmentPolicy ?? 'ALL_ASSIGNEES', status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
+        processInstanceId: instance.id,
+        title: dto.firstTaskTitle ?? (typeof firstStep.title === 'string' ? firstStep.title : 'بررسی و اقدام اولیه'),
+        instructions: typeof firstStep.instructions === 'string' ? firstStep.instructions : null,
+        assignmentPolicy: dto.assignmentPolicy ?? (firstStep.assignmentPolicy === 'ANY_ASSIGNEE' ? 'ANY_ASSIGNEE' : 'ALL_ASSIGNEES'),
+        status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
       await this.enqueueTaskAssignmentNotifications(manager, organization.tenantId, task.id, uniqueIds);
