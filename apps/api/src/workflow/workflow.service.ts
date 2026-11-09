@@ -354,7 +354,9 @@ export class WorkflowService {
       }));
       const task = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
         processInstanceId: instance.id,
-        title: (dto.firstTaskTitle ?? (typeof firstStep.title === 'string' ? firstStep.title : 'بررسی و اقدام اولیه')).trim().slice(0, 200),
+        title: (typeof dto.firstTaskTitle === 'string' && dto.firstTaskTitle.trim()
+          ? dto.firstTaskTitle
+          : typeof firstStep.title === 'string' && firstStep.title.trim() ? firstStep.title : 'بررسی و اقدام اولیه').trim().slice(0, 200),
         instructions: typeof firstStep.instructions === 'string' ? firstStep.instructions : null,
         assignmentPolicy: firstAssignmentPolicy,
         status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
