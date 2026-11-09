@@ -204,15 +204,14 @@ BEGIN
            jsonb_build_object('delegationId', d.id, 'membershipId', OLD.id)
       FROM task_delegations d JOIN workflow_tasks wt ON wt.id=d."taskId"
      WHERE d."tenantId"=OLD."tenantId" AND d."revokedAt" IS NULL
-       AND (d."fromUserId"=OLD."userId" OR d."toUserId"=OLD."userId")
-       AND wt.status IN ('OPEN','IN_PROGRESS');
+       AND (d."fromUserId"=OLD."userId" OR d."toUserId"=OLD."userId");
 
     INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
     SELECT DISTINCT OLD."tenantId", r."taskId", 'DEFERRAL_CANCELLED_ACCESS_REVOKED', OLD."userId",
            jsonb_build_object('requestId', r.id, 'membershipId', OLD.id)
       FROM task_deferral_requests r JOIN workflow_tasks wt ON wt.id=r."taskId"
      WHERE r."tenantId"=OLD."tenantId" AND r."requesterUserId"=OLD."userId"
-       AND r.status='PENDING' AND wt.status IN ('OPEN','IN_PROGRESS');
+       AND r.status='PENDING';
 
     INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
     SELECT DISTINCT OLD."tenantId", wt.id, 'SUBSTITUTION_ACCESS_REVOKED', OLD."userId",
