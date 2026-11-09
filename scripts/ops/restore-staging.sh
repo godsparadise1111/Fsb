@@ -33,7 +33,7 @@ tar -xzf "$tmp/archive.tar.gz" -C "$tmp"
 compose="docker compose --env-file .env -f compose.production.yaml"
 # Create a new database; CREATE DATABASE fails rather than overwriting an existing one.
 $compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE $1"' sh "$RESTORE_DATABASE"
-$compose exec -T db sh -c 'pg_restore --no-owner -U "$POSTGRES_USER" -d "$1"' sh "$RESTORE_DATABASE" < "$tmp/database.dump"
+$compose exec -T db sh -c 'pg_restore --no-owner --no-acl --exit-on-error -U "$POSTGRES_USER" -d "$1"' sh "$RESTORE_DATABASE" < "$tmp/database.dump"
 # Restore private files into a new subdirectory so the active file tree is never overwritten.
 $compose run --rm -T --no-deps --entrypoint sh api -c 'mkdir -p "$FSB_FILE_STORAGE_PATH/$1" && tar -xzf - -C "$FSB_FILE_STORAGE_PATH/$1"' sh "$restore_subdir" < "$tmp/private-files.tar.gz"
 
