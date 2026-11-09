@@ -128,3 +128,14 @@ Migration 015 وضعیت `CANCELLED` را برای درخواست تعویق ا�
 
 
 - 20261109_018_workflow_recovery_incident_events.sql: جدول append-only تاریخچهٔ تلاش‌های Worker، تأیید رسیدگی، بستن رخداد و درخواست Replay ردشده را ایجاد می‌کند. این migration باید بعد از 017 اجرا شود؛ سپس پنل `/recovery-incidents` و APIهای `/api/workflow/recovery-incidents` قابل استفاده‌اند. Tenant از زمینهٔ احراز هویت استخراج می‌شود و Tenant Admin فقط به رخدادهای همان Tenant دسترسی دارد.
+
+
+## سلامت عملیاتی پلتفرم و Registry امن Replay
+
+- مسیر `GET /api/platform/workflow-health` فقط با مجوز پلتفرمی `tenants.read` در دسترس است؛ این مسیر Tenant جاری را از ورودی نمی‌گیرد و فقط برای مدیر پلتفرم نمای تجمیعی می‌سازد.
+- پنل `/platform-workflow-health` شاخص‌های Tenantهای فعال، فرایندها، وظایف، رخدادهای بازیابی، صف اعلان‌ها و سیگنال‌های Worker را نشان می‌دهد. پنل مشتری نیز از `GET /api/tenant/dashboard` تعداد رخدادهای باز، رخدادهای بسته‌شده در ۲۴ ساعت و آخرین مشاهده Worker را دریافت می‌کند.
+- نبود `WORKER_SCAN` در ۱۵ دقیقه، به‌تنهایی اثبات خرابی Worker نیست؛ ممکن است در آن بازه رخداد واجد شرایطی وجود نداشته باشد. مقدار env فقط پیکربندی Worker را نشان می‌دهد و سیگنال مشاهده‌شده از تاریخچه رخدادها جدا گزارش می‌شود.
+- `WorkflowRecoveryReplayRegistry` یک allow-list درون‌برنامه‌ای است. Handler باید system-only، idempotent، دارای idempotency key اجباری و فاقد امکان اقدام انسانی یا پیشبرد مرحله باشد. ثبت Handler تکراری برای یک نوع رخداد رد می‌شود.
+- Registry در حال حاضر عمداً خالی است. حتی در صورت ثبت Handler، endpoint اجرای Replay تا زمان تکمیل executor تراکنشی و receipt پایدار idempotency fail-closed باقی می‌ماند. بنابراین در این نسخه هیچ عملیات Replay واقعی اجرا نمی‌شود و هیچ migration جدیدی برای این قابلیت لازم نیست.
+- مدیر پلتفرم برای مشاهده داشبورد باید نقش PLATFORM با مجوز `tenants.read` داشته باشد. مدیر Tenant فقط داشبورد همان Tenant را می‌بیند؛ API تجمیعی برای نقش Tenant ارائه نمی‌شود.
+
