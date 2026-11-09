@@ -43,6 +43,9 @@ END $function$;
 CREATE TRIGGER "TR_workflow_task_lifecycle_append_only"
   BEFORE UPDATE OR DELETE ON workflow_task_lifecycle_events
   FOR EACH ROW EXECUTE FUNCTION fsb_reject_workflow_task_lifecycle_mutation();
+CREATE TRIGGER "TR_workflow_task_lifecycle_no_truncate"
+  BEFORE TRUNCATE ON workflow_task_lifecycle_events
+  FOR EACH STATEMENT EXECUTE FUNCTION fsb_reject_workflow_task_lifecycle_mutation();
 
 CREATE OR REPLACE FUNCTION fsb_validate_task_deferral_request() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
