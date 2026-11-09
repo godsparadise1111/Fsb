@@ -163,7 +163,11 @@ export class TenantReportsService {
               count(*) FILTER (WHERE ri.status='OPEN')::int AS open,
               count(*) FILTER (WHERE ri.status='ACKNOWLEDGED')::int AS acknowledged,
               count(*) FILTER (WHERE ri.status='RESOLVED')::int AS resolved,
-              count(*) FILTER (WHERE ri.status='RESOLVED' AND ri."resolvedAt">=$2 AND ri."resolvedAt"<$3)::int AS "resolvedInPeriod",
+              (SELECT count(*)::int FROM workflow_recovery_incidents closed
+                JOIN process_instances closedPi ON closedPi.id=closed."processInstanceId" AND closedPi."tenantId"=closed."tenantId"
+               WHERE closed."tenantId"=$1 AND closed.status='RESOLVED'
+                 AND closed."resolvedAt">=$2 AND closed."resolvedAt"<$3
+                 AND ($4::uuid IS NULL OR closedPi."organizationId"=$4)) AS "resolvedInPeriod",
               round(avg(EXTRACT(EPOCH FROM (ri."resolvedAt"-ri."createdAt"))/3600)
                 FILTER (WHERE ri.status='RESOLVED' AND ri."resolvedAt" IS NOT NULL)::numeric,2) AS "averageResolutionHours",
               count(*) FILTER (WHERE ri."incidentType"='RUNNING_PROCESS_TASK_COUNT_MISMATCH')::int AS "processStateMismatches",
