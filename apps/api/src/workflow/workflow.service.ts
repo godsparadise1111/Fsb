@@ -1170,7 +1170,7 @@ export class WorkflowService {
   }
 
   async listOrganizationAbsences(
-    organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string,
+    organizationId: string, tenantId: string | null | undefined, requesterId: string, limitValue?: string, offsetValue?: string,
     fromValue?: string, toValue?: string, statusValue?: string,
   ) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
@@ -1195,10 +1195,9 @@ export class WorkflowService {
     if (!['ALL', 'ACTIVE', 'UPCOMING', 'EXPIRED', 'CANCELLED'].includes(status)) {
       throw new BadRequestException('status must be ALL, ACTIVE, UPCOMING, EXPIRED or CANCELLED');
     }
-    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
-    if (!organization) throw new NotFoundException('Organization not found');
-
-    const repository = this.dataSource.getRepository(OrganizationAbsence);
+    return this.dataSource.transaction(async manager => {
+    await this.assertActiveWorkflowMember(manager, tenantId, requesterId, organizationId);
+    const repository = manager.getRepository(OrganizationAbsence);
     const applyScope = (qb: ReturnType<typeof repository.createQueryBuilder>) => {
       qb.where('absence."tenantId" = :tenantId AND absence."organizationId" = :organizationId', { tenantId, organizationId });
       if (from && to) qb.andWhere('absence."startsAt" < :to AND absence."endsAt" > :from', { from, to });
@@ -1231,6 +1230,7 @@ export class WorkflowService {
       cancelled: Number(summaryRaw?.cancelled ?? 0),
     };
     return { items, total, limit, offset, status, summary, range: from && to ? { from: from.toISOString(), to: to.toISOString() } : null };
+    });
   }
 
   async cancelOrganizationAbsence(organizationId: string, absenceId: string, actorUserId: string, tenantId?: string | null) {
