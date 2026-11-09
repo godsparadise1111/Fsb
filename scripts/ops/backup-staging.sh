@@ -26,5 +26,5 @@ encrypted="$tmp/fsb-$stamp.tar.gz.age"
 age -r "$AGE_RECIPIENT" -o "$encrypted" "$archive"
 rm -f "$archive"
 mv "$encrypted" "backups/fsb-$stamp.tar.gz.age"
-sha256sum "backups/fsb-$stamp.tar.gz.age" > "backups/fsb-$stamp.tar.gz.age.sha256"
+(cd backups && sha256sum "fsb-$stamp.tar.gz.age" > "fsb-$stamp.tar.gz.age.sha256")
 echo "Encrypted backup created: backups/fsb-$stamp.tar.gz.age"
