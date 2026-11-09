@@ -51,14 +51,14 @@ export default function ProcessDesignPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const headers = useCallback((json = false): HeadersInit => ({
+  const headers = useCallback((json = false): Record<string, string> => ({
     Authorization: 'Bearer ' + token,
     ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
     ...(json ? { 'Content-Type': 'application/json' } : {}),
   }), [token, tenantId]);
 
   const api = useCallback(async (path: string, init: RequestInit = {}) => {
-    const response = await fetch(API + path, { ...init, headers: { ...headers(init.body !== undefined), ...(init.headers || {}) }, cache: 'no-store' });
+    const response = await fetch(API + path, { ...init, headers: headers(init.body !== undefined), cache: 'no-store' });
     const data = await response.json().catch(() => null);
     if (!response.ok) throw new Error(data?.message || 'درخواست ناموفق بود');
     return data;
