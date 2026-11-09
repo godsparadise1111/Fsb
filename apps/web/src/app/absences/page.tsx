@@ -304,7 +304,7 @@ export default function AbsencesPage() {
         <form className="absence-form absence-create-grid" onSubmit={createAbsence}>
           <label>سازمان<select required value={organizationId} onChange={e => { setOrganizationId(e.target.value); setPageOffset(0); }}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
           <label>کارمند غایب<select required value={form.userId} onChange={e => setForm(v => ({ ...v, userId: e.target.value }))}><option value="">انتخاب کارمند</option>{users.map(user => <option key={user.id} value={user.id}>{personName(user)} · {user.username}</option>)}</select></label>
-          <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{users.filter(user => user.id !== form.userId).map(user => { const load = workload.find(row => row.userId === user.id); return <option key={user.id} value={user.id}>{personName(user)} · {user.username} · {load?.openTaskCount ?? 0} وظیفه باز</option>; })}</select></label>
+          <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{users.filter(user => user.id !== form.userId).map(user => { const load = workload.find(row => row.userId === user.id); return <option key={user.id} value={user.id}>{personName(user)} · {user.username} · {load?.openTaskCount ?? 0} وظیفه باز · {load && policy.configured && load.openTaskCount >= policy.maxOpenTasksPerSubstitute * policy.warningThresholdPercent / 100 ? 'هشدار ظرفیت' : 'ظرفیت عادی'}</option>; })}</select></label>
           <label>شروع غیبت<input type="datetime-local" required value={form.startsAt} onChange={e => setForm(v => ({ ...v, startsAt: e.target.value }))} /></label>
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
@@ -316,7 +316,7 @@ export default function AbsencesPage() {
       </section>}
 
       <section className="absence-panel" style={{ marginTop: 22 }}>
-        <div className="absence-panel-heading"><div><h2>سیاست ظرفیت جانشینان</h2><p>ظرفیت بر اساس تعداد وظایف باز مستقیم و وظایف تحت پوشش جانشینی محاسبه می‌شود.</p></div>
+        <div className="absence-panel-heading"><div><h2>سیاست ظرفیت جانشینان</h2><p>ظرفیت بر اساس وظایف باز مستقیم، پوشش جانشینی سازمانی و واگذاری‌های زمان‌دار محاسبه می‌شود.</p></div>
           <span className={policy.enforceLimit ? 'absence-pill active' : 'absence-pill upcoming'}>{policy.enforceLimit ? 'محدودیت فعال' : 'صرفاً هشدار / غیرفعال'}</span>
         </div>
         <form className="absence-form" onSubmit={saveWorkloadPolicy}>
