@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { hostname } from 'node:os';
 import { createHash } from 'node:crypto';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { ReportBuilderService, ReportSpec, ReportAccessScope } from './report-builder.service';
 import { nextReportScheduleAt, ReportScheduleFrequency } from './report-schedule-time';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
@@ -83,23 +83,21 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async notifySchedule(job: ReportJobRow, result: { rowCount: number; sourceLabel: string }) {
+  private async notifySchedule(manager: EntityManager, job: ReportJobRow, result: { rowCount: number; sourceLabel: string }) {
     if (!job.scheduleId) return;
-    await this.dataSource.transaction(async manager => {
-      const [recipient] = await manager.query(
-        'SELECT u.email FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true AND u.email IS NOT NULL',
-        [job.tenantId, job.ownerUserId],
-      );
-      if (!recipient?.email) return;
-      const dedupeKey = createHash('sha256').update('report-schedule:' + job.scheduleId + ':' + job.id).digest('hex');
-      await this.outbox.enqueue(manager, {
-        tenantId: job.tenantId,
-        eventType: 'report.schedule.completed',
-        recipient: recipient.email,
-        subject: 'گزارش زمان‌بندی‌شده آماده است',
-        dedupeKey,
-        payload: { jobId: job.id, organizationId: job.organizationId, reportTitle: 'گزارش زمان‌بندی‌شده', sourceLabel: result.sourceLabel, rowCount: result.rowCount },
-      });
+    const [recipient] = await manager.query(
+      'SELECT u.email FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true AND u.email IS NOT NULL',
+      [job.tenantId, job.ownerUserId],
+    );
+    if (!recipient?.email) return;
+    const dedupeKey = createHash('sha256').update('report-schedule:' + job.scheduleId + ':' + job.id).digest('hex');
+    await this.outbox.enqueue(manager, {
+      tenantId: job.tenantId,
+      eventType: 'report.schedule.completed',
+      recipient: recipient.email,
+      subject: 'گزارش زمان‌بندی‌شده آماده است',
+      dedupeKey,
+      payload: { jobId: job.id, organizationId: job.organizationId, reportTitle: 'گزارش زمان‌بندی‌شده', sourceLabel: result.sourceLabel, rowCount: result.rowCount },
     });
   }
 
@@ -110,11 +108,13 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
     };
     try {
       const result = await this.reports.execute(job.tenantId, job.config, scope);
-      const updated = await this.dataSource.query(
-        'UPDATE tenant_report_jobs SET status=\'COMPLETED\',result=$3::jsonb,error=NULL,"lockedBy"=NULL,"lockedAt"=NULL,"completedAt"=now(),"updatedAt"=now() WHERE id=$1 AND status=\'PROCESSING\' AND "lockedBy"=$2 RETURNING id',
-        [job.id, this.workerId, JSON.stringify(result)],
-      );
-      if (updated.length) await this.notifySchedule(job, result);
+      await this.dataSource.transaction(async manager => {
+        const updated = await manager.query(
+          'UPDATE tenant_report_jobs SET status=\'COMPLETED\',result=$3::jsonb,error=NULL,"lockedBy"=NULL,"lockedAt"=NULL,"completedAt"=now(),"updatedAt"=now() WHERE id=$1 AND status=\'PROCESSING\' AND "lockedBy"=$2 RETURNING id',
+          [job.id, this.workerId, JSON.stringify(result)],
+        );
+        if (updated.length) await this.notifySchedule(manager, job, result);
+      });
     } catch (error) {
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 1500);
       const retry = job.attempts < 5;
