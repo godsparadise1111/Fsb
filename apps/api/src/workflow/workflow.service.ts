@@ -952,6 +952,7 @@ export class WorkflowService {
         escalatedAt: row.escalatedAt ? new Date(row.escalatedAt).toISOString() : null,
         escalationLevel: Number(row.escalationLevel ?? 0),
         slaStatus: row.status === 'RESOLVED' || row.status === 'IGNORED' ? 'CLOSED'
+          : !row.responseDueAt && !row.resolutionDueAt ? 'DISABLED'
           : row.responseDueAt && new Date(row.responseDueAt) < new Date() && !row.acknowledgedAt ? 'RESPONSE_BREACHED'
           : row.resolutionDueAt && new Date(row.resolutionDueAt) < new Date() ? 'RESOLUTION_BREACHED'
           : row.responseDueAt && new Date(row.responseDueAt).getTime() - Date.now() < 60 * 60 * 1000 ? 'AT_RISK' : 'ON_TRACK',
