@@ -40,7 +40,7 @@ END $$;
 
 -- Every active tenant must have at least one active administrator account.
 -- Existing tenants without one must be reconciled before this migration is applied.
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT t.id
@@ -53,10 +53,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Identity invariant migration blocked: one or more active tenants have no active administrator; appoint one before migration 012';
   END IF;
-END $;
+END $$;
 
 -- Refuse unsafe cleanup if an inactive account is currently the sole admin.
-DO $
+DO $$
 BEGIN
   IF EXISTS (
     SELECT tm."tenantId"
@@ -308,7 +308,7 @@ BEGIN
     RAISE EXCEPTION 'An active tenant must retain at least one active administrator account';
   END IF;
   RETURN NULL;
-END $;
+END $$;
 
 CREATE CONSTRAINT TRIGGER "CT_tenants_require_active_admin"
   AFTER INSERT OR UPDATE ON tenants
