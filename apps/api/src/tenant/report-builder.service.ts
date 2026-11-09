@@ -130,6 +130,8 @@ export class ReportBuilderService {
   }
 
   private async sourceFor(tenantId: string, spec: ReportSpec, organizationIds: string[] = []) {
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new BadRequestException('تعریف گزارش نامعتبر است');
+    if (spec.organizationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(spec.organizationId)) throw new BadRequestException('شناسه سازمان معتبر نیست');
     const base = SOURCES[spec.source];
     if (!base) throw new BadRequestException('منبع داده مجاز نیست');
     const source: Source = { ...base, fields: { ...base.fields } };
@@ -150,7 +152,7 @@ export class ReportBuilderService {
       if (Array.isArray(node)) { for (const child of node.slice(0, 500)) collect(child, version, depth + 1); return; }
       const item = node as Record<string, unknown>;
       const rawId = item.fieldId ?? item.fieldKey ?? item.id ?? item.key ?? item.name;
-      const rawType = String(item.fieldType ?? item.dataType ?? item.controlType ?? item.widgetType ?? item.type ?? '').toLowerCase();
+      const rawType = String(item.fieldType ?? item.dataType ?? item.controlType ?? item.widgetType ?? item.inputType ?? item.type ?? '').toLowerCase();
       const rawLabel = item.label ?? item.title ?? item.caption ?? item.name;
       const fieldId = typeof rawId === 'string' ? rawId.trim() : '';
       const label = typeof rawLabel === 'string' ? rawLabel.trim() : '';
