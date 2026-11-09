@@ -62,13 +62,39 @@ export class FileAttachmentsService {
     await mkdir(this.storageRoot, { recursive: true, mode: 0o700 });
     await chmod(this.storageRoot, 0o700);
     const path = this.getStoragePath(storageKey);
-    await writeFile(path, file.buffer, { flag: 'wx', mode: 0o600 });
     try {
-      const saved = await this.attachments.save(this.attachments.create({
-        id, submissionId, uploadedByUserId: userId, originalName: safeName,
-        storageKey, mimeType: policy.mime, size: String(file.buffer.length), sha256: hash,
-      }));
-      return { id: saved.id, submissionId, originalName: saved.originalName, mimeType: saved.mimeType, size: Number(saved.size), sha256: saved.sha256, createdAt: saved.createdAt };
+      const saved = await this.dataSource.transaction(async manager => {
+        const [entitlement] = await manager.query(
+          `SELECT p.limits,s.status,s."currentPeriodEnd",s."trialEndsAt"
+             FROM tenants t
+             JOIN tenant_subscriptions s ON s."tenantId"=t.id
+             JOIN commercial_plans p ON p.code=s."planCode"
+            WHERE t.id=$1 AND t.status='ACTIVE'
+              AND s.status IN ('ACTIVE','TRIALING')
+              AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">now())
+              AND (s.status<>'TRIALING' OR s."trialEndsAt" IS NULL OR s."trialEndsAt">now())
+            FOR UPDATE OF t,s`,
+          [tenantId],
+        );
+        if (!entitlement) throw new ForbiddenException('Tenant subscription is not eligible for file uploads');
+        const maxStorage = BigInt(String(entitlement.limits?.maxStorageBytes ?? 0));
+        if (maxStorage <= 0n) throw new ForbiddenException('File storage is not enabled for this tenant plan');
+        const [usage] = await manager.query(
+          'SELECT COALESCE(sum(size::numeric),0)::text AS bytes FROM file_attachments WHERE "tenantId"=$1',
+          [tenantId],
+        );
+        const usedBytes = BigInt(usage?.bytes ?? '0');
+        if (usedBytes + BigInt(file.buffer.length) > maxStorage) {
+          throw new BadRequestException('The active subscription file storage quota has been reached');
+        }
+        await writeFile(path, file.buffer, { flag: 'wx', mode: 0o600 });
+        const repository = manager.getRepository(FileAttachment);
+        return repository.save(repository.create({
+          id, submissionId, uploadedByUserId: userId, originalName: safeName,
+          storageKey, mimeType: policy.mime, size: String(file.buffer.length), sha256: hash,
+        }));
+      });
+      return { id: saved.id, submissionId: saved.submissionId, originalName: saved.originalName, mimeType: saved.mimeType, size: Number(saved.size), sha256: saved.sha256, createdAt: saved.createdAt };
     } catch (error) {
       await unlink(path).catch(() => undefined);
       throw error;
