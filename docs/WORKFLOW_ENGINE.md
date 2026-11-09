@@ -82,6 +82,8 @@
 - `POST /api/tasks/:id/reassign`: ارجاع مجدد وظیفه فعال به کاربران، سمت‌ها یا واحدهای همان سازمان؛ نیازمند مجوز سازمانی `workflow.tasks.reassign` و دلیل ۳ تا ۱۰۰۰ کاراکتری است.
 - `GET /api/tasks/:id/history` و `GET /api/tasks/:id/lifecycle`: تاریخچه اقدام و رویدادهای چرخه عمر.
 
+مهاجرت `20261109_026_workflow_task_reassignment_permission.sql` مجوز مستقل ارجاع مجدد را ثبت و مقدار trigger نوع MANUAL را به تاریخچه ارجاع اضافه می‌کند.
+
 ## امنیت و ممیزی
 
 - Tenant از JWT و عضویت جاری پایگاه داده استخراج/تأیید می‌شود؛ `tenantId` بدنه مرجع امنیت نیست.
