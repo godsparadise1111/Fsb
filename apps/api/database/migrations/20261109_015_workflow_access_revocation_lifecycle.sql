@@ -131,12 +131,7 @@ BEGIN
       FROM task_assignees ta
       JOIN workflow_tasks wt ON wt.id = ta."taskId"
      WHERE ta."tenantId" = OLD."tenantId" AND ta."userId" = OLD."userId"
-       AND ta.status = 'PENDING' AND wt.status IN ('OPEN','IN_PROGRESS')
-       AND NOT EXISTS (
-         SELECT 1 FROM workflow_task_lifecycle_events e
-          WHERE e."taskId" = wt.id AND e."eventType" = 'ASSIGNEE_MEMBERSHIP_REVOKED'
-            AND e."affectedUserId" = OLD."userId"
-       );
+       AND ta.status = 'PENDING' AND wt.status IN ('OPEN','IN_PROGRESS');
   END IF;
   RETURN NEW;
 END $$;
