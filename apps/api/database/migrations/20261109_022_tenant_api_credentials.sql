@@ -54,4 +54,23 @@ $;
 CREATE TRIGGER trg_prevent_api_credential_delete
 BEFORE DELETE ON tenant_api_credentials
 FOR EACH ROW EXECUTE FUNCTION fsb_prevent_api_credential_delete();
+
+-- Enforce commercial shutdown even when tenant closure is performed outside the API service.
+CREATE OR REPLACE FUNCTION fsb_close_commercial_access_on_tenant_close()
+RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+  IF OLD.status IS DISTINCT FROM NEW.status AND NEW.status='CLOSED' THEN
+    UPDATE tenant_subscriptions
+       SET status='CANCELLED',"cancelledAt"=COALESCE("cancelledAt",now()),"updatedAt"=now()
+     WHERE "tenantId"=NEW.id AND status<>'CANCELLED';
+    UPDATE tenant_api_credentials
+       SET status='REVOKED',"revokedAt"=now()
+     WHERE "tenantId"=NEW.id AND status='ACTIVE';
+  END IF;
+  RETURN NEW;
+END;
+$;
+CREATE TRIGGER trg_close_commercial_access_on_tenant_close
+AFTER UPDATE OF status ON tenants
+FOR EACH ROW EXECUTE FUNCTION fsb_close_commercial_access_on_tenant_close();
 COMMIT;
