@@ -10,6 +10,18 @@ done
 if (("${#JWT_SECRET}" < 32)); then echo "JWT_SECRET must contain at least 32 characters" >&2; exit 1; fi
 if (("${#FSB_METRICS_TOKEN}" < 32)); then echo "FSB_METRICS_TOKEN must contain at least 32 characters" >&2; exit 1; fi
 if [[ "${CORS_ORIGINS}" == *"*"* ]]; then echo "CORS_ORIGINS must not contain wildcard origins" >&2; exit 1; fi
+if [[ "$CORS_ORIGINS" == *"example.com"* || "$NEXT_PUBLIC_API_URL" == *"example.com"* || "$FSB_PUBLIC_APP_URL" == *"example.com"* ]]; then
+  echo "Replace all example.com URLs with real deployment domains before installation" >&2; exit 1
+fi
+IFS=',' read -r -a cors_origins <<< "$CORS_ORIGINS"
+for origin in "${cors_origins[@]}"; do
+  if [[ ! "$origin" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]; then
+    echo "Each CORS_ORIGINS entry must be an HTTPS origin without a path: $origin" >&2; exit 1
+  fi
+done
+[[ "$NEXT_PUBLIC_API_URL" == https://* && "$FSB_PUBLIC_APP_URL" == https://* ]] || {
+  echo "Production API and app URLs must use HTTPS" >&2; exit 1;
+}
 if [[ ! "$FSB_OUTBOX_ENCRYPTION_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then echo "FSB_OUTBOX_ENCRYPTION_KEY must be 64 hexadecimal characters" >&2; exit 1; fi
 command -v age >/dev/null || { echo "Install age before proceeding" >&2; exit 1; }
 docker compose --env-file .env -f docker-compose.onprem.yml up -d postgres
