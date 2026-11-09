@@ -109,7 +109,9 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
           await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","details") VALUES ($1,$2,'TASK_CANCELLED_NO_ELIGIBLE_ASSIGNEE',$3::jsonb)`, [candidate.tenantId, candidate.taskId, JSON.stringify({ displacedUserIds: displaced, reason })]);
         }
         await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId","details") SELECT $1,$2,'ASSIGNEE_RECONCILED',affected_user,jsonb_build_object('reason',$4::text,'replacementUserIds',$5::jsonb) FROM unnest($3::uuid[]) AS affected(affected_user)`, [candidate.tenantId, candidate.taskId, displaced, reason, JSON.stringify(retained)]);
-        await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5) ON CONFLICT ("taskId","triggerType") DO NOTHING`, [candidate.tenantId, candidate.taskId, JSON.stringify(displaced), JSON.stringify(retained), reason]);
+        if (retained.length) {
+          await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5) ON CONFLICT ("taskId","triggerType") DO NOTHING`, [candidate.tenantId, candidate.taskId, JSON.stringify(displaced), JSON.stringify(retained), reason]);
+        }
       };
       const configured = instance.step?.reassignUserIds;
       if (instance.step?.reassignOnInactiveAssignee !== true) {
