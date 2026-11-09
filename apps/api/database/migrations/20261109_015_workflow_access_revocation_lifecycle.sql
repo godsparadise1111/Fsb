@@ -157,9 +157,20 @@ BEGIN
         AND wt."dueAt" IS NOT DISTINCT FROM NEW."originalDueAt"
         AND (
           EXISTS (SELECT 1 FROM task_assignees a
+                   JOIN user_positions up ON up."userId"=a."userId" AND up."isActive"=true
+                     AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())
+                   JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+                   JOIN organization_units ou ON ou.id=p."organizationUnitId"
+                     AND ou."organizationId"=pi."organizationId" AND ou."isActive"=true
                    WHERE a."taskId" = wt.id AND a."userId" = NEW."requesterUserId" AND a.status = 'PENDING')
           OR EXISTS (SELECT 1 FROM task_delegations d
                       JOIN task_assignees a ON a."taskId" = d."taskId" AND a."userId" = d."fromUserId" AND a.status = 'PENDING'
+                      JOIN tenant_memberships source_tm ON source_tm."tenantId"=d."tenantId" AND source_tm."userId"=d."fromUserId" AND source_tm."isActive"=true
+                      JOIN user_positions up ON up."userId"=d."toUserId" AND up."isActive"=true
+                        AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())
+                      JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+                      JOIN organization_units ou ON ou.id=p."organizationUnitId"
+                        AND ou."organizationId"=pi."organizationId" AND ou."isActive"=true
                      WHERE d."taskId" = wt.id AND d."tenantId" = NEW."tenantId"
                        AND d."toUserId" = NEW."requesterUserId" AND d."revokedAt" IS NULL
                        AND d."startsAt" <= now() AND d."endsAt" > now())
