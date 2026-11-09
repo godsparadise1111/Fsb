@@ -18,7 +18,9 @@ case "$RESTORE_DATABASE" in *[!A-Za-z0-9_]* ) echo "ERROR: RESTORE_DATABASE may 
 command -v age >/dev/null 2>&1 || { echo "ERROR: age is required." >&2; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "ERROR: sha256sum is required." >&2; exit 1; }
 
-sha256sum -c "$BACKUP_FILE.sha256"
+backup_dir="$(dirname "$BACKUP_FILE")"
+backup_name="$(basename "$BACKUP_FILE")"
+(cd "$backup_dir" && sha256sum -c "$backup_name.sha256")
 tmp="$(mktemp -d)"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 restore_subdir="restore-$stamp"
