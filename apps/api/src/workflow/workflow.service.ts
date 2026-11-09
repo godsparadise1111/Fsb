@@ -473,9 +473,9 @@ export class WorkflowService {
                JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=s."organizationId"
                JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
               WHERE s."tenantId"=$1 AND s."organizationId"=$2 AND s."substituteUserId"=$3
-                AND s."revokedAt" IS NULL AND s."startsAt"<=CURRENT_TIMESTAMP AND s."endsAt">CURRENT_TIMESTAMP
+                AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
            ) SELECT COUNT(*)::int AS count FROM open_load`,
-          [tenantId, dto.organizationId, dto.substituteUserId],
+          [tenantId, dto.organizationId, dto.substituteUserId, startsAt],
         );
         const currentLoad = Number(loadRows[0]?.count ?? 0);
         if (currentLoad >= policy.maxOpenTasksPerSubstitute) {
