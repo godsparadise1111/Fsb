@@ -69,9 +69,6 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
          JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true
          JOIN task_assignees ta ON ta."taskId" = t.id AND ta.status = 'PENDING'
         WHERE t.status IN ('OPEN', 'IN_PROGRESS')
-          AND pv.schema->'steps'->pi."currentStepIndex"->>'reassignOnInactiveAssignee' = 'true'
-          AND jsonb_typeof(pv.schema->'steps'->pi."currentStepIndex"->'reassignUserIds') = 'array'
-          AND jsonb_array_length(pv.schema->'steps'->pi."currentStepIndex"->'reassignUserIds') BETWEEN 1 AND 50
           AND NOT EXISTS (SELECT 1 FROM workflow_task_reassignments r WHERE r."taskId" = t.id AND r."triggerType" = 'INACTIVE_ASSIGNEE')
           AND (NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ta."userId" AND u."isActive" = true)
             OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId" = pi."tenantId" AND tm."userId" = ta."userId" AND tm."isActive" = true)
