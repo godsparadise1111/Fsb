@@ -749,15 +749,28 @@ export class WorkflowService {
           activeExisting.every(item => item.status === 'PENDING')) {
         throw new ConflictException('The task is already assigned to the requested users');
       }
-      for (const assignment of activeExisting) {
-        assignment.status = 'REASSIGNED';
-        assignment.comment = reason;
-        assignment.actedAt = new Date();
+      const targetSet = new Set(newUserIds);
+      const changedAssignments: TaskAssignee[] = [];
+      for (const assignment of existing) {
+        if (targetSet.has(assignment.userId)) {
+          assignment.status = 'PENDING';
+          assignment.comment = null;
+          assignment.actedAt = null;
+          assignment.assignedAt = new Date();
+          targetSet.delete(assignment.userId);
+          changedAssignments.push(assignment);
+        } else if (assignment.status !== 'REASSIGNED') {
+          assignment.status = 'REASSIGNED';
+          assignment.comment = reason;
+          assignment.actedAt = new Date();
+          changedAssignments.push(assignment);
+        }
       }
-      if (activeExisting.length) await manager.save(TaskAssignee, activeExisting);
-      await manager.save(TaskAssignee, newUserIds.map(userId =>
+      if (changedAssignments.length) await manager.save(TaskAssignee, changedAssignments);
+      const newAssignments = [...targetSet].map(userId =>
         manager.create(TaskAssignee, { taskId, userId, status: 'PENDING' }),
-      ));
+      );
+      if (newAssignments.length) await manager.save(TaskAssignee, newAssignments);
       task.status = 'OPEN';
       task.completedAt = null;
       await manager.save(task);
