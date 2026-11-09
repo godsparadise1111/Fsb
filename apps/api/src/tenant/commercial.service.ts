@@ -138,9 +138,10 @@ export class CommercialService {
       throw new BadRequestException('Invoice amounts must be non-negative safe integers in minor currency units');
     }
     return this.dataSource.transaction(async manager => {
+      const [tenant] = await manager.query('SELECT id,status FROM tenants WHERE id=$1 FOR UPDATE', [input.tenantId]);
+      if (!tenant || tenant.status === 'CLOSED') throw new BadRequestException('Closed or unknown tenants cannot receive invoices');
       const [subscription] = await manager.query(
-        `SELECT s.id FROM tenant_subscriptions s JOIN tenants t ON t.id=s."tenantId"
-          WHERE s."tenantId"=$1 AND t.status<>'CLOSED' FOR UPDATE OF t,s`,
+        'SELECT id FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE',
         [input.tenantId],
       );
       if (!subscription) throw new BadRequestException('Tenant has no subscription; assign a plan first');
@@ -164,10 +165,11 @@ export class CommercialService {
 
   async renewSubscriptionFromPaidInvoice(tenantId: string, invoiceId: string, actorUserId: string) {
     return this.dataSource.transaction(async manager => {
+      const [tenant] = await manager.query('SELECT id,status FROM tenants WHERE id=$1 FOR UPDATE', [tenantId]);
+      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Only active tenants can renew subscriptions');
       const [subscription] = await manager.query(
-        `SELECT s.id,s.status,s."billingCycle",s."currentPeriodStart",s."currentPeriodEnd"
-           FROM tenant_subscriptions s JOIN tenants t ON t.id=s."tenantId"
-          WHERE s."tenantId"=$1 AND t.status='ACTIVE' FOR UPDATE OF t,s`,
+        `SELECT id,status,"billingCycle","currentPeriodStart","currentPeriodEnd"
+           FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE`,
         [tenantId],
       );
       if (!subscription) throw new NotFoundException('Tenant subscription not found');
