@@ -98,15 +98,27 @@ export class ProcessService {
         if (config.assignmentPolicy !== undefined && !['ANY_ASSIGNEE', 'ALL_ASSIGNEES'].includes(String(config.assignmentPolicy))) {
           throw new BadRequestException(`Process step ${index + 1} assignmentPolicy must be ANY_ASSIGNEE or ALL_ASSIGNEES`);
         }
-        if (index > 0 || hasExplicitTransitions) {
-          const assigneeIds = config.assigneeUserIds;
-          if (!Array.isArray(assigneeIds) || assigneeIds.length < 1 || assigneeIds.length > 50 ||
-              assigneeIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
-            throw new BadRequestException(`Process step ${index + 1} must define between 1 and 50 valid assigneeUserIds`);
+        const assignmentFields = ['assigneeUserIds', 'assigneePositionIds', 'assigneeUnitIds'] as const;
+        let hasAssigneeSource = false;
+        let configuredAssigneeCount = 0;
+        for (const field of assignmentFields) {
+          const values = config[field];
+          if (values === undefined) continue;
+          if (!Array.isArray(values) || values.length < 1 || values.length > 50 ||
+              values.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+            throw new BadRequestException(`Process step ${index + 1} ${field} must contain between 1 and 50 valid UUIDs`);
           }
-          if (new Set(assigneeIds).size !== assigneeIds.length) {
-            throw new BadRequestException(`Process step ${index + 1} assigneeUserIds cannot contain duplicates`);
+          if (new Set(values).size !== values.length) {
+            throw new BadRequestException(`Process step ${index + 1} ${field} cannot contain duplicates`);
           }
+          hasAssigneeSource = true;
+          configuredAssigneeCount += values.length;
+        }
+        if (configuredAssigneeCount > 50) {
+          throw new BadRequestException(`Process step ${index + 1} cannot configure more than 50 assignee targets in total`);
+        }
+        if ((index > 0 || hasExplicitTransitions) && !hasAssigneeSource) {
+          throw new BadRequestException(`Process step ${index + 1} must define assigneeUserIds, assigneePositionIds or assigneeUnitIds`);
         }
         const dueInHours = config.dueInHours;
         if (dueInHours !== undefined && dueInHours !== null &&
