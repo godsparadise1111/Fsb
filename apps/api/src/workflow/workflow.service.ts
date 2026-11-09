@@ -572,18 +572,19 @@ export class WorkflowService {
     });
   }
 
-  async listOrganizationSubstitutions(organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string) {
+  async listOrganizationSubstitutions(organizationId: string, tenantId: string | null | undefined, requesterId: string, limitValue?: string, offsetValue?: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const limit = limitValue === undefined ? 50 : Number(limitValue);
     const offset = offsetValue === undefined ? 0 : Number(offsetValue);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be between 1 and 100');
     if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new BadRequestException('offset must be between 0 and 100000');
-    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
-    if (!organization) throw new NotFoundException('Organization not found');
-    const [items, total] = await this.dataSource.getRepository(OrganizationSubstitution).findAndCount({
-      where: { tenantId, organizationId }, order: { createdAt: 'DESC' }, take: limit, skip: offset,
+    return this.dataSource.transaction(async manager => {
+      await this.assertActiveWorkflowMember(manager, tenantId, requesterId, organizationId);
+      const [items, total] = await manager.getRepository(OrganizationSubstitution).findAndCount({
+        where: { tenantId, organizationId }, order: { createdAt: 'DESC' }, take: limit, skip: offset,
+      });
+      return { items, total, limit, offset };
     });
-    return { items, total, limit, offset };
   }
 
   async revokeOrganizationSubstitution(organizationId: string, substitutionId: string, actorUserId: string, tenantId?: string | null) {
