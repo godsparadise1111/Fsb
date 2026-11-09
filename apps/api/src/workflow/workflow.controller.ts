@@ -73,6 +73,18 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/operational-alert-sla-policy')
+  getOperationalAlertSlaPolicy(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.getOrganizationOperationalAlertSlaPolicy(organizationId, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/operational-alert-sla-policy')
+  updateOperationalAlertSlaPolicy(@Param('organizationId') organizationId: string, @Body() body: Record<string, unknown>, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.updateOrganizationOperationalAlertSlaPolicy(organizationId, user.tenantId, user.sub, body);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Post('organizations/:organizationId/operational-alerts/:alertId/acknowledge')
   acknowledgeOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'ACKNOWLEDGE');
