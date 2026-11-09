@@ -13,7 +13,7 @@ export class WorkflowTask {
   @Column({ length: 200 }) title: string;
   @Column({ type: 'text', nullable: true }) instructions: string | null;
   @Column({ default: 'ALL_ASSIGNEES', length: 20 }) assignmentPolicy: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES';
-  @Column({ default: 'OPEN', length: 20 }) status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  @Column({ default: 'OPEN', length: 20 }) status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'RETURNED';
   @Column('uuid') createdByUserId: string;
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'createdByUserId' }) createdBy: User;
