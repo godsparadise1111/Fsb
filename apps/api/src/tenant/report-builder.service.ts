@@ -317,7 +317,19 @@ export class ReportBuilderService {
         const arrayType = field.type === 'number' ? 'numeric' : field.type === 'date' ? 'date' : 'text';
         const values = (filter.value as unknown[]).map(value => field.type === 'number' ? Number(value) : value);
         params.push(values);
-        clauses.push(expression + '=ANY(
+        clauses.push(expression + '=ANY($' + params.length + '::' + arrayType + '[])');
+      } else {
+        let value = filter.value;
+        if (filter.operator === 'contains') value = String(value);
+        if (field.type === 'number') value = Number(value);
+        params.push(value);
+        const parameter = '$' + params.length;
+        if (filter.operator === 'contains') clauses.push('POSITION(LOWER(' + parameter + ') IN LOWER((' + expression + ')::text))>0');
+        else {
+          const operator = ({ eq: '=', neq: '<>', gte: '>=', lte: '<=' } as const)[filter.operator];
+          clauses.push(expression + operator + parameter);
+        }
+      }
     }
     const dimension = spec.groupBy ? source.fields[spec.groupBy] : undefined;
     const measure = spec.aggregate === 'count' ? null : source.fields[spec.measure as string];
