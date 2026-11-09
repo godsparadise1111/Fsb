@@ -36,6 +36,9 @@ BEGIN
   IF OLD.status='REVOKED' AND NEW.status <> 'REVOKED' THEN
     RAISE EXCEPTION 'Revoked API credentials cannot be reactivated';
   END IF;
+  IF OLD.status='REVOKED' AND NEW."revokedAt" IS DISTINCT FROM OLD."revokedAt" THEN
+    RAISE EXCEPTION 'API credential revocation timestamp is immutable';
+  END IF;
   RETURN NEW;
 END;
 $$;
