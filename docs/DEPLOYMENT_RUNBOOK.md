@@ -77,7 +77,7 @@ DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-m
 AGE_RECIPIENT=age1... sh scripts/ops/backup-staging.sh
 ```
 
-فایل‌های رمزگذاری‌شده و checksum را به مقصدی خارج از میزبان Docker منتقل کنید. Backup روی همان دیسک تنها نسخه پشتیبان محسوب نمی‌شود.
+فایل‌های رمزگذاری‌شده و checksum را به مقصدی خارج از میزبان Docker منتقل کنید. اسکریپت Migration وجود sidecar با پسوند `.sha256` را اجباری می‌کند و checksum را پیش از هر تغییری بررسی می‌کند؛ sidecar به‌صورت relocatable نوشته می‌شود. Backup روی همان دیسک تنها نسخه پشتیبان محسوب نمی‌شود.
 
 ## 5. شروع و کنترل سرویس‌ها
 
