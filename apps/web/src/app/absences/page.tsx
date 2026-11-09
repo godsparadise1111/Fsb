@@ -424,6 +424,12 @@ export default function AbsencesPage() {
               </span>
             </div>
             <p>{alert.description}</p>
+            <div className="absence-alert-top">
+              <span className={alert.slaStatus === 'RESPONSE_BREACHED' || alert.slaStatus === 'RESOLUTION_BREACHED' ? 'absence-pill expired' : alert.slaStatus === 'AT_RISK' ? 'absence-pill upcoming' : 'absence-pill active'}>
+                {alert.slaStatus === 'RESPONSE_BREACHED' ? 'نقض مهلت پاسخ' : alert.slaStatus === 'RESOLUTION_BREACHED' ? 'نقض مهلت حل' : alert.slaStatus === 'AT_RISK' ? 'نزدیک مهلت SLA' : 'در محدوده SLA'}
+              </span>
+              <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString('fa-IR') : '—'} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString('fa-IR') : '—'}</small>
+            </div>
             <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
             <div className="absence-alert-top">
               <span className="absence-step">وضعیت: {alert.status === 'OPEN' ? 'باز' : alert.status === 'ACKNOWLEDGED' ? 'مشاهده و تأییدشده' : alert.status === 'IN_PROGRESS' ? 'در حال پیگیری' : 'حل‌شده'}{alert.assignedToUserId ? ` · مسئول: ${personName(userMap.get(alert.assignedToUserId))}` : ''}</span>
