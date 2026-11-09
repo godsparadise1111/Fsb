@@ -35,6 +35,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
            JOIN process_instances pi ON pi.id = t."processInstanceId"
            JOIN process_versions pv ON pv.id = pi."processVersionId"
            JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
+           JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true
           WHERE t.status IN ('OPEN', 'IN_PROGRESS') AND t."dueAt" IS NOT NULL
             AND jsonb_typeof(pv.schema->'steps') = 'array'
             AND COALESCE(pv.schema->'steps'->pi."currentStepIndex"->>'reassignAfterHours', '') ~ '^[0-9]+([.][0-9]+)?$'
@@ -65,6 +66,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
          FROM workflow_tasks t JOIN process_instances pi ON pi.id = t."processInstanceId"
          JOIN process_versions pv ON pv.id = pi."processVersionId"
          JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
+         JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true
          JOIN task_assignees ta ON ta."taskId" = t.id AND ta.status = 'PENDING'
         WHERE t.status IN ('OPEN', 'IN_PROGRESS')
           AND pv.schema->'steps'->pi."currentStepIndex"->>'reassignOnInactiveAssignee' = 'true'
@@ -88,7 +90,8 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
     await this.dataSource.transaction(async manager => {
       const [task] = await manager.query(`SELECT id, status, "processInstanceId" FROM workflow_tasks WHERE id = $1 FOR UPDATE`, [candidate.taskId]);
       if (!task || !['OPEN','IN_PROGRESS'].includes(task.status)) return;
-      const [instance] = await manager.query(`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE' WHERE pi.id = $1`, [task.processInstanceId]);
+      const [instance] = await manager.query(`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
+        JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true WHERE pi.id = $1`, [task.processInstanceId]);
       if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId || instance.step?.reassignOnInactiveAssignee !== true) return;
       const configured = instance.step?.reassignUserIds;
       if (!Array.isArray(configured) || configured.length < 1 || configured.length > 50 || configured.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) return;
@@ -101,7 +104,9 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
         NOT EXISTS(SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId"=$2 AND tm."userId"=ta."userId" AND tm."isActive"=true) OR
         NOT EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
       const displaced = invalid.map(x => x.userId); if (!displaced.length) return;
-      const eligible = await manager.query(`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE u.id=ANY($1::uuid[]) AND u."isActive"=true`, [targets,candidate.tenantId,candidate.organizationId]) as Array<{id:string}>;
+      const eligible = await manager.query(`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true
+           JOIN organizations org ON org.id=ou."organizationId" AND org."tenantId"=$2 AND org."isActive"=true
+          WHERE u.id=ANY($1::uuid[]) AND u."isActive"=true`, [targets,candidate.tenantId,candidate.organizationId]) as Array<{id:string}>;
       if (eligible.length !== targets.length) { this.logger.warn('Inactive-assignee fallback targets are ineligible; assignments unchanged'); return; }
       const byUser = new Map(assignments.map(a => [a.userId,a.status])); if (targets.some(id => byUser.has(id) && byUser.get(id) !== 'PENDING')) return;
       const retained = pending.map(a => a.userId).filter(id => !displaced.includes(id)); const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) return;
@@ -137,6 +142,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
            FROM process_instances pi
            JOIN process_versions pv ON pv.id = pi."processVersionId"
            JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
+           JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true
           WHERE pi.id = $1 AND pi."tenantId" = $2`,
         [task.processInstanceId, candidate.tenantId],
       );
@@ -160,6 +166,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
            JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
            JOIN organization_units ou ON ou.id = p."organizationUnitId"
              AND ou."organizationId" = $3 AND ou."isActive" = true
+           JOIN organizations org ON org.id = ou."organizationId" AND org."tenantId" = $2 AND org."isActive" = true
           WHERE u.id = ANY($1::uuid[]) AND u."isActive" = true`,
         [targetIds, candidate.tenantId, candidate.organizationId],
       );
