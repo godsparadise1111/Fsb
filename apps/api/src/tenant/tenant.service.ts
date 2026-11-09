@@ -42,7 +42,7 @@ export class TenantService {
         WHERE tm."isActive"=true AND tm."isTenantAdmin"=true
         GROUP BY tm."tenantId"`,
     );
-    const activeAdmins = new Map<string, number>(counts.map((row: { tenantId: string; count: number }) => [row.tenantId, Number(row.count)] as [string, number])));
+    const activeAdmins = new Map<string, number>(counts.map((row: { tenantId: string; count: number }) => [row.tenantId, Number(row.count)] as [string, number]));
     return tenants.map(tenant => ({ ...tenant, activeAdminCount: activeAdmins.get(tenant.id) ?? 0 }));
   }
 
