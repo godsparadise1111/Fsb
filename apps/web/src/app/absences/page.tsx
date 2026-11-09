@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 type Organization = { id: string; name: string; code: string };
 type User = { id: string; firstName: string; lastName: string; username: string; email: string };
+type Workload = { userId: string; openTaskCount: number; substitutionCoverageCount: number };
 type Absence = {
   id: string; organizationId: string; userId: string; substituteUserId: string;
   startsAt: string; endsAt: string; reason: string; createdAt: string;
@@ -24,6 +25,7 @@ export default function AbsencesPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [workload, setWorkload] = useState<Workload[]>([]);
   const [organizationId, setOrganizationId] = useState('');
   const [items, setItems] = useState<Absence[]>([]);
   const [calendarItems, setCalendarItems] = useState<Absence[]>([]);
@@ -74,14 +76,15 @@ export default function AbsencesPage() {
         setUsers([]); setItems([]); setTotal(0);
       }
       if (selectedOrg) {
-        const [people, result] = await Promise.all([
+        const [people, result, workloadResult] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
           request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
+          request(`/organizations/${selectedOrg}/workload`),
         ]);
-        setUsers(people); setItems(result.items || []); setTotal(result.total || 0);
+        setUsers(people); setWorkload(workloadResult.items || []); setItems(result.items || []); setTotal(result.total || 0);
         setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       } else {
-        setUsers([]); setItems([]); setCalendarItems([]); setTotal(0);
+        setUsers([]); setWorkload([]); setItems([]); setCalendarItems([]); setTotal(0);
         setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       }
     } catch (e) {
@@ -230,7 +233,7 @@ export default function AbsencesPage() {
 
   function logout() {
     window.localStorage.removeItem('fsb.accessToken'); window.localStorage.removeItem('fsb.tenantId'); setToken(''); setTenantId(''); setLoggedIn(false);
-    setOrganizations([]); setUsers([]); setItems([]);
+    setOrganizations([]); setUsers([]); setWorkload([]); setItems([]);
   }
 
   const statusOf = (item: Absence) => {
@@ -278,11 +281,11 @@ export default function AbsencesPage() {
         <form className="absence-form absence-create-grid" onSubmit={createAbsence}>
           <label>سازمان<select required value={organizationId} onChange={e => { setOrganizationId(e.target.value); setPageOffset(0); }}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
           <label>کارمند غایب<select required value={form.userId} onChange={e => setForm(v => ({ ...v, userId: e.target.value }))}><option value="">انتخاب کارمند</option>{users.map(user => <option key={user.id} value={user.id}>{personName(user)} · {user.username}</option>)}</select></label>
-          <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{users.filter(user => user.id !== form.userId).map(user => <option key={user.id} value={user.id}>{personName(user)} · {user.username}</option>)}</select></label>
+          <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{users.filter(user => user.id !== form.userId).map(user => { const load = workload.find(row => row.userId === user.id); return <option key={user.id} value={user.id}>{personName(user)} · {user.username} · {load?.openTaskCount ?? 0} وظیفه باز</option>; })}</select></label>
           <label>شروع غیبت<input type="datetime-local" required value={form.startsAt} onChange={e => setForm(v => ({ ...v, startsAt: e.target.value }))} /></label>
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
-          <div className="absence-form-note absence-full">هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
+          <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} وظیفه تحت پوشش جانشینی). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
           {conflicts.length > 0 && <div className="absence-conflict absence-full"><strong>تداخل زمانی شناسایی شد</strong><span>این بازه با {conflicts.length.toLocaleString('fa-IR')} سابقهٔ فعال تداخل دارد. اگر فرد غایب از قبل جانشینی هم‌پوشان داشته باشد، ثبت توسط سرور رد می‌شود؛ حضور جانشین در چند جانشینی هم‌زمان نیز نیازمند بررسی مدیریتی است.</span></div>}
           <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || !organizationId || form.userId === form.substituteUserId || conflicts.some(item => item.userId === form.userId)}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
         </form>
