@@ -275,6 +275,12 @@ export default function AbsencesPage() {
     setOrganizations([]); setUsers([]); setWorkload([]); setItems([]);
   }
 
+  const substituteCandidates = useMemo(() => users
+    .filter(user => user.id !== form.userId)
+    .map(user => ({ user, load: workload.find(row => row.userId === user.id) }))
+    .sort((a, b) => (a.load?.openTaskCount ?? Number.MAX_SAFE_INTEGER) - (b.load?.openTaskCount ?? Number.MAX_SAFE_INTEGER)
+      || personName(a.user).localeCompare(personName(b.user), 'fa')),
+  [users, workload, form.userId]);
   const selectedSubstituteLoad = workload.find(row => row.userId === form.substituteUserId);
   const selectedSubstituteAtLimit = Boolean(policy.enforceLimit && selectedSubstituteLoad && selectedSubstituteLoad.openTaskCount >= policy.maxOpenTasksPerSubstitute);
   const selectedSubstituteWarning = Boolean(policy.configured && selectedSubstituteLoad && selectedSubstituteLoad.openTaskCount >= policy.maxOpenTasksPerSubstitute * policy.warningThresholdPercent / 100 && !selectedSubstituteAtLimit);
@@ -324,7 +330,7 @@ export default function AbsencesPage() {
         <form className="absence-form absence-create-grid" onSubmit={createAbsence}>
           <label>سازمان<select required value={organizationId} onChange={e => { setOrganizationId(e.target.value); setPageOffset(0); }}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
           <label>کارمند غایب<select required value={form.userId} onChange={e => setForm(v => ({ ...v, userId: e.target.value }))}><option value="">انتخاب کارمند</option>{users.map(user => <option key={user.id} value={user.id}>{personName(user)} · {user.username}</option>)}</select></label>
-          <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{users.filter(user => user.id !== form.userId).map(user => { const load = workload.find(row => row.userId === user.id); return <option key={user.id} value={user.id}>{personName(user)} · {user.username} · {load?.openTaskCount ?? 0} وظیفه باز · {load && policy.configured && load.openTaskCount >= policy.maxOpenTasksPerSubstitute * policy.warningThresholdPercent / 100 ? 'هشدار ظرفیت' : 'ظرفیت عادی'}</option>; })}</select></label>
+          <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{substituteCandidates.map(({ user, load }, index) => <option key={user.id} value={user.id}>{personName(user)} · {user.username} · {load?.openTaskCount ?? 0} وظیفه باز · {index === 0 ? 'کم‌بارترین گزینه' : load && policy.configured && load.openTaskCount >= policy.maxOpenTasksPerSubstitute * policy.warningThresholdPercent / 100 ? 'هشدار ظرفیت' : 'ظرفیت عادی'}</option>)}</select></label>
           <label>شروع غیبت<input type="datetime-local" required value={form.startsAt} onChange={e => setForm(v => ({ ...v, startsAt: e.target.value }))} /></label>
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
