@@ -72,7 +72,7 @@
 
 - `GET /api/tasks/my`: کارتابل ورودی کاربر؛ فقط وظایف قابل اقدام با تخصیص مستقیم، تفویض یا جانشینی معتبر.
 - `GET /api/process-instances/my`: کارتابل خروجی/فرایندهایی که کاربر آغاز کرده است؛ حداکثر ۱۰۰ مورد اخیر.
-- `GET /api/process-instances/:id`: جزئیات فرایند و وظایف آن، فقط برای آغازگر یا مشارکت‌کننده مجاز.
+- `GET /api/process-instances/:id`: جزئیات فرایند، وظایف، تخصیص‌ها، Action Log و رویدادهای Lifecycle؛ فقط برای آغازگر یا مشارکت‌کننده مجاز.
 - `POST /api/process-instances`: شروع فرایند با تخصیص اولیه به کاربر، سمت یا واحد؛ اگر مقصد در بدنه ارسال نشود، تنظیم مرحله اول نسخه منتشرشده استفاده می‌شود.
 - `POST /api/tasks/:id/actions`: اقدام APPROVED/REJECTED/RETURNED با هدر اجباری `Idempotency-Key`.
 - `GET /api/tasks/:id/history` و `GET /api/tasks/:id/lifecycle`: تاریخچه اقدام و رویدادهای چرخه عمر.
