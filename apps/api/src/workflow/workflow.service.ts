@@ -41,6 +41,23 @@ export class WorkflowService {
     if (!rows.length) throw new ForbiddenException('The tenant is not active');
   }
 
+  private async lockActiveTaskScope(manager: EntityManager, taskId: string, tenantId: string) {
+    const [scope] = await manager.query(
+      `SELECT pi."organizationId" FROM workflow_tasks wt
+         JOIN process_instances pi ON pi.id=wt."processInstanceId"
+        WHERE wt.id=$1 AND pi."tenantId"=$2 LIMIT 1`,
+      [taskId, tenantId],
+    );
+    if (!scope) throw new NotFoundException('Task not found');
+    await this.lockActiveTenant(manager, tenantId);
+    const organizations = await manager.query(
+      `SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true FOR SHARE`,
+      [scope.organizationId, tenantId],
+    );
+    if (!organizations.length) throw new ForbiddenException('The task organization is not active');
+    return scope.organizationId as string;
+  }
+
   private async assertActiveWorkflowMember(manager: EntityManager, tenantId: string, userId: string, organizationId: string) {
     const rows = await manager.query(
       `SELECT 1 FROM tenants t
@@ -164,7 +181,7 @@ export class WorkflowService {
       throw new BadRequestException('A return reason of at least 3 characters is required');
     }
     return this.dataSource.transaction(async manager => {
-      await this.lockActiveTenant(manager, tenantId);
+      await this.lockActiveTaskScope(manager, taskId, tenantId);
       const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
@@ -387,7 +404,7 @@ export class WorkflowService {
     }
     if (dto.toUserId === actorUserId) throw new BadRequestException('A task cannot be delegated to the same user');
     return this.dataSource.transaction(async manager => {
-      await this.lockActiveTenant(manager, tenantId);
+      await this.lockActiveTaskScope(manager, taskId, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId },
         relations: { processInstance: { organization: true } },
@@ -460,7 +477,7 @@ export class WorkflowService {
   async revokeTaskDelegation(taskId: string, delegationId: string, actorUserId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
-      await this.lockActiveTenant(manager, tenantId);
+      await this.lockActiveTaskScope(manager, taskId, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId }, relations: { processInstance: { organization: true } },
         lock: { mode: 'pessimistic_write' },
