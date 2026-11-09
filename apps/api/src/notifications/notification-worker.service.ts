@@ -238,6 +238,35 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       });
       return true;
     }
+    if (item.eventType === 'report.schedule.completed') {
+      const jobId = String(item.payload.jobId ?? '');
+      const [job] = await this.dataSource.query(
+        `SELECT j.id,j.status,j."tenantId",j."ownerUserId",j.result,t.status AS "tenantStatus"
+           FROM tenant_report_jobs j
+           JOIN tenants t ON t.id=j."tenantId" AND t.status='ACTIVE'
+           JOIN tenant_memberships tm ON tm."tenantId"=j."tenantId" AND tm."userId"=j."ownerUserId" AND tm."isActive"=true
+           JOIN users u ON u.id=tm."userId" AND u."isActive"=true AND lower(u.email)=lower($3)
+          WHERE j.id=$1 AND j."tenantId"=$2 AND j.status='COMPLETED'`,
+        [jobId,item.tenantId,item.recipient],
+      );
+      if (!job) {
+        await this.outbox.markDead(item.id,this.workerId,'Scheduled report is no longer available to this active tenant member');
+        return false;
+      }
+      const baseUrl = new URL(process.env.FSB_PUBLIC_APP_URL!);
+      const reportUrl = new URL('/reports?jobId=' + encodeURIComponent(jobId),baseUrl).toString();
+      const safeUrl = this.escapeHtml(reportUrl);
+      const sourceLabel = this.escapeHtml(String(item.payload.sourceLabel ?? 'گزارش'));
+      const rowCount = Number(item.payload.rowCount ?? 0);
+      const subject = (item.subject ?? 'گزارش زمان‌بندی‌شده آماده است').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      await this.transporter.sendMail({
+        from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
+        text:'گزارش زمان‌بندی‌شده شما آماده است. منبع: ' + String(item.payload.sourceLabel ?? 'گزارش') + '. تعداد ردیف: ' + rowCount + '. مشاهده: ' + reportUrl,
+        html:'<p>گزارش زمان‌بندی‌شده شما آماده است.</p><p>منبع: <strong>' + sourceLabel + '</strong> · تعداد ردیف: ' + rowCount + '</p><p><a href="' + safeUrl + '">مشاهده گزارش در سامانه</a></p>',
+        messageId:`<fsb-report-${jobId}@${baseUrl.hostname}>`,
+      });
+      return true;
+    }
     if (item.eventType !== 'tenant.invitation.created') throw new Error(`Unsupported notification event: ${item.eventType}`);
     const invitationId = String(item.payload.invitationId ?? '');
     const [invitation] = await this.dataSource.query(
