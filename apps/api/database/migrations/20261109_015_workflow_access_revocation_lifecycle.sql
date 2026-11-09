@@ -220,4 +220,69 @@ CREATE TRIGGER "ZZZ_tenants_close_workflow_operations"
   AFTER UPDATE OF status ON tenants
   FOR EACH ROW EXECUTE FUNCTION fsb_close_tenant_workflow_operations();
 
+-- Reconcile legacy pending operations that became invalid before this migration.
+INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","details")
+SELECT wt."tenantId", wt.id,
+       CASE WHEN t.status='CLOSED' THEN 'TENANT_CLOSED' ELSE 'ORGANIZATION_DEACTIVATED' END,
+       jsonb_build_object('migration','20261109_015','reconciled',true)
+  FROM workflow_tasks wt
+  JOIN process_instances pi ON pi.id=wt."processInstanceId"
+  JOIN organizations o ON o.id=pi."organizationId"
+  JOIN tenants t ON t.id=wt."tenantId"
+ WHERE wt.status IN ('OPEN','IN_PROGRESS')
+   AND (o."isActive"=false OR t.status='CLOSED');
+
+UPDATE workflow_tasks wt
+   SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now()
+  FROM process_instances pi
+  JOIN organizations o ON o.id=pi."organizationId"
+  JOIN tenants t ON t.id=pi."tenantId"
+ WHERE wt."processInstanceId"=pi.id AND wt.status IN ('OPEN','IN_PROGRESS')
+   AND (o."isActive"=false OR t.status='CLOSED');
+
+UPDATE task_assignees ta
+   SET status='REASSIGNED', "actedAt"=now(),
+       comment=concat_ws(E'\\n', ta.comment, 'Assignment closed during workflow lifecycle migration')
+  FROM workflow_tasks wt
+ WHERE ta."taskId"=wt.id AND wt.status='CANCELLED' AND ta.status='PENDING'
+   AND EXISTS (
+     SELECT 1 FROM process_instances pi
+     JOIN organizations o ON o.id=pi."organizationId"
+     JOIN tenants t ON t.id=pi."tenantId"
+     WHERE pi.id=wt."processInstanceId" AND (o."isActive"=false OR t.status='CLOSED')
+   );
+
+UPDATE task_delegations d
+   SET "revokedAt"=now(), "revokedByUserId"=NULL
+  FROM workflow_tasks wt
+  JOIN process_instances pi ON pi.id=wt."processInstanceId"
+  JOIN organizations o ON o.id=pi."organizationId"
+  JOIN tenants t ON t.id=wt."tenantId"
+ WHERE d."taskId"=wt.id AND d."revokedAt" IS NULL
+   AND (wt.status NOT IN ('OPEN','IN_PROGRESS') OR o."isActive"=false OR t.status='CLOSED'
+     OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+                     WHERE tm."tenantId"=d."tenantId" AND tm."userId"=d."fromUserId" AND tm."isActive"=true)
+     OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+                     WHERE tm."tenantId"=d."tenantId" AND tm."userId"=d."toUserId" AND tm."isActive"=true));
+
+PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
+UPDATE task_deferral_requests r
+   SET status='CANCELLED', "reviewerUserId"=NULL, "reviewedAt"=now(),
+       "reviewerComment"='Automatically cancelled during workflow lifecycle migration'
+  FROM workflow_tasks wt
+  JOIN process_instances pi ON pi.id=wt."processInstanceId"
+  JOIN organizations o ON o.id=pi."organizationId"
+  JOIN tenants t ON t.id=wt."tenantId"
+ WHERE r."taskId"=wt.id AND r.status='PENDING'
+   AND (wt.status NOT IN ('OPEN','IN_PROGRESS') OR o."isActive"=false OR t.status<>'ACTIVE'
+     OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+                     WHERE tm."tenantId"=r."tenantId" AND tm."userId"=r."requesterUserId" AND tm."isActive"=true));
+PERFORM set_config('fsb.lifecycle_cleanup', 'off', true);
+
+UPDATE notification_outbox o
+   SET status='DEAD', "lockedBy"=NULL, "lockedAt"=NULL,
+       lastError='Tenant was already closed when workflow lifecycle migration was applied', "updatedAt"=now()
+  FROM tenants t
+ WHERE t.id=o."tenantId" AND t.status='CLOSED' AND o.status IN ('PENDING','PROCESSING');
+
 COMMIT;
