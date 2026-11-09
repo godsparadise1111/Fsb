@@ -353,7 +353,7 @@ export class WorkflowService {
 
   private async assertSubstituteCapacity(
     manager: EntityManager, tenantId: string, organizationId: string, substituteUserId: string,
-    at: Date, policy?: { configured: boolean; enforceLimit: boolean; maxOpenTasksPerSubstitute: number },
+    at: Date, sourceUserId?: string, policy?: { configured: boolean; enforceLimit: boolean; maxOpenTasksPerSubstitute: number },
   ) {
     const effectivePolicy = policy ?? await this.readOrganizationWorkloadPolicy(organizationId, tenantId, manager);
     if (!effectivePolicy.configured || !effectivePolicy.enforceLimit) return { checked: false, currentLoad: null };
@@ -375,13 +375,19 @@ export class WorkflowService {
             AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
          UNION
          SELECT wt.id
+           FROM task_assignees source
+           JOIN workflow_tasks wt ON wt.id=source."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+          WHERE source."userId"=$5 AND source.status='PENDING'
+         UNION
+         SELECT wt.id
            FROM task_delegations td
            JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
            JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
           WHERE td."tenantId"=$1 AND td."toUserId"=$3 AND td."revokedAt" IS NULL
             AND td."startsAt"<=$4 AND td."endsAt">$4
        ) SELECT COUNT(*)::int AS count FROM open_load`,
-      [tenantId, organizationId, substituteUserId, at],
+      [tenantId, organizationId, substituteUserId, at, sourceUserId ?? null],
     );
     const currentLoad = Number(rows[0]?.count ?? 0);
     if (currentLoad >= effectivePolicy.maxOpenTasksPerSubstitute) {
@@ -415,7 +421,7 @@ export class WorkflowService {
         .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
         .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
       if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Both users must be active tenant members with valid positions in the organization at the substitution start');
-      await this.assertSubstituteCapacity(manager, tenantId, dto.organizationId, dto.substituteUserId, startsAt);
+      await this.assertSubstituteCapacity(manager, tenantId, dto.organizationId, dto.substituteUserId, startsAt, dto.originalUserId);
       const overlap = await manager.createQueryBuilder(OrganizationSubstitution, 's')
         .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.originalUserId = :originalUserId', {
           tenantId, organizationId: dto.organizationId, originalUserId: dto.originalUserId,
@@ -496,7 +502,7 @@ export class WorkflowService {
         .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
         .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
       if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Absent user and substitute must be active tenant members with valid positions at the absence start');
-      await this.assertSubstituteCapacity(manager, tenantId, dto.organizationId, dto.substituteUserId, startsAt);
+      await this.assertSubstituteCapacity(manager, tenantId, dto.organizationId, dto.substituteUserId, startsAt, dto.userId);
       const substitution = await manager.save(OrganizationSubstitution, manager.create(OrganizationSubstitution, {
         tenantId, organizationId: dto.organizationId, originalUserId: dto.userId,
         substituteUserId: dto.substituteUserId, startsAt, endsAt, reason, createdByUserId: actorUserId,
@@ -571,7 +577,7 @@ export class WorkflowService {
     });
   }
 
-  async getOrganizationWorkload(organizationId: string, tenantId?: string | null, atValue?: string) {
+  async getOrganizationWorkload(organizationId: string, tenantId?: string | null, atValue?: string, absentUserId?: string, substituteUserId?: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const asOf = atValue ? new Date(atValue) : new Date();
     if (!Number.isFinite(asOf.getTime())) throw new BadRequestException('at must be a valid ISO date-time');
@@ -588,13 +594,13 @@ export class WorkflowService {
          WHERE u."isActive" = true AND up."validFrom" <= $3
            AND (up."validUntil" IS NULL OR up."validUntil" >= $3)
       ), task_load AS (
-        SELECT ta."userId", wt.id AS "taskId", false AS "isSubstitution", false AS "isDelegated"
+        SELECT ta."userId", wt.id AS "taskId", false AS "isSubstitution", false AS "isDelegated", false AS "isProspective"
           FROM task_assignees ta
           JOIN workflow_tasks wt ON wt.id = ta."taskId" AND wt.status IN ('OPEN', 'IN_PROGRESS')
           JOIN process_instances pi ON pi.id = wt."processInstanceId" AND pi."organizationId" = $2
          WHERE ta.status = 'PENDING'
         UNION ALL
-        SELECT substitution."substituteUserId", wt.id, true, false
+        SELECT substitution."substituteUserId", wt.id, true, false, false
           FROM organization_substitutions substitution
           JOIN workflow_tasks wt ON wt.status IN ('OPEN', 'IN_PROGRESS')
           JOIN process_instances pi ON pi.id = wt."processInstanceId"
@@ -605,7 +611,14 @@ export class WorkflowService {
            AND substitution."revokedAt" IS NULL
            AND substitution."startsAt" <= $3 AND substitution."endsAt" > $3
         UNION ALL
-        SELECT td."toUserId", wt.id, false, true
+        SELECT $4::uuid, wt.id, false, false, true
+          FROM task_assignees source
+          JOIN workflow_tasks wt ON wt.id=source."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+          JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+         WHERE $4::uuid IS NOT NULL AND $5::uuid IS NOT NULL
+           AND source."userId"=$5 AND source.status='PENDING'
+        UNION ALL
+        SELECT td."toUserId", wt.id, false, true, false
           FROM task_delegations td
           JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
@@ -614,21 +627,28 @@ export class WorkflowService {
       ), aggregated AS (
         SELECT "userId", COUNT(DISTINCT "taskId") AS "openTaskCount",
                COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution") AS "substitutionCoverageCount",
-               COUNT(DISTINCT "taskId") FILTER (WHERE "isDelegated") AS "delegatedTaskCount"
+               COUNT(DISTINCT "taskId") FILTER (WHERE "isDelegated") AS "delegatedTaskCount",
+               COUNT(DISTINCT "taskId") FILTER (WHERE "isProspective") AS "prospectiveCoverageCount"
           FROM task_load GROUP BY "userId"
       )
       SELECT people.id AS "userId", people."firstName", people."lastName", people.username,
              COALESCE(aggregated."openTaskCount", 0)::int AS "openTaskCount",
-             COALESCE(aggregated."substitutionCoverageCount", 0)::int AS "substitutionCoverageCount"
+             COALESCE(aggregated."substitutionCoverageCount", 0)::int AS "substitutionCoverageCount",
+             COALESCE(aggregated."prospectiveCoverageCount", 0)::int AS "prospectiveCoverageCount"
         FROM active_people people
         LEFT JOIN aggregated ON aggregated."userId" = people.id
        ORDER BY COALESCE(aggregated."openTaskCount", 0) DESC, people."lastName", people."firstName"`,
-      [tenantId, organizationId, asOf],
+      [tenantId, organizationId, asOf, substituteUserId ?? null, absentUserId ?? null],
     );
+    const activeIds = new Set(rows.map((row: any) => String(row.userId)));
+    if (absentUserId && !activeIds.has(absentUserId)) throw new BadRequestException('Absent employee is not an active member with a valid position in this organization at the requested time');
+    if (substituteUserId && !activeIds.has(substituteUserId)) throw new BadRequestException('Substitute is not an active member with a valid position in this organization at the requested time');
+    if (Boolean(absentUserId) !== Boolean(substituteUserId)) throw new BadRequestException('absentUserId and substituteUserId must be provided together');
     const policy = await this.readOrganizationWorkloadPolicy(organizationId, tenantId);
     return {
       organizationId,
       asOf: asOf.toISOString(),
+      projection: absentUserId && substituteUserId ? { absentUserId, substituteUserId } : null,
       policy,
       items: rows.map((row: any) => ({
         userId: row.userId,
@@ -638,6 +658,7 @@ export class WorkflowService {
         openTaskCount: Number(row.openTaskCount ?? 0),
         substitutionCoverageCount: Number(row.substitutionCoverageCount ?? 0),
         delegatedTaskCount: Number(row.delegatedTaskCount ?? 0),
+        prospectiveCoverageCount: Number(row.prospectiveCoverageCount ?? 0),
       })),
     };
   }
