@@ -136,7 +136,7 @@ export default function AbsencesPage() {
     if (!Number.isFinite(start.getTime())) return;
     let cancelled = false;
     setWorkloadLoading(true);
-    request(`/organizations/${organizationId}/workload?at=${encodeURIComponent(start.toISOString())}`)
+    request(`/organizations/${organizationId}/workload?at=${encodeURIComponent(start.toISOString())}${form.userId ? `&absentUserId=${encodeURIComponent(form.userId)}` : ''}${form.userId && form.substituteUserId ? `&substituteUserId=${encodeURIComponent(form.substituteUserId)}` : ''}`)
       .then(result => {
         if (cancelled) return;
         setWorkload(result.items || []);
@@ -146,7 +146,7 @@ export default function AbsencesPage() {
       .catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : 'محاسبه بار کاری در زمان شروع ناموفق بود'); })
       .finally(() => { if (!cancelled) setWorkloadLoading(false); });
     return () => { cancelled = true; };
-  }, [loggedIn, token, organizationId, form.startsAt, request]);
+  }, [loggedIn, token, organizationId, form.startsAt, form.userId, form.substituteUserId, request]);
 
   const userMap = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
   useEffect(() => {
@@ -328,7 +328,7 @@ export default function AbsencesPage() {
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
           {selectedSubstituteAtLimit && <div className="absence-conflict absence-full"><strong>ظرفیت جانشین تکمیل است</strong><span>این جانشین {selectedSubstituteLoad?.openTaskCount ?? 0} وظیفه باز دارد و سقف سازمان {policy.maxOpenTasksPerSubstitute} است. با فعال بودن محدودیت ظرفیت، ثبت در سمت سرور نیز رد خواهد شد.</span></div>}
-          <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} جانشینی و {workload.find(row => row.userId === form.substituteUserId)?.delegatedTaskCount ?? 0} واگذاری). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
+          <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز و پیش‌بینی پوشش کارمند غایب برای جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} جانشینی و {workload.find(row => row.userId === form.substituteUserId)?.delegatedTaskCount ?? 0} واگذاری). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
           {conflicts.length > 0 && <div className="absence-conflict absence-full"><strong>تداخل زمانی شناسایی شد</strong><span>این بازه با {conflicts.length.toLocaleString('fa-IR')} سابقهٔ فعال تداخل دارد. اگر فرد غایب از قبل جانشینی هم‌پوشان داشته باشد، ثبت توسط سرور رد می‌شود؛ حضور جانشین در چند جانشینی هم‌زمان نیز نیازمند بررسی مدیریتی است.</span></div>}
           <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || workloadLoading || !organizationId || form.userId === form.substituteUserId || conflicts.some(item => item.userId === form.userId) || selectedSubstituteAtLimit}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
         </form>
