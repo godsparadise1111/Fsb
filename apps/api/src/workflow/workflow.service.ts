@@ -478,7 +478,7 @@ export class WorkflowService {
 
   async listOrganizationAbsences(
     organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string,
-    fromValue?: string, toValue?: string,
+    fromValue?: string, toValue?: string, statusValue?: string,
   ) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const limit = limitValue === undefined ? 25 : Number(limitValue);
@@ -498,6 +498,10 @@ export class WorkflowService {
         throw new BadRequestException('Date range cannot exceed 93 days');
       }
     }
+    const status = statusValue || 'ALL';
+    if (!['ALL', 'ACTIVE', 'UPCOMING', 'EXPIRED', 'CANCELLED'].includes(status)) {
+      throw new BadRequestException('status must be ALL, ACTIVE, UPCOMING, EXPIRED or CANCELLED');
+    }
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
     if (!organization) throw new NotFoundException('Organization not found');
 
@@ -505,6 +509,10 @@ export class WorkflowService {
     const applyScope = (qb: ReturnType<typeof repository.createQueryBuilder>) => {
       qb.where('absence."tenantId" = :tenantId AND absence."organizationId" = :organizationId', { tenantId, organizationId });
       if (from && to) qb.andWhere('absence."startsAt" < :to AND absence."endsAt" > :from', { from, to });
+      if (status === 'CANCELLED') qb.andWhere('absence."cancelledAt" IS NOT NULL');
+      if (status === 'ACTIVE') qb.andWhere('absence."cancelledAt" IS NULL AND absence."startsAt" <= CURRENT_TIMESTAMP AND absence."endsAt" > CURRENT_TIMESTAMP');
+      if (status === 'UPCOMING') qb.andWhere('absence."cancelledAt" IS NULL AND absence."startsAt" > CURRENT_TIMESTAMP');
+      if (status === 'EXPIRED') qb.andWhere('absence."cancelledAt" IS NULL AND absence."endsAt" <= CURRENT_TIMESTAMP');
       return qb;
     };
     const itemsQuery = applyScope(repository.createQueryBuilder('absence'))
@@ -529,7 +537,7 @@ export class WorkflowService {
       expired: Number(summaryRaw?.expired ?? 0),
       cancelled: Number(summaryRaw?.cancelled ?? 0),
     };
-    return { items, total, limit, offset, summary, range: from && to ? { from: from.toISOString(), to: to.toISOString() } : null };
+    return { items, total, limit, offset, status, summary, range: from && to ? { from: from.toISOString(), to: to.toISOString() } : null };
   }
 
   async cancelOrganizationAbsence(organizationId: string, absenceId: string, actorUserId: string, tenantId?: string | null) {
