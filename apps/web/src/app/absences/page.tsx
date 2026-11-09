@@ -26,7 +26,12 @@ export default function AbsencesPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [organizationId, setOrganizationId] = useState('');
   const [items, setItems] = useState<Absence[]>([]);
+  const [calendarItems, setCalendarItems] = useState<Absence[]>([]);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
+  const [pageOffset, setPageOffset] = useState(0);
+  const pageSize = 25;
+  const [calendarLoading, setCalendarLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -56,24 +61,44 @@ export default function AbsencesPage() {
 
   const loadData = useCallback(async () => {
     if (!token) return;
-    setLoading(true); setError('');
+    setLoading(true); setCalendarLoading(true); setError('');
     try {
       const orgs = await request('/organizations/accessible');
       setOrganizations(orgs);
       const selectedOrg = organizationId && orgs.some((org: Organization) => org.id === organizationId)
         ? organizationId : orgs[0]?.id || '';
-      if (selectedOrg !== organizationId) { setOrganizationId(selectedOrg); setUsers([]); setItems([]); setTotal(0); }
+      if (selectedOrg !== organizationId) {
+        setOrganizationId(selectedOrg); setPageOffset(0);
+        setUsers([]); setItems([]); setCalendarItems([]); setTotal(0);
+      }
       if (selectedOrg) {
+        const from = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).toISOString();
+        const to = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1).toISOString();
         const [people, result] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
-          request(`/organizations/${selectedOrg}/absences?limit=100&offset=0`),
+          request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
         ]);
         setUsers(people); setItems(result.items || []); setTotal(result.total || 0);
-      } else { setUsers([]); setItems([]); setTotal(0); }
+        setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
+
+        const monthRows: Absence[] = [];
+        let monthOffset = 0;
+        let monthTotal = 0;
+        do {
+          const monthResult = await request(`/organizations/${selectedOrg}/absences?limit=100&offset=${monthOffset}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=ALL`);
+          monthRows.push(...(monthResult.items || []));
+          monthTotal = Number(monthResult.total || 0);
+          monthOffset += 100;
+        } while (monthOffset < monthTotal && monthOffset < 10000);
+        setCalendarItems(monthRows);
+      } else {
+        setUsers([]); setItems([]); setCalendarItems([]); setTotal(0);
+        setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'دریافت اطلاعات ناموفق بود');
-    } finally { setLoading(false); }
-  }, [token, request, organizationId]);
+    } finally { setLoading(false); setCalendarLoading(false); }
+  }, [token, request, organizationId, pageOffset, filter, calendarMonth]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem('fsb.accessToken');
@@ -102,7 +127,7 @@ export default function AbsencesPage() {
     return [...Array(offset).fill(null), ...Array.from({ length: count }, (_, index) => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1))];
   }, [calendarMonth]);
   const calendarLabel = calendarMonth.toLocaleDateString('fa-IR', { month: 'long', year: 'numeric' });
-  const dayItems = (day: Date) => items.filter(item => !item.cancelledAt &&
+  const dayItems = (day: Date) => calendarItems.filter(item => !item.cancelledAt &&
     new Date(item.startsAt).getTime() < new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime() &&
     new Date(item.endsAt).getTime() > new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime());
 
@@ -114,7 +139,7 @@ export default function AbsencesPage() {
     if (filter === 'UPCOMING') return start > now;
     if (filter === 'EXPIRED') return end <= now;
     return true;
-  }), [items, filter]);
+  }), [items]);
 
   async function login(event: FormEvent) {
     event.preventDefault(); setError(''); setLoading(true);
@@ -206,7 +231,7 @@ export default function AbsencesPage() {
       {showForm && <section className="absence-panel">
         <div className="absence-panel-heading"><div><h2>ثبت غیبت جدید</h2><p>ثبت غیبت، جانشینی متناظر را نیز به‌صورت اتمیک ایجاد می‌کند.</p></div><span className="absence-step">۱ / اطلاعات غیبت</span></div>
         <form className="absence-form absence-create-grid" onSubmit={createAbsence}>
-          <label>سازمان<select required value={organizationId} onChange={e => setOrganizationId(e.target.value)}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
+          <label>سازمان<select required value={organizationId} onChange={e => { setOrganizationId(e.target.value); setPageOffset(0); }}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>
           <label>کارمند غایب<select required value={form.userId} onChange={e => setForm(v => ({ ...v, userId: e.target.value }))}><option value="">انتخاب کارمند</option>{users.map(user => <option key={user.id} value={user.id}>{personName(user)} · {user.username}</option>)}</select></label>
           <label>جانشین موقت<select required value={form.substituteUserId} onChange={e => setForm(v => ({ ...v, substituteUserId: e.target.value }))}><option value="">انتخاب جانشین</option>{users.filter(user => user.id !== form.userId).map(user => <option key={user.id} value={user.id}>{personName(user)} · {user.username}</option>)}</select></label>
           <label>شروع غیبت<input type="datetime-local" required value={form.startsAt} onChange={e => setForm(v => ({ ...v, startsAt: e.target.value }))} /></label>
@@ -220,13 +245,13 @@ export default function AbsencesPage() {
 
       <section className="absence-summary">
         <article><span>کل سوابق</span><strong>{total.toLocaleString('fa-IR')}</strong></article>
-        <article><span>در حال اجرا</span><strong>{items.filter(item => !item.cancelledAt && new Date(item.startsAt).getTime() <= Date.now() && new Date(item.endsAt).getTime() > Date.now()).length.toLocaleString('fa-IR')}</strong></article>
-        <article><span>برنامه‌ریزی‌شده</span><strong>{items.filter(item => !item.cancelledAt && new Date(item.startsAt).getTime() > Date.now()).length.toLocaleString('fa-IR')}</strong></article>
-        <article><span>لغوشده</span><strong>{items.filter(item => Boolean(item.cancelledAt)).length.toLocaleString('fa-IR')}</strong></article>
+        <article><span>در حال اجرا</span><strong>{summary.active.toLocaleString('fa-IR')}</strong></article>
+        <article><span>برنامه‌ریزی‌شده</span><strong>{summary.upcoming.toLocaleString('fa-IR')}</strong></article>
+        <article><span>لغوشده</span><strong>{summary.cancelled.toLocaleString('fa-IR')}</strong></article>
       </section>
 
       <section className="absence-panel absence-calendar-panel">
-        <div className="absence-panel-heading"><div><h2>تقویم غیبت و جانشینی</h2><p>نمای روزانهٔ غیبت‌های ثبت‌شده در سازمان انتخاب‌شده</p></div>
+        <div className="absence-panel-heading"><div><h2>تقویم غیبت و جانشینی</h2><p>نمای روزانهٔ غیبت‌های ثبت‌شده در سازمان انتخاب‌شده{calendarLoading ? ' · در حال بارگذاری…' : ''}</p></div>
           <div className="absence-calendar-nav"><button className="absence-secondary" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>ماه قبل</button><strong>{calendarLabel}</strong><button className="absence-secondary" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>ماه بعد</button></div>
         </div>
         <div className="absence-calendar-grid">
@@ -244,7 +269,7 @@ export default function AbsencesPage() {
           <div className="absence-toolbar"><select aria-label="سازمان" value={organizationId} onChange={e => setOrganizationId(e.target.value)}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select><button className="absence-secondary" onClick={() => void loadData()}>به‌روزرسانی</button></div>
         </div>
         <div className="absence-filters">
-          {[['ALL','همه'],['ACTIVE','در حال اجرا'],['UPCOMING','آینده'],['EXPIRED','پایان‌یافته'],['CANCELLED','لغوشده']].map(([key,label]) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{label}</button>)}
+          {[['ALL','همه'],['ACTIVE','در حال اجرا'],['UPCOMING','آینده'],['EXPIRED','پایان‌یافته'],['CANCELLED','لغوشده']].map(([key,label]) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => { setFilter(key); setPageOffset(0); }}>{label}</button>)}
         </div>
         {loading ? <div className="absence-empty">در حال دریافت اطلاعات…</div> : !organizationId ? <div className="absence-empty">برای مشاهدهٔ سوابق، ابتدا یکی از سازمان‌هایی را که به آن دسترسی دارید انتخاب کنید.</div> : visibleItems.length === 0 ? <div className="absence-empty"><strong>موردی برای نمایش وجود ندارد</strong><span>با تغییر فیلتر یا ثبت غیبت جدید، سوابق در این قسمت نمایش داده می‌شوند.</span></div> :
           <div className="absence-table-wrap"><table className="absence-table"><thead><tr><th>کارمند غایب</th><th>جانشین</th><th>بازهٔ غیبت</th><th>علت</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
@@ -256,6 +281,11 @@ export default function AbsencesPage() {
               <td>{!item.cancelledAt && new Date(item.endsAt).getTime() > Date.now() ? <button className="absence-cancel" onClick={() => void cancelAbsence(item)}>لغو غیبت</button> : <span className="absence-muted">—</span>}</td>
             </tr>; })}
           </tbody></table></div>}
+        {!loading && organizationId && <div className="absence-pagination">
+          <span>نمایش {(total === 0 ? 0 : pageOffset + 1).toLocaleString('fa-IR')} تا {Math.min(pageOffset + pageSize, total).toLocaleString('fa-IR')} از {total.toLocaleString('fa-IR')} مورد</span>
+          <div><button className="absence-secondary" disabled={pageOffset === 0 || loading} onClick={() => setPageOffset(Math.max(0, pageOffset - pageSize))}>صفحهٔ قبل</button>
+          <button className="absence-secondary" disabled={pageOffset + pageSize >= total || loading} onClick={() => setPageOffset(pageOffset + pageSize)}>صفحهٔ بعد</button></div>
+        </div>}
       </section>
       <footer className="absence-footer"><span>F-S · مدیریت منابع انسانی و تداوم گردش کار</span><span>اطلاعات بر اساس محدودهٔ مشتری احراز هویت‌شده</span></footer>
     </main>
