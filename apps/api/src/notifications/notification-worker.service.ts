@@ -116,22 +116,24 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
             },
           });
         }
-        const eventDedupe = `alert-sla-escalation:${alert.id}:${stage}`;
-        await manager.query(
-          `INSERT INTO organization_operational_alert_events ("tenantId","organizationId","alertId","actorUserId","eventType","fromStatus","toStatus","note","dedupeKey")
-           VALUES ($1,$2,$3,NULL,'SLA_ESCALATION',$4,$4,$5,$6)
-           ON CONFLICT ("tenantId","dedupeKey") DO NOTHING`,
-          [alert.tenantId,alert.organizationId,alert.id,alert.status,
-           stage === 'RESPONSE' ? 'هشدار به مسئولان سازمان ارجاع تشدیدی شد؛ مهلت پاسخ نقض شده است.' : 'هشدار به مسئولان سازمان ارجاع تشدیدی شد؛ مهلت حل نقض شده است.',eventDedupe],
-        );
-        await manager.query(
-          `UPDATE organization_operational_alerts
-              SET "escalatedAt"=COALESCE("escalatedAt",now()),
-                  "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
-                  "updatedAt"=now()
-            WHERE id=$1 AND "tenantId"=$3`,
-          [alert.id,stage,alert.tenantId],
-        );
+        if (recipients.length > 0) {
+          const eventDedupe = `alert-sla-escalation:${alert.id}:${stage}`;
+          await manager.query(
+            `INSERT INTO organization_operational_alert_events ("tenantId","organizationId","alertId","actorUserId","eventType","fromStatus","toStatus","note","dedupeKey")
+             VALUES ($1,$2,$3,NULL,'SLA_ESCALATION',$4,$4,$5,$6)
+             ON CONFLICT ("tenantId","dedupeKey") DO NOTHING`,
+            [alert.tenantId,alert.organizationId,alert.id,alert.status,
+             stage === 'RESPONSE' ? 'هشدار به مسئولان سازمان ارجاع تشدیدی شد؛ مهلت پاسخ نقض شده است.' : 'هشدار به مسئولان سازمان ارجاع تشدیدی شد؛ مهلت حل نقض شده است.',eventDedupe],
+          );
+          await manager.query(
+            `UPDATE organization_operational_alerts
+                SET "escalatedAt"=COALESCE("escalatedAt",now()),
+                    "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
+                    "updatedAt"=now()
+              WHERE id=$1 AND "tenantId"=$3`,
+            [alert.id,stage,alert.tenantId],
+          );
+        }
       });
     }
   }
