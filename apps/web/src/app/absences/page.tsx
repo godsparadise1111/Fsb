@@ -26,6 +26,8 @@ export default function AbsencesPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [workload, setWorkload] = useState<Workload[]>([]);
+  const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
+  const [policySaving, setPolicySaving] = useState(false);
   const [organizationId, setOrganizationId] = useState('');
   const [items, setItems] = useState<Absence[]>([]);
   const [calendarItems, setCalendarItems] = useState<Absence[]>([]);
@@ -81,10 +83,10 @@ export default function AbsencesPage() {
           request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
           request(`/organizations/${selectedOrg}/workload`),
         ]);
-        setUsers(people); setWorkload(workloadResult.items || []); setItems(result.items || []); setTotal(result.total || 0);
+        setUsers(people); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
         setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       } else {
-        setUsers([]); setWorkload([]); setItems([]); setCalendarItems([]); setTotal(0);
+        setUsers([]); setWorkload([]); setPolicy({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems([]); setCalendarItems([]); setTotal(0);
         setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       }
     } catch (e) {
@@ -206,6 +208,24 @@ export default function AbsencesPage() {
     finally { setLoading(false); }
   }
 
+  async function saveWorkloadPolicy(event: FormEvent) {
+    event.preventDefault(); setPolicySaving(true); setError(''); setNotice('');
+    try {
+      const result = await request(`/organizations/${organizationId}/workload-policy`, {
+        method: 'POST',
+        body: JSON.stringify({
+          maxOpenTasksPerSubstitute: policy.maxOpenTasksPerSubstitute,
+          warningThresholdPercent: policy.warningThresholdPercent,
+          enforceLimit: policy.enforceLimit,
+        }),
+      });
+      setPolicy(result.policy);
+      setNotice('سیاست ظرفیت بار کاری سازمان ذخیره شد');
+      await loadData();
+    } catch (e) { setError(e instanceof Error ? e.message : 'ذخیره سیاست ظرفیت ناموفق بود'); }
+    finally { setPolicySaving(false); }
+  }
+
   async function createAbsence(event: FormEvent) {
     event.preventDefault(); setSaving(true); setError(''); setNotice('');
     try {
@@ -235,6 +255,9 @@ export default function AbsencesPage() {
     window.localStorage.removeItem('fsb.accessToken'); window.localStorage.removeItem('fsb.tenantId'); setToken(''); setTenantId(''); setLoggedIn(false);
     setOrganizations([]); setUsers([]); setWorkload([]); setItems([]);
   }
+
+  const selectedSubstituteLoad = workload.find(row => row.userId === form.substituteUserId);
+  const selectedSubstituteAtLimit = Boolean(policy.enforceLimit && selectedSubstituteLoad && selectedSubstituteLoad.openTaskCount >= policy.maxOpenTasksPerSubstitute);
 
   const statusOf = (item: Absence) => {
     if (item.cancelledAt) return { label: 'لغوشده', cls: 'absence-pill cancelled' };
@@ -285,11 +308,36 @@ export default function AbsencesPage() {
           <label>شروع غیبت<input type="datetime-local" required value={form.startsAt} onChange={e => setForm(v => ({ ...v, startsAt: e.target.value }))} /></label>
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
+          {selectedSubstituteAtLimit && <div className="absence-conflict absence-full"><strong>ظرفیت جانشین تکمیل است</strong><span>این جانشین {selectedSubstituteLoad?.openTaskCount ?? 0} وظیفه باز دارد و سقف سازمان {policy.maxOpenTasksPerSubstitute} است. با فعال بودن محدودیت ظرفیت، ثبت در سمت سرور نیز رد خواهد شد.</span></div>}
           <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} وظیفه تحت پوشش جانشینی). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
           {conflicts.length > 0 && <div className="absence-conflict absence-full"><strong>تداخل زمانی شناسایی شد</strong><span>این بازه با {conflicts.length.toLocaleString('fa-IR')} سابقهٔ فعال تداخل دارد. اگر فرد غایب از قبل جانشینی هم‌پوشان داشته باشد، ثبت توسط سرور رد می‌شود؛ حضور جانشین در چند جانشینی هم‌زمان نیز نیازمند بررسی مدیریتی است.</span></div>}
-          <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || !organizationId || form.userId === form.substituteUserId || conflicts.some(item => item.userId === form.userId)}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
+          <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || !organizationId || form.userId === form.substituteUserId || conflicts.some(item => item.userId === form.userId) || selectedSubstituteAtLimit}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
         </form>
       </section>}
+
+      <section className="absence-panel" style={{ marginTop: 22 }}>
+        <div className="absence-panel-heading"><div><h2>سیاست ظرفیت جانشینان</h2><p>ظرفیت بر اساس تعداد وظایف باز مستقیم و وظایف تحت پوشش جانشینی محاسبه می‌شود.</p></div>
+          <span className={policy.enforceLimit ? 'absence-pill active' : 'absence-pill upcoming'}>{policy.enforceLimit ? 'محدودیت فعال' : 'صرفاً هشدار / غیرفعال'}</span>
+        </div>
+        <form className="absence-form" onSubmit={saveWorkloadPolicy}>
+          <label>حداکثر وظیفه باز برای هر جانشین<input type="number" min="1" max="500" required value={policy.maxOpenTasksPerSubstitute} onChange={e => setPolicy(v => ({ ...v, configured: true, maxOpenTasksPerSubstitute: Number(e.target.value) }))} /></label>
+          <label>آستانه هشدار ظرفیت (%)<input type="number" min="1" max="100" required value={policy.warningThresholdPercent} onChange={e => setPolicy(v => ({ ...v, configured: true, warningThresholdPercent: Number(e.target.value) }))} /></label>
+          <label className="absence-inline-check"><input type="checkbox" checked={policy.enforceLimit} onChange={e => setPolicy(v => ({ ...v, configured: true, enforceLimit: e.target.checked }))} /> جلوگیری از ثبت جانشینی در صورت تکمیل ظرفیت</label>
+          <div className="absence-form-actions absence-full"><button className="absence-primary" disabled={policySaving || !organizationId}>{policySaving ? 'در حال ذخیره…' : 'ذخیره سیاست ظرفیت'}</button></div>
+        </form>
+        <div className="absence-workload-list">
+          {workload.slice(0, 8).map(person => {
+            const percent = Math.round(person.openTaskCount / Math.max(1, policy.maxOpenTasksPerSubstitute) * 100);
+            const warning = policy.configured && percent >= policy.warningThresholdPercent;
+            return <div className="absence-workload-row" key={person.userId}>
+              <span>{personName(users.find(u => u.id === person.userId))}</span>
+              <span>{person.openTaskCount.toLocaleString('fa-IR')} / {policy.maxOpenTasksPerSubstitute.toLocaleString('fa-IR')} وظیفه</span>
+              <div className="absence-workload-track"><i style={{ width: `${Math.min(100, percent)}%` }} /></div>
+              <small>{person.substitutionCoverageCount.toLocaleString('fa-IR')} تحت جانشینی · {warning ? 'نیازمند توجه' : 'ظرفیت مناسب'}</small>
+            </div>;
+          })}
+        </div>
+      </section>
 
       <section className="absence-summary">
         <article><span>کل سوابق</span><strong>{summary.total.toLocaleString('fa-IR')}</strong></article>
