@@ -203,3 +203,26 @@
 - مسیر `GET /api/tenant/reports/operational-alert-sla.csv` خروجی CSV همین گزارش را با کنترل فرمول‌تزریقی و هدرهای no-store ارائه می‌کند. Migration `20261109_007_operational_alert_sla_reporting_indexes.sql` ایندکس cohort گزارش و اسکن مهلت پاسخ را اضافه می‌کند.
 - صفحه فارسی `/reports` بازه و سازمان را فیلتر می‌کند و خروجی CSV را با Bearer token دریافت می‌کند. دسترسی هر دو endpoint با `tenant.reports.read` کنترل می‌شود.
 - معیارهای این گزارش بر مبنای cohort زمان `firstDetectedAt` محاسبه می‌شوند؛ هشدارهای باز و هنوز پاسخ‌داده‌نشده در نرخ پاسخ ثبت‌شده وارد نمی‌شوند.
+
+
+## داشبورد مدیریتی و پایش صف اعلان‌ها
+
+- GET /api/tenant/dashboard شاخص‌های مشتری فعال را با مجوز tenant.usage.read ارائه می‌کند: فرایندهای جاری، وظایف باز/معوق، سررسید ۲۴ ساعت، شروع/تکمیل ۲۴ ساعت، هشدارهای فعال و نقض SLA، و وضعیت Outbox.
+- صفحه /dashboard هر ۳۰ ثانیه داده‌ها را تازه می‌کند و نوع عضویت مدیر مشتری/عضو را نشان می‌دهد. شمارش نمونه‌فرایندها مستقل از تعداد وظایف محاسبه می‌شود.
+- GET /api/tenant/notifications/queue خلاصه صف و leaseهای منقضی را برمی‌گرداند؛ GET /api/tenant/notifications/queue/items?status=DEAD&limit=75 فهرست محدود و بدون payload رمزگذاری‌شده است.
+- POST /api/tenant/notifications/:id/retry فقط پیام DEAD همان Tenant را با قفل تراکنشی به صف بازمی‌گرداند و Tenant Audit ثبت می‌کند. مجوز خواندن tenant.notifications.read و مجوز بازپردازش tenant.notifications.manage است.
+- صفحه /notifications وضعیت PENDING/PROCESSING/DELIVERED/DEAD را نمایش می‌دهد و بازپردازش موردی Dead Letter را تأیید می‌گیرد. payload رمزگذاری‌شده و کلیدهای داخلی هرگز از API خارج نمی‌شوند.
+
+## تحلیل گلوگاه فرایند
+
+- GET /api/tenant/reports/process-bottlenecks?from=YYYY-MM-DD&to=YYYY-MM-DD&organizationId=... با مجوز tenant.reports.read و محدوده Tenant، زمان چرخه، زمان ایجاد تا اولین اقدام ثبت‌شده، انتظار جاری وظایف باز، تعداد/نسبت وظایف معوق و نرخ وظایف دارای اقدام REJECTED را به تفکیک فرایند/مرحله برمی‌گرداند.
+- رتبه‌بندی ابتدا بر اساس تعداد وظایف باز مهلت‌گذشته و سپس زمان انتظار و چرخه انجام می‌شود. بازه پیش‌فرض ۳۰ و حداکثر ۳۶۶ روز است.
+- موتور گردش‌کار فعلی فقط APPROVED/REJECTED را پشتیبانی می‌کند و Transition صریح RETURN/REWORK ندارد؛ بنابراین شاخص REJECTED به‌عنوان «نرخ رد/عدم تأیید» گزارش می‌شود و معادل نرخ برگشت به مرحله قبل نیست. برای نرخ برگشت واقعی باید مدل Transition و رویداد بازگشت مستقل اضافه شود.
+- صفحه فارسی /process-analytics گزارش را نمایش می‌دهد. همه queryها با tenantId از JWT و سازمان متعلق به همان Tenant محدود هستند.
+
+## استقرار On-prem
+
+- docker-compose.onprem.yml سرویس‌های PostgreSQL، API، وب و worker را در شبکه داخلی تعریف می‌کند؛ DB_SYNCHRONIZE=false و PostgreSQL بدون پورت عمومی است.
+- Dockerfile.api و Dockerfile.web imageهای برنامه را می‌سازند. .env.onprem.example الگوی پیکربندی تولید است.
+- scripts/install-onprem.sh نصب اولیه، scripts/migrate-onprem.sh اعمال ترتیبی SQL با ledger و checksum، scripts/backup-onprem.sh backup رمزگذاری‌شده دیتابیس و فایل خصوصی با age، scripts/restore-onprem.sh بازیابی تأییدشده و scripts/upgrade-onprem.sh ارتقای backup-first را انجام می‌دهند.
+- راهنمای عملیاتی در docs/ON_PREM_DEPLOYMENT.md است. این اسکریپت‌ها هنوز روی میزبان واقعی اجرا نشده‌اند؛ آزمون restore، CORS محدود، TLS proxy، metrics و تمرین staging پیش‌شرط تولید هستند.
