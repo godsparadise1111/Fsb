@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { hostname } from 'node:os';
 import { createHash } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
@@ -114,8 +114,10 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
       });
     } catch (error) {
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 1500);
-      const retry = job.attempts < 5;
+      const forbidden = error instanceof ForbiddenException;
+      const retry = !forbidden && job.attempts < 5;
       const delay = Math.min(3600, 30 * (2 ** Math.max(0, job.attempts - 1)));
+      if (forbidden && job.scheduleId) await this.dataSource.query('UPDATE tenant_report_schedules SET "isActive"=false,"updatedAt"=now() WHERE id=$1', [job.scheduleId]);
       await this.dataSource.query(
         'UPDATE tenant_report_jobs SET status=$3,error=$4,"availableAt"=now()+($5 * interval \'1 second\'),"lockedBy"=NULL,"lockedAt"=NULL,"updatedAt"=now() WHERE id=$1 AND status=\'PROCESSING\' AND "lockedBy"=$2',
         [job.id, this.workerId, retry ? 'PENDING' : 'FAILED', message, delay],
