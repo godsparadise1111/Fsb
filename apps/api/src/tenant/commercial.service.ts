@@ -33,7 +33,7 @@ export class CommercialService {
   listInvoices() {
     return this.dataSource.query(
       `SELECT i.id,i."tenantId",t.name AS "tenantName",t.code AS "tenantCode",
-              i."invoiceNumber",i.status,i."currencyCode",i."subtotalMinor",i."taxMinor",i."totalMinor",
+              i."invoiceNumber",CASE WHEN i.status='ISSUED' AND i."dueAt" < now() THEN 'OVERDUE' ELSE i.status END AS status,i."currencyCode",i."subtotalMinor",i."taxMinor",i."totalMinor",
               i.description,i."issuedAt",i."dueAt",i."paidAt",i."renewedAt",i."createdAt"
          FROM tenant_invoices i
          JOIN tenants t ON t.id=i."tenantId"
@@ -56,7 +56,7 @@ export class CommercialService {
     );
     if (!tenant) throw new NotFoundException('Tenant not found');
     const invoices = await this.dataSource.query(
-      `SELECT id, "invoiceNumber", status, "currencyCode", "subtotalMinor", "taxMinor", "totalMinor",
+      `SELECT id, "invoiceNumber", CASE WHEN status='ISSUED' AND "dueAt" < now() THEN 'OVERDUE' ELSE status END AS status, "currencyCode", "subtotalMinor", "taxMinor", "totalMinor",
               description, "issuedAt", "dueAt", "paidAt", "renewedAt", "createdAt"
          FROM tenant_invoices WHERE "tenantId" = $1 ORDER BY "createdAt" DESC LIMIT 50`,
       [tenantId],
