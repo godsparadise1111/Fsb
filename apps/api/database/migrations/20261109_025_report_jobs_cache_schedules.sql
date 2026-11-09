@@ -81,7 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_tenant_report_schedules_owner
 
 ALTER TABLE tenant_report_jobs
   ADD CONSTRAINT fk_tenant_report_jobs_schedule
-  FOREIGN KEY ("scheduleId") REFERENCES tenant_report_schedules(id) ON DELETE SET NULL;
+  FOREIGN KEY ("scheduleId") REFERENCES tenant_report_schedules(id) ON DELETE RESTRICT;
 ALTER TABLE tenant_report_schedules
   ADD CONSTRAINT fk_tenant_report_schedules_last_job
   FOREIGN KEY ("lastJobId") REFERENCES tenant_report_jobs(id) ON DELETE SET NULL;
