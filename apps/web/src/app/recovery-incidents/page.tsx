@@ -14,8 +14,8 @@ type Event = { id: string; eventType: string; actorUserId: string | null; eventK
 type Detail = { incident: Incident; events: Event[]; lifecycle: Array<{ id: string; taskId: string; eventType: string; details: Record<string, unknown>; createdAt: string }> };
 const faDate = (value?: string | null) => value ? new Date(value).toLocaleString('fa-IR') : '—';
 const typeLabel = (type: string) => type === 'RUNNING_PROCESS_TASK_COUNT_MISMATCH' ? 'ناهماهنگی وظایف فرایند در حال اجرا' : type === 'TERMINAL_PROCESS_HAS_ACTIVE_TASKS' ? 'وجود وظیفه فعال در فرایند خاتمه‌یافته' : type;
-const statusLabel = (status: string) => ({ OPEN: 'باز', ACKNOWLEDGED: 'در حال رسیدگی', RESOLVED: 'بسته‌شده' }[status] || status);
-const severityLabel = (severity: string) => ({ CRITICAL: 'بحرانی', HIGH: 'زیاد', MEDIUM: 'متوسط' }[severity] || severity);
+const statusLabel = (status: string) => (({ OPEN: 'باز', ACKNOWLEDGED: 'در حال رسیدگی', RESOLVED: 'بسته‌شده' }) as Record<string, string>)[status] || status;
+const severityLabel = (severity: string) => (({ CRITICAL: 'بحرانی', HIGH: 'زیاد', MEDIUM: 'متوسط' }) as Record<string, string>)[severity] || severity;
 
 export default function RecoveryIncidentsPage() {
   const [token, setToken] = useState('');
