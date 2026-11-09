@@ -26,7 +26,7 @@ SELECT up.id, up."tenantId", up."userId", up."positionId"
      OR p.id IS NULL OR p."isActive" = false
      OR ou.id IS NULL OR ou."isActive" = false
      OR o.id IS NULL OR o."isActive" = false
-     OR t.status IS DISTINCT FROM 'ACTIVE' OR o."tenantId" <> up."tenantId");
+     OR t.id IS NULL OR o."tenantId" <> up."tenantId");
 
 -- Active organization role assignments must match tenant, active user/member and active organization.
 SELECT ur.id, ur."tenantId", ur."userId", ur."organizationId", ur."roleId"
@@ -80,7 +80,7 @@ SELECT ou.id, ou."organizationId"
   LEFT JOIN organizations o ON o.id = ou."organizationId"
   LEFT JOIN tenants t ON t.id = o."tenantId"
  WHERE ou."isActive" = true
-   AND (o.id IS NULL OR o."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE');
+   AND (o.id IS NULL OR o."isActive" = false OR t.id IS NULL);
 
 SELECT p.id, p."organizationUnitId"
   FROM positions p
