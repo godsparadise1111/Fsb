@@ -115,6 +115,7 @@ export class ProcessService {
   async publishVersion(definitionId: string, versionId: string, tenantId: string | null | undefined, actorUserId: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveDefinitionScope(manager, definitionId, tenantId);
       const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
       if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be published');
