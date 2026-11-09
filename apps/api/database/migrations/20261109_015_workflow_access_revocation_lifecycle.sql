@@ -2,6 +2,85 @@
 -- Requires workflow delegation, deferral, tenant composite integrity and inactive-assignee migrations.
 BEGIN;
 
+ALTER TABLE organization_substitutions
+  DROP CONSTRAINT IF EXISTS "CK_org_substitution_revoke_pair";
+ALTER TABLE organization_substitutions
+  ADD CONSTRAINT "CK_org_substitution_revoke_pair"
+  CHECK (("revokedAt" IS NULL AND "revokedByUserId" IS NULL) OR "revokedAt" IS NOT NULL);
+
+CREATE OR REPLACE FUNCTION fsb_validate_org_substitution() RETURNS trigger LANGUAGE plpgsql AS $
+DECLARE
+  organization_tenant uuid;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF ROW(NEW."tenantId", NEW."organizationId", NEW."originalUserId", NEW."substituteUserId",
+           NEW."startsAt", NEW."endsAt", NEW.reason, NEW."createdByUserId", NEW."createdAt")
+       IS DISTINCT FROM
+       ROW(OLD."tenantId", OLD."organizationId", OLD."originalUserId", OLD."substituteUserId",
+           OLD."startsAt", OLD."endsAt", OLD.reason, OLD."createdByUserId", OLD."createdAt") THEN
+      RAISE EXCEPTION 'Organizational substitution details are immutable';
+    END IF;
+    IF NEW."revokedAt" IS NOT NULL AND NEW."revokedByUserId" IS NULL
+       AND current_setting('fsb.lifecycle_cleanup', true) = 'on' AND OLD."revokedAt" IS NULL THEN
+      RETURN NEW;
+    END IF;
+    IF OLD."revokedAt" IS NOT NULL OR NEW."revokedAt" IS NULL OR NEW."revokedByUserId" IS NULL THEN
+      RAISE EXCEPTION 'Only an active substitution may be revoked';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id = tm."userId" AND u."isActive" = true
+       WHERE tm."tenantId" = NEW."tenantId" AND tm."userId" = NEW."revokedByUserId" AND tm."isActive" = true
+    ) THEN RAISE EXCEPTION 'Revoker must be an active tenant member'; END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW."revokedAt" IS NOT NULL OR NEW."revokedByUserId" IS NOT NULL THEN
+    RAISE EXCEPTION 'A new substitution cannot be created as revoked';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    NEW."tenantId"::text || ':' || NEW."organizationId"::text || ':' || NEW."originalUserId"::text, 0
+  ));
+  SELECT "tenantId" INTO organization_tenant FROM organizations
+   WHERE id = NEW."organizationId" AND "tenantId" = NEW."tenantId" AND "isActive" = true;
+  IF organization_tenant IS NULL OR NOT EXISTS (SELECT 1 FROM tenants WHERE id = NEW."tenantId" AND status = 'ACTIVE') THEN
+    RAISE EXCEPTION 'Substitution organization and tenant must be active and match';
+  END IF;
+  IF NEW."startsAt" <= now() - interval '1 minute' OR NEW."endsAt" <= NEW."startsAt"
+     OR NEW."endsAt" > NEW."startsAt" + interval '90 days' THEN
+    RAISE EXCEPTION 'Invalid substitution validity window';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id = tm."userId" AND u."isActive" = true
+     WHERE tm."tenantId" = NEW."tenantId" AND tm."userId" = NEW."createdByUserId" AND tm."isActive" = true
+  ) THEN RAISE EXCEPTION 'Creator must be an active tenant member'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId"
+    JOIN organization_units ou ON ou.id = p."organizationUnitId"
+    JOIN tenant_memberships tm ON tm."tenantId" = NEW."tenantId" AND tm."userId" = up."userId" AND tm."isActive" = true
+    JOIN users u ON u.id = up."userId" AND u."isActive" = true
+    WHERE up."userId" = NEW."originalUserId" AND ou."organizationId" = NEW."organizationId"
+      AND up."isActive" = true AND p."isActive" = true AND ou."isActive" = true
+      AND up."validFrom" <= NEW."startsAt" AND (up."validUntil" IS NULL OR up."validUntil" >= NEW."startsAt")
+  ) OR NOT EXISTS (
+    SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId"
+    JOIN organization_units ou ON ou.id = p."organizationUnitId"
+    JOIN tenant_memberships tm ON tm."tenantId" = NEW."tenantId" AND tm."userId" = up."userId" AND tm."isActive" = true
+    JOIN users u ON u.id = up."userId" AND u."isActive" = true
+    WHERE up."userId" = NEW."substituteUserId" AND ou."organizationId" = NEW."organizationId"
+      AND up."isActive" = true AND p."isActive" = true AND ou."isActive" = true
+      AND up."validFrom" <= NEW."startsAt" AND (up."validUntil" IS NULL OR up."validUntil" >= NEW."startsAt")
+  ) THEN
+    RAISE EXCEPTION 'Both users must have active positions in the substitution organization';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM organization_substitutions s
+     WHERE s."tenantId" = NEW."tenantId" AND s."organizationId" = NEW."organizationId"
+       AND s."originalUserId" = NEW."originalUserId" AND s."revokedAt" IS NULL
+       AND tstzrange(s."startsAt", s."endsAt", '[)') && tstzrange(NEW."startsAt", NEW."endsAt", '[)')
+  ) THEN RAISE EXCEPTION 'Overlapping active substitutions for the same original user are not allowed'; END IF;
+  RETURN NEW;
+END $;
+
 ALTER TABLE task_deferral_requests
   DROP CONSTRAINT IF EXISTS "CK_task_deferral_requests_status";
 ALTER TABLE task_deferral_requests
