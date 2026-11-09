@@ -290,7 +290,7 @@ export default function ReportBuilderPanel() {
         <label style={{display:'grid',gap:5}}>عنوان گزارش<input style={control} value={title} onChange={e=>setTitle(e.target.value)} maxLength={160} placeholder="مثلاً وضعیت فرایندهای واحدها"/></label>
         <label style={{display:'grid',gap:5}}>توضیحات<input style={control} value={description} onChange={e=>setDescription(e.target.value)} maxLength={1000}/></label>
       </div>
-      <label style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}><input type="checkbox" checked={isShared} onChange={e=>setIsShared(e.target.checked)}/>اشتراک با مدیران مجاز همین مشتری</label>
+      <label style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}><input type="checkbox" checked={isShared} onChange={e=>setIsShared(e.target.checked)}/>اشتراک با کاربران مجاز در همین دامنه دسترسی</label>
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>{(!loadedId||canEdit)&&<button style={button} type="button" disabled={busy||!title.trim()} onClick={()=>void save()}>{loadedId?'به‌روزرسانی گزارش':'ذخیره گزارش'}</button>}<button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportCsv()}>CSV</button><button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportFile('xlsx')}>Excel</button><button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportFile('pdf')}>PDF</button></div>
     </div>
     <div style={{borderTop:'1px solid var(--border, #e5e7eb)',marginTop:20,paddingTop:18}}>
