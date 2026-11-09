@@ -83,6 +83,7 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_assert_active_identity_assignment() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE user_active boolean;
 DECLARE tenant_status varchar(20);
+DECLARE resolved_tenant uuid;
 DECLARE role_scope varchar(24);
 DECLARE role_active boolean;
 DECLARE organization_active boolean;
@@ -98,8 +99,8 @@ BEGIN
   END IF;
 
   IF TG_TABLE_NAME = 'user_positions' THEN
-    SELECT t.status, o."isActive", ou."isActive", p."isActive"
-      INTO tenant_status, organization_active, unit_active, position_active
+    SELECT t.id, t.status, o."isActive", ou."isActive", p."isActive"
+      INTO resolved_tenant, tenant_status, organization_active, unit_active, position_active
       FROM positions p
       INNER JOIN organization_units ou ON ou.id = p."organizationUnitId"
       INNER JOIN organizations o ON o.id = ou."organizationId"
@@ -114,7 +115,7 @@ BEGIN
     END IF;
 
     PERFORM 1 FROM tenant_memberships tm
-     WHERE tm."tenantId" = NEW."tenantId" AND tm."userId" = NEW."userId"
+     WHERE tm."tenantId" = resolved_tenant AND tm."userId" = NEW."userId"
        AND tm."isActive" = true
      FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'Position assignee must be an active member of the same tenant'; END IF;
@@ -131,16 +132,19 @@ BEGIN
     END IF;
 
     IF role_scope <> 'ORGANIZATION' THEN RAISE EXCEPTION 'Platform roles cannot be organization-scoped'; END IF;
-    SELECT t.status, o."isActive" INTO tenant_status, organization_active
+    SELECT t.id, t.status, o."isActive" INTO resolved_tenant, tenant_status, organization_active
       FROM organizations o INNER JOIN tenants t ON t.id = o."tenantId"
-     WHERE o.id = NEW."organizationId" AND o."tenantId" = NEW."tenantId"
+     WHERE o.id = NEW."organizationId"
      FOR SHARE OF o, t;
+    IF NEW."tenantId" IS NOT NULL AND NEW."tenantId" <> resolved_tenant THEN
+      RAISE EXCEPTION 'Role assignment tenant does not match its organization';
+    END IF;
     IF tenant_status IS DISTINCT FROM 'ACTIVE' OR organization_active IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'Active organization role requires an active tenant and organization';
     END IF;
 
     PERFORM 1 FROM tenant_memberships tm
-     WHERE tm."tenantId" = NEW."tenantId" AND tm."userId" = NEW."userId"
+     WHERE tm."tenantId" = resolved_tenant AND tm."userId" = NEW."userId"
        AND tm."isActive" = true
      FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'Role recipient must be an active member of the same tenant'; END IF;
