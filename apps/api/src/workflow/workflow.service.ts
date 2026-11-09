@@ -709,6 +709,11 @@ export class WorkflowService {
       values[field] = value;
     }
     if (typeof dto.enabled !== 'boolean') throw new BadRequestException('enabled must be a boolean');
+    for (const severity of ['critical','high','medium','low']) {
+      if (values[`${severity}ResolutionHours`] * 60 <= values[`${severity}ResponseMinutes`]) {
+        throw new BadRequestException(`${severity} resolution target must be later than its response target`);
+      }
+    }
     return this.dataSource.transaction(async manager => {
       await manager.query(
         `INSERT INTO organization_operational_alert_sla_policies (
