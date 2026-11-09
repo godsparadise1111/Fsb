@@ -62,7 +62,7 @@ export default function AbsencesPage() {
       setOrganizations(orgs);
       const selectedOrg = organizationId && orgs.some((org: Organization) => org.id === organizationId)
         ? organizationId : orgs[0]?.id || '';
-      if (selectedOrg !== organizationId) setOrganizationId(selectedOrg);
+      if (selectedOrg !== organizationId) { setOrganizationId(selectedOrg); setUsers([]); setItems([]); setTotal(0); }
       if (selectedOrg) {
         const [people, result] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
@@ -246,7 +246,7 @@ export default function AbsencesPage() {
         <div className="absence-filters">
           {[['ALL','همه'],['ACTIVE','در حال اجرا'],['UPCOMING','آینده'],['EXPIRED','پایان‌یافته'],['CANCELLED','لغوشده']].map(([key,label]) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => setFilter(key)}>{label}</button>)}
         </div>
-        {loading ? <div className="absence-empty">در حال دریافت اطلاعات…</div> : !organizationId ? <div className="absence-empty">برای مشاهدهٔ سوابق، ابتدا سازمان فعال انتخاب کنید.</div> : visibleItems.length === 0 ? <div className="absence-empty"><strong>موردی برای نمایش وجود ندارد</strong><span>با تغییر فیلتر یا ثبت غیبت جدید، سوابق در این قسمت نمایش داده می‌شوند.</span></div> :
+        {loading ? <div className="absence-empty">در حال دریافت اطلاعات…</div> : !organizationId ? <div className="absence-empty">برای مشاهدهٔ سوابق، ابتدا یکی از سازمان‌هایی را که به آن دسترسی دارید انتخاب کنید.</div> : visibleItems.length === 0 ? <div className="absence-empty"><strong>موردی برای نمایش وجود ندارد</strong><span>با تغییر فیلتر یا ثبت غیبت جدید، سوابق در این قسمت نمایش داده می‌شوند.</span></div> :
           <div className="absence-table-wrap"><table className="absence-table"><thead><tr><th>کارمند غایب</th><th>جانشین</th><th>بازهٔ غیبت</th><th>علت</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
             {visibleItems.map(item => { const status = statusOf(item); return <tr key={item.id}>
               <td><strong>{personName(userMap.get(item.userId))}</strong><small>{userMap.get(item.userId)?.username || '—'}</small></td>
