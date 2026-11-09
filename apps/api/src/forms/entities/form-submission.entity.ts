@@ -6,7 +6,7 @@ import { ProcessInstance } from '../../workflow/entities/process-instance.entity
 @Entity('form_submissions')
 export class FormSubmission {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') formVersionId: string;
   @ManyToOne(() => FormVersion, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'formVersionId' }) formVersion: FormVersion;
