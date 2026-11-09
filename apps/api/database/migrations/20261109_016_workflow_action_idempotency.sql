@@ -54,4 +54,35 @@ CREATE TRIGGER trg_guard_workflow_action_idempotency
 BEFORE UPDATE OR DELETE ON workflow_action_idempotency
 FOR EACH ROW EXECUTE FUNCTION fsb_guard_workflow_action_idempotency();
 
+-- Reconcile terminal assignments left pending by earlier ANY_ASSIGNEE/rejection paths.
+UPDATE task_assignees ta
+   SET status='REASSIGNED',
+       comment=COALESCE(ta.comment,'') || CASE WHEN COALESCE(ta.comment,'')='' THEN '' ELSE E'\\n' END ||
+               'Reconciled during transactional workflow integrity migration',
+       "actedAt"=COALESCE(ta."actedAt",now())
+  FROM workflow_tasks wt
+ WHERE wt.id=ta."taskId"
+   AND wt.status IN ('COMPLETED','CANCELLED','RETURNED')
+   AND ta.status='PENDING';
+
+-- Backfill the append-only lifecycle projection for historical action logs.
+INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId","details")
+SELECT wal."tenantId", wal."taskId", 'ACTION_RECORDED', wal."userId",
+       jsonb_build_object(
+         'actionLogId', wal.id,
+         'action', wal.action,
+         'returnToStepIndex', wal."returnToStepIndex",
+         'taskStatusAtBackfill', wt.status,
+         'processInstanceId', wt."processInstanceId",
+         'backfilled', true
+       )
+  FROM workflow_action_logs wal
+  JOIN workflow_tasks wt ON wt.id=wal."taskId"
+ WHERE NOT EXISTS (
+   SELECT 1 FROM workflow_task_lifecycle_events le
+    WHERE le."tenantId"=wal."tenantId" AND le."taskId"=wal."taskId"
+      AND le."eventType"='ACTION_RECORDED'
+      AND le.details->>'actionLogId'=wal.id::text
+ );
+
 COMMIT;
