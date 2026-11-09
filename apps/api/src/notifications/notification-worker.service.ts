@@ -191,8 +191,9 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     const [invitation] = await this.dataSource.query(
       `SELECT id FROM tenant_invitations
         WHERE id = $1 AND "tenantId" = $2
+          AND lower(email) = lower($3)
           AND "acceptedAt" IS NULL AND "revokedAt" IS NULL AND "expiresAt" > now()`,
-      [invitationId, item.tenantId],
+      [invitationId, item.tenantId, item.recipient],
     );
     if (!invitation) {
       await this.outbox.markDead(item.id, this.workerId, 'Invitation is expired, revoked, or already accepted');
