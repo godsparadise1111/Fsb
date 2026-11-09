@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 type Organization = { id: string; name: string; code: string };
 type User = { id: string; firstName: string; lastName: string; username: string; email: string };
-type Workload = { userId: string; openTaskCount: number; substitutionCoverageCount: number; delegatedTaskCount: number };
+type Workload = { userId: string; openTaskCount: number; substitutionCoverageCount: number; delegatedTaskCount: number; prospectiveCoverageCount: number };
 type Absence = {
   id: string; organizationId: string; userId: string; substituteUserId: string;
   startsAt: string; endsAt: string; reason: string; createdAt: string;
@@ -131,7 +131,7 @@ export default function AbsencesPage() {
   useEffect(() => { if (loggedIn && token) void loadData(); }, [loggedIn, token, loadData]);
   useEffect(() => { if (loggedIn && token) void loadCalendar(); }, [loggedIn, token, loadCalendar]);
   useEffect(() => {
-    if (!loggedIn || !token || !organizationId) { setWorkload([]); setWorkloadAsOf(''); return; }
+    if (!loggedIn || !token || !organizationId) { setWorkload([]); setWorkloadAsOf(''); setWorkloadLoading(false); return; }
     const start = new Date(form.startsAt);
     if (!Number.isFinite(start.getTime())) return;
     let cancelled = false;
