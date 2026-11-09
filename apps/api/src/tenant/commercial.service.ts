@@ -149,6 +149,51 @@ export class CommercialService {
     });
   }
 
+  async renewSubscriptionFromPaidInvoice(tenantId: string, invoiceId: string, actorUserId: string) {
+    return this.dataSource.transaction(async manager => {
+      const [subscription] = await manager.query(
+        `SELECT id,status,"billingCycle","currentPeriodStart","currentPeriodEnd"
+           FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE`,
+        [tenantId],
+      );
+      if (!subscription) throw new NotFoundException('Tenant subscription not found');
+      if (subscription.status === 'CANCELLED') throw new BadRequestException('Cancelled subscriptions cannot be renewed; assign a new subscription first');
+      const [invoice] = await manager.query(
+        `SELECT id,status,"totalMinor","currencyCode","invoiceNumber"
+           FROM tenant_invoices WHERE id=$1 AND "tenantId"=$2 AND "subscriptionId"=$3 FOR UPDATE`,
+        [invoiceId, tenantId, subscription.id],
+      );
+      if (!invoice) throw new NotFoundException('Invoice not found for this tenant subscription');
+      if (invoice.status !== 'PAID') throw new BadRequestException('Subscription renewal requires a PAID invoice');
+      const [renewed] = await manager.query(
+        `UPDATE tenant_subscriptions
+            SET status='ACTIVE',
+                "currentPeriodStart"=CASE
+                  WHEN "currentPeriodEnd" IS NULL OR "currentPeriodEnd" < now() THEN now()
+                  ELSE "currentPeriodEnd" END,
+                "currentPeriodEnd"=CASE
+                  WHEN "currentPeriodEnd" IS NULL OR "currentPeriodEnd" < now()
+                    THEN now() + CASE WHEN "billingCycle"='ANNUAL' THEN interval '1 year' ELSE interval '1 month' END
+                  ELSE "currentPeriodEnd" + CASE WHEN "billingCycle"='ANNUAL' THEN interval '1 year' ELSE interval '1 month' END
+                END,
+                "trialEndsAt"=NULL,"cancelAtPeriodEnd"=false,"cancelledAt"=NULL,"updatedAt"=now()
+          WHERE id=$1
+          RETURNING id,status,"billingCycle","currentPeriodStart","currentPeriodEnd"`,
+        [subscription.id],
+      );
+      await manager.query(
+        `INSERT INTO tenant_audit_logs ("tenantId","actorUserId",action,"resourceType","resourceId",metadata)
+         VALUES ($1,$2,'SUBSCRIPTION_RENEWED','TENANT_SUBSCRIPTION',$3,$4::jsonb)`,
+        [tenantId, actorUserId, subscription.id, JSON.stringify({
+          invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber,
+          totalMinor: invoice.totalMinor, currencyCode: invoice.currencyCode,
+          currentPeriodStart: renewed.currentPeriodStart, currentPeriodEnd: renewed.currentPeriodEnd,
+        })],
+      );
+      return renewed;
+    });
+  }
+
   async transitionInvoice(invoiceId: string, status: 'PAID' | 'VOID', actorUserId: string) {
     return this.dataSource.transaction(async manager => {
       const [invoice] = await manager.query(
