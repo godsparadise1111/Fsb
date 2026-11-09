@@ -206,6 +206,107 @@ export class TenantReportsService {
   }
 
 
+
+  async processBottlenecks(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
+    const tenant = await this.dataSource.getRepository(Tenant).findOne({ where: { id: tenantId } });
+    if (!tenant || tenant.status !== 'ACTIVE') throw new NotFoundException('Active tenant not found');
+    const now = new Date();
+    const toDefault = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const fromDefault = new Date(toDefault.getTime() - 30 * 86400000);
+    const from = this.parseDate(options.from, fromDefault, 'from');
+    const to = this.parseDate(options.to, toDefault, 'to');
+    if (from >= to || to.getTime() - from.getTime() > 366 * 86400000) throw new BadRequestException('Invalid report range; maximum is 366 days');
+    const organizationId = options.organizationId ?? null;
+    if (organizationId) {
+      const [owned] = await this.dataSource.query('SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true',[organizationId,tenantId]);
+      if (!owned) throw new NotFoundException('Organization not found in this tenant');
+    }
+    const stages = await this.dataSource.query(
+      `WITH scoped AS (
+         SELECT wt.id,wt.title,wt.status,wt."createdAt",wt."completedAt",wt."dueAt",
+                pi.id AS "processInstanceId",pd.name AS "processName",
+                first_action."firstActionAt",
+                COALESCE(first_action."firstActionAt",CASE WHEN wt.status IN ('OPEN','IN_PROGRESS') THEN now() END) AS "waitEnd"
+           FROM workflow_tasks wt
+           JOIN process_instances pi ON pi.id=wt."processInstanceId"
+           JOIN process_versions pv ON pv.id=pi."processVersionId"
+           JOIN process_definitions pd ON pd.id=pv."definitionId"
+           JOIN organizations o ON o.id=pi."organizationId"
+           LEFT JOIN LATERAL (
+             SELECT min(wal."createdAt") AS "firstActionAt"
+               FROM workflow_action_logs wal
+              WHERE wal."taskId"=wt.id AND wal."tenantId"=$1
+           ) first_action ON true
+          WHERE o."tenantId"=$1 AND wt."createdAt">=$2 AND wt."createdAt"<$3
+            AND ($4::uuid IS NULL OR pi."organizationId"=$4)
+       ), actions AS (
+         SELECT wal."taskId",
+                count(*)::int AS "actionCount",
+                count(*) FILTER (WHERE wal.action='REJECTED')::int AS "rejectedActions"
+           FROM workflow_action_logs wal
+           JOIN scoped s ON s.id=wal."taskId"
+          WHERE wal."tenantId"=$1 GROUP BY wal."taskId"
+       )
+       SELECT s."processName",s.title AS "stageName",
+              count(*)::int AS "totalTasks",
+              count(*) FILTER (WHERE s.status='COMPLETED')::int AS "completedTasks",
+              count(*) FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
+              count(*) FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS') AND s."dueAt" IS NOT NULL AND s."dueAt"<now())::int AS "overdueTasks",
+              round(avg(EXTRACT(EPOCH FROM (s."completedAt"-s."createdAt"))/3600)
+                FILTER (WHERE s.status='COMPLETED' AND s."completedAt" IS NOT NULL)::numeric,2) AS "averageCycleHours",
+              round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (s."completedAt"-s."createdAt"))/3600)
+                FILTER (WHERE s.status='COMPLETED' AND s."completedAt" IS NOT NULL))::numeric,2) AS "medianCycleHours",
+              round(avg(EXTRACT(EPOCH FROM (s."firstActionAt"-s."createdAt"))/3600)
+                FILTER (WHERE s."firstActionAt" IS NOT NULL)::numeric,2) AS "averageWaitToFirstActionHours",
+              round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (s."firstActionAt"-s."createdAt"))/3600)
+                FILTER (WHERE s."firstActionAt" IS NOT NULL))::numeric,2) AS "medianWaitToFirstActionHours",
+              round(avg(EXTRACT(EPOCH FROM (s."waitEnd"-s."createdAt"))/3600)
+                FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS'))::numeric,2) AS "averageCurrentWaitingHours",
+              count(*) FILTER (WHERE COALESCE(a."rejectedActions",0)>0)::int AS "tasksWithRejection",
+              count(*) FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS') AND s."dueAt" IS NOT NULL
+                AND s."dueAt"<now())::int AS "lateOpenTasks"
+         FROM scoped s LEFT JOIN actions a ON a."taskId"=s.id
+        GROUP BY s."processName",s.title
+        ORDER BY
+          (count(*) FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS') AND s."dueAt" IS NOT NULL AND s."dueAt"<now())) DESC,
+          avg(EXTRACT(EPOCH FROM (s."firstActionAt"-s."createdAt"))/3600) DESC NULLS LAST,
+          avg(EXTRACT(EPOCH FROM (s."completedAt"-s."createdAt"))/3600) DESC NULLS LAST
+        LIMIT 100`,
+      [tenantId,from,to,organizationId],
+    );
+    const summary = await this.dataSource.query(
+      `SELECT count(*)::int AS "totalTasks",
+              count(*) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
+              count(*) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt"<now())::int AS "overdueTasks",
+              count(*) FILTER (WHERE wt.status='COMPLETED')::int AS "completedTasks",
+              count(*) FILTER (WHERE wt.status='CANCELLED')::int AS "cancelledTasks"
+         FROM workflow_tasks wt JOIN process_instances pi ON pi.id=wt."processInstanceId"
+         JOIN organizations o ON o.id=pi."organizationId"
+        WHERE o."tenantId"=$1 AND wt."createdAt">=$2 AND wt."createdAt"<$3
+          AND ($4::uuid IS NULL OR pi."organizationId"=$4)`,
+      [tenantId,from,to,organizationId],
+    );
+    const number = (v: unknown) => v == null ? null : Number(v);
+    const data = stages.map((r:any,index:number)=>({
+      rank:index+1,processName:r.processName,stageName:r.stageName,totalTasks:Number(r.totalTasks),
+      completedTasks:Number(r.completedTasks),openTasks:Number(r.openTasks),overdueTasks:Number(r.overdueTasks),
+      averageCycleHours:number(r.averageCycleHours),medianCycleHours:number(r.medianCycleHours),
+      averageWaitToFirstActionHours:number(r.averageWaitToFirstActionHours),
+      medianWaitToFirstActionHours:number(r.medianWaitToFirstActionHours),
+      averageCurrentWaitingHours:number(r.averageCurrentWaitingHours),
+      tasksWithRejection:Number(r.tasksWithRejection),
+      rejectionRatePercent:Number(r.totalTasks)?Number((Number(r.tasksWithRejection)/Number(r.totalTasks)*100).toFixed(2)):0,
+    }));
+    return { tenant:{id:tenant.id,name:tenant.name},period:{from:from.toISOString(),to:to.toISOString()},filters:{organizationId},
+      summary:Object.fromEntries(Object.entries(summary[0]??{}).map(([k,v])=>[k,Number(v??0)])),
+      bottlenecks:data, generatedAt:new Date().toISOString(),
+      metricNotes:{
+        waiting:'زمان از ایجاد وظیفه تا اولین اقدام ثبت‌شده؛ برای وظایف باز، زمان جاری به‌عنوان انتهای انتظار استفاده می‌شود.',
+        rejection:'نرخ وظایفی که حداقل یک اقدام REJECTED داشته‌اند؛ موتور فعلی مسیر RETURN/REWORK مستقل ندارد، بنابراین این شاخص معادل نرخ برگشت به مرحله قبل نیست.',
+        ranking:'رتبه‌بندی بر اساس تعداد وظایف بازِ مهلت‌گذشته، سپس زمان انتظار تا اولین اقدام و زمان چرخه.',
+      }};
+  }
+
   async operationalAlertSla(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
     const tenant = await this.dataSource.getRepository(Tenant).findOne({ where: { id: tenantId } });
     if (!tenant || tenant.status !== 'ACTIVE') throw new NotFoundException('Active tenant not found');
