@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DataSource } from 'typeorm';
 
 type Field = { label: string; expression: string; type: 'text' | 'date' | 'number'; groupable?: boolean; filterable?: boolean };
-type Source = { label: string; from: string; dateExpression: string; fields: Record<string, Field> };
+type Source = { label: string; from: string; dateExpression: string; tenantExpression?: string; fields: Record<string, Field> };
 export type ReportFilter = { field: string; operator: 'eq' | 'neq' | 'contains' | 'in' | 'gte' | 'lte'; value: unknown };
 export type ReportSpec = { source: string; from?: string; to?: string; groupBy?: string; aggregate: 'count' | 'sum' | 'avg' | 'min' | 'max'; measure?: string; filters?: ReportFilter[]; limit?: number };
 
@@ -21,6 +21,7 @@ const SOURCES: Record<string, Source> = {
   users: {
     label: 'اعضای مشتری',
     from: 'users u INNER JOIN tenant_memberships tm ON tm."userId" = u.id',
+    tenantExpression: 'tm."tenantId"',
     dateExpression: 'u."createdAt"',
     fields: {
       username: { label: 'نام کاربری', expression: 'u.username', type: 'text', groupable: true },
@@ -151,7 +152,7 @@ export class ReportBuilderService {
     if (from >= to || to.getTime() - from.getTime() > 366 * 86400000) throw new BadRequestException('بازه گزارش باید مثبت و حداکثر ۳۶۶ روز باشد');
 
     const params: unknown[] = [tenantId, from, to];
-    const clauses = ['o."tenantId" = $1', `${source.dateExpression} >= $2`, `${source.dateExpression} < $3`];
+    const clauses = [ (source.tenantExpression ?? 'o."tenantId"') + ' = $1', `${source.dateExpression} >= $2`, `${source.dateExpression} < $3`];
     for (const filter of spec.filters ?? []) {
       const field = source.fields[filter.field];
       const expression = field.expression;
