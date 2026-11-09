@@ -50,7 +50,8 @@ export class FileAttachmentsService {
          INNER JOIN form_definitions fd ON fd.id = fv."definitionId"
          INNER JOIN organizations o ON o.id = fd."organizationId"
          INNER JOIN tenants t ON t.id = o."tenantId"
-        WHERE fs.id = $1 AND fv.id = $2 AND fs."tenantId" = $3 AND t.status = 'ACTIVE'`,
+        WHERE fs.id = $1 AND fv.id = $2 AND fs."tenantId" = $3
+          AND o."tenantId" = $3 AND t.status = 'ACTIVE'`,
       [submissionId, versionId, tenantId],
     );
     if (!submission.length) throw new NotFoundException('Submission not found in the active customer account');
@@ -86,6 +87,7 @@ export class FileAttachmentsService {
       .where('submission.id = :submissionId', { submissionId })
       .andWhere('version.id = :versionId', { versionId })
       .andWhere('attachment.tenantId = :tenantId', { tenantId })
+      .andWhere('organization.tenantId = :tenantId', { tenantId })
       .andWhere('tenant.status = :status', { status: 'ACTIVE' })
       .orderBy('attachment.createdAt', 'DESC')
       .getMany();
