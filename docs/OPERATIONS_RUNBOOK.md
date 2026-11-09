@@ -78,3 +78,13 @@ Metrics فعلی در حافظه همان process نگهداری می‌شوند
 - تست بار روی سناریوهای واقعی و تست امنیتی مستقل انجام شود.
 - هشدارهای DB، disk، worker، outbox، latency و error rate به گیرنده مسئول برسند.
 - سیاست RPO/RTO و SLA توسط مالک کسب‌وکار تأیید شود.
+
+
+## نمونه پایش بیرونی Prometheus
+
+- پیکربندی scrape در `ops/prometheus/prometheus.yml` و ruleهای پایه در `ops/prometheus/fsb-alerts.yml` قرار دارند.
+- target نمونه `bpms.example.com` و مسیر scrape باید با دامنه واقعی جایگزین شود.
+- فایل secret توکن باید خارج از Git و فقط خواندنی برای Prometheus باشد؛ آن را داخل YAML یا Docker image قرار ندهید.
+- ruleهای موجود unavailable شدن endpoint، نرخ 5xx، درخواست‌های کند و restart process را پوشش می‌دهند.
+- برای ارسال هشدار به تیم عملیات، Alertmanager و receiver سازمانی را جداگانه پیکربندی کنید.
+- این ruleها جایگزین هشدار PostgreSQL، فضای دیسک، Docker host، worker heartbeat، Outbox، recovery incident و backup age نیستند؛ exporter و alertهای آن‌ها باید در زیرساخت مانیتورینگ اضافه شوند.
