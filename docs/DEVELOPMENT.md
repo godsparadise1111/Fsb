@@ -200,6 +200,6 @@
 
 - مسیر `GET /api/tenant/reports/operational-alert-sla?from=YYYY-MM-DD&to=YYYY-MM-DD&organizationId=...` گزارش tenant-scoped ارائه می‌کند؛ بازه پیش‌فرض ۳۰ روز و سقف آن ۳۶۶ روز است.
 - شاخص‌ها شامل تعداد هشدارها، پاسخ/حل ثبت‌شده و نقض‌شده، میانگین و میانه زمان پاسخ و حل، درصد انطباق، تفکیک شدت و تفکیک سازمان هستند. هشدارهای دارای SLA غیرفعال از مخرج درصد انطباق کنار گذاشته می‌شوند.
-- مسیر `GET /api/tenant/reports/operational-alert-sla.csv` خروجی CSV همین گزارش را با کنترل فرمول‌تزریقی و هدرهای no-store ارائه می‌کند.
+- مسیر `GET /api/tenant/reports/operational-alert-sla.csv` خروجی CSV همین گزارش را با کنترل فرمول‌تزریقی و هدرهای no-store ارائه می‌کند. Migration `20261109_007_operational_alert_sla_reporting_indexes.sql` ایندکس cohort گزارش و اسکن مهلت پاسخ را اضافه می‌کند.
 - صفحه فارسی `/reports` بازه و سازمان را فیلتر می‌کند و خروجی CSV را با Bearer token دریافت می‌کند. دسترسی هر دو endpoint با `tenant.reports.read` کنترل می‌شود.
 - معیارهای این گزارش بر مبنای cohort زمان `firstDetectedAt` محاسبه می‌شوند؛ هشدارهای باز و هنوز پاسخ‌داده‌نشده در نرخ پاسخ ثبت‌شده وارد نمی‌شوند.
