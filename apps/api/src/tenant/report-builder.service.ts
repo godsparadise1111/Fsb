@@ -7,6 +7,41 @@ export type ReportFilter = { field: string; operator: 'eq' | 'neq' | 'contains' 
 export type ReportSpec = { source: string; from?: string; to?: string; groupBy?: string; aggregate: 'count' | 'sum' | 'avg' | 'min' | 'max'; measure?: string; filters?: ReportFilter[]; limit?: number };
 
 const SOURCES: Record<string, Source> = {
+  organizations: {
+    label: 'سازمان‌ها',
+    from: 'organizations o',
+    dateExpression: 'o."createdAt"',
+    fields: {
+      name: { label: 'نام سازمان', expression: 'o.name', type: 'text', groupable: true },
+      code: { label: 'کد سازمان', expression: 'o.code', type: 'text', groupable: true },
+      status: { label: 'وضعیت سازمان', expression: "(CASE WHEN o.\"isActive\" THEN 'فعال' ELSE 'غیرفعال' END)", type: 'text', groupable: true },
+      createdAt: { label: 'زمان ایجاد', expression: 'o."createdAt"', type: 'date' },
+    },
+  },
+  users: {
+    label: 'اعضای مشتری',
+    from: 'users u INNER JOIN tenant_memberships tm ON tm."userId" = u.id',
+    dateExpression: 'u."createdAt"',
+    fields: {
+      username: { label: 'نام کاربری', expression: 'u.username', type: 'text', groupable: true },
+      fullName: { label: 'نام و نام خانوادگی', expression: 'concat(u."firstName", \' \', u."lastName")', type: 'text', groupable: true },
+      accountStatus: { label: 'وضعیت حساب', expression: "(CASE WHEN u.\"isActive\" THEN 'فعال' ELSE 'غیرفعال' END)", type: 'text', groupable: true },
+      membershipStatus: { label: 'وضعیت عضویت', expression: "(CASE WHEN tm.\"isActive\" THEN 'فعال' ELSE 'غیرفعال' END)", type: 'text', groupable: true },
+      createdAt: { label: 'زمان ایجاد حساب', expression: 'u."createdAt"', type: 'date' },
+    },
+  },
+  forms: {
+    label: 'تعریف فرم‌ها',
+    from: 'form_definitions fd INNER JOIN organizations o ON o.id = fd."organizationId"',
+    dateExpression: 'fd."createdAt"',
+    fields: {
+      name: { label: 'نام فرم', expression: 'fd.name', type: 'text', groupable: true },
+      code: { label: 'کد فرم', expression: 'fd.code', type: 'text', groupable: true },
+      status: { label: 'وضعیت فرم', expression: 'fd.status', type: 'text', groupable: true },
+      organizationName: { label: 'سازمان', expression: 'o.name', type: 'text', groupable: true },
+      createdAt: { label: 'زمان ایجاد', expression: 'fd."createdAt"', type: 'date' },
+    },
+  },
   processes: {
     label: 'نمونه‌های فرایند',
     from: 'process_instances pi INNER JOIN organizations o ON o.id = pi."organizationId"',
@@ -97,6 +132,9 @@ export class ReportBuilderService {
         throw new BadRequestException('مقدار فیلتر نامعتبر است');
       }
       if (values.some(value => typeof value === 'string' && value.length > 200)) throw new BadRequestException('طول مقدار فیلتر بیش از حد مجاز است');
+      if (field.type === 'text' && values.some(value => typeof value !== 'string')) throw new BadRequestException('مقدار فیلد متنی باید رشته باشد');
+      if (field.type === 'number' && values.some(value => !Number.isFinite(Number(value)))) throw new BadRequestException('مقدار فیلد عددی معتبر نیست');
+      if (field.type === 'date' && values.some(value => typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value) || !Number.isFinite(new Date(value + 'T00:00:00.000Z').getTime()))) throw new BadRequestException('مقدار تاریخ فیلتر معتبر نیست');
     }
     const limit = spec.limit ?? 100;
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new BadRequestException('حداکثر ۲۰۰ ردیف برای گزارش مجاز است');
@@ -153,7 +191,7 @@ export class ReportBuilderService {
 
   async listSaved(tenantId: string, userId: string) {
     return this.dataSource.query(
-      `SELECT id, title, description, "isShared", "createdAt", "updatedAt", "ownerUserId"
+      `SELECT id, title, description, "isShared", "createdAt", "updatedAt", "ownerUserId", ("ownerUserId" = $2) AS "isOwner"
          FROM tenant_saved_reports
         WHERE "tenantId" = $1 AND ("ownerUserId" = $2 OR "isShared" = true)
         ORDER BY "updatedAt" DESC LIMIT 100`, [tenantId, userId],
