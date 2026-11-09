@@ -10,6 +10,7 @@ export class TenantApiCredentialService {
   constructor(private readonly dataSource: DataSource) {}
 
   async issue(tenantId: string, actorUserId: string, name: string, scopes: string[], expiresAt?: string) {
+    if (typeof name !== 'string' || name.trim().length < 3 || name.trim().length > 100) throw new BadRequestException('API credential name must contain 3 to 100 non-space characters');
     if (!Array.isArray(scopes) || scopes.length < 1 || scopes.length > 10 ||
         scopes.some(scope => !ALLOWED_SCOPES.includes(scope as ApiScope)) ||
         new Set(scopes).size !== scopes.length) {
