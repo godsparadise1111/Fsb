@@ -14,7 +14,6 @@ class CreateApiCredentialDto {
 }
 
 @Controller('tenant/api-credentials')
-@RequiresFeature('api_access')
 export class TenantApiCredentialController {
   constructor(private readonly credentials: TenantApiCredentialService) {}
 
@@ -26,6 +25,7 @@ export class TenantApiCredentialController {
   }
 
   @RequirePermissions('tenant.api.manage')
+  @RequiresFeature('api_access')
   @Post()
   issue(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateApiCredentialDto) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
