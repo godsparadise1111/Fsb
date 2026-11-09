@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS tenant_saved_reports (
   "isShared" boolean NOT NULL DEFAULT false,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
   "updatedAt" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT fk_tenant_saved_reports_owner_membership FOREIGN KEY ("tenantId", "ownerUserId") REFERENCES tenant_memberships("tenantId", "userId") ON DELETE RESTRICT,
   CONSTRAINT ck_tenant_saved_reports_config_object CHECK (jsonb_typeof(config) = 'object'),
   CONSTRAINT ck_tenant_saved_reports_title CHECK (length(btrim(title)) BETWEEN 1 AND 160)
 );
