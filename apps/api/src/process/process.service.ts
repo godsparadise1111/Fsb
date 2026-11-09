@@ -6,6 +6,7 @@ import { ProcessDefinition } from './entities/process-definition.entity';
 import { ProcessVersion } from './entities/process-version.entity';
 import { CreateProcessDto } from './dto/create-process.dto';
 import { CreateProcessVersionDto } from './dto/create-process-version.dto';
+import { TenantAuditService } from '../tenant/tenant-audit.service';
 
 @Injectable()
 export class ProcessService {
@@ -14,8 +15,9 @@ export class ProcessService {
     @InjectRepository(ProcessDefinition) private readonly definitions: Repository<ProcessDefinition>,
     @InjectRepository(ProcessVersion) private readonly versions: Repository<ProcessVersion>,
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
+    private readonly audit: TenantAuditService,
   ) {}
-  async createDefinition(dto: CreateProcessDto, tenantId: string | null | undefined) {
+  async createDefinition(dto: CreateProcessDto, tenantId: string | null | undefined, actorUserId: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       const [organization] = await manager.query(
@@ -50,7 +52,9 @@ export class ProcessService {
       if (await definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) {
         throw new ConflictException('Process code already exists in this organization');
       }
-      return definitions.save(definitions.create({ ...dto, status: 'DRAFT' }));
+      const created = await definitions.save(definitions.create({ ...dto, status: 'DRAFT' }));
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_definition.created', resourceType: 'PROCESS_DEFINITION', resourceId: created.id, metadata: { organizationId: dto.organizationId, code: dto.code } });
+      return created;
     });
   }
   listDefinitions(organizationId: string | undefined, tenantId: string | null | undefined) {
@@ -62,17 +66,19 @@ export class ProcessService {
     if (organizationId) query.andWhere('definition.organizationId = :organizationId', { organizationId });
     return query.getMany();
   }
-  async createVersion(definitionId: string, dto: CreateProcessVersionDto, tenantId: string | null | undefined) {
+  async createVersion(definitionId: string, dto: CreateProcessVersionDto, tenantId: string | null | undefined, actorUserId: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
       if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be changed');
       const latest = await manager.findOne(ProcessVersion, { where: { definitionId }, order: { versionNumber: 'DESC' } });
-      return manager.save(ProcessVersion, manager.create(ProcessVersion, {
+      const created = await manager.save(ProcessVersion, manager.create(ProcessVersion, {
         definitionId, versionNumber: (latest?.versionNumber ?? 0) + 1, status: 'DRAFT',
         schema: dto.schema, changeNote: dto.changeNote ?? null,
       }));
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_version.created', resourceType: 'PROCESS_VERSION', resourceId: created.id, metadata: { definitionId, versionNumber: created.versionNumber, changeNote: created.changeNote } });
+      return created;
     });
   }
   async listVersions(definitionId: string, tenantId: string | null | undefined) {
@@ -89,7 +95,7 @@ export class ProcessService {
     }
     return rows;
   }
-  async publishVersion(definitionId: string, versionId: string, tenantId: string | null | undefined) {
+  async publishVersion(definitionId: string, versionId: string, tenantId: string | null | undefined, actorUserId: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
@@ -325,14 +331,20 @@ export class ProcessService {
       await manager.save(version);
       definition.status = 'PUBLISHED';
       await manager.save(definition);
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_version.published', resourceType: 'PROCESS_VERSION', resourceId: version.id, metadata: { definitionId, versionNumber: version.versionNumber } });
       return version;
     });
   }
-  async archiveDefinition(id: string, tenantId: string | null | undefined) {
+  async archiveDefinition(id: string, tenantId: string | null | undefined, actorUserId: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const definition = await this.definitions.findOneBy({ id });
-    if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
-    definition.status = 'ARCHIVED';
-    return this.definitions.save(definition);
+    return this.dataSource.transaction(async manager => {
+      const definition = await manager.findOne(ProcessDefinition, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
+      if (definition.status === 'ARCHIVED') return definition;
+      definition.status = 'ARCHIVED';
+      const archived = await manager.save(definition);
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_definition.archived', resourceType: 'PROCESS_DEFINITION', resourceId: definition.id, metadata: { organizationId: definition.organizationId, code: definition.code } });
+      return archived;
+    });
   }
 }
