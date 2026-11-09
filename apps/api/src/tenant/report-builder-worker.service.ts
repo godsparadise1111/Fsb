@@ -59,7 +59,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
           'INSERT INTO tenant_report_jobs ("tenantId","ownerUserId","organizationId",config,"scopeOrganizationIds","isTenantWide",status,"scheduleId","scheduledFor") VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,\'PENDING\',$7,$8) ON CONFLICT ("scheduleId","scheduledFor") DO NOTHING RETURNING id',
           [schedule.tenantId, schedule.ownerUserId, schedule.organizationId, JSON.stringify(schedule.config), JSON.stringify(schedule.scopeOrganizationIds), schedule.isTenantWide === true, schedule.id, scheduledFor],
         );
-        const next = nextReportScheduleAt(schedule.frequency as ReportScheduleFrequency, String(schedule.timeOfDay).slice(0, 5), schedule.timezone, schedule.weekday === null ? null : Number(schedule.weekday), scheduledFor);
+        const next = nextReportScheduleAt(schedule.frequency as ReportScheduleFrequency, String(schedule.timeOfDay).slice(0, 5), schedule.timezone, schedule.weekday === null ? null : Number(schedule.weekday), new Date());
         await manager.query(
           'UPDATE tenant_report_schedules SET "lastRunAt"=$2,"lastJobId"=COALESCE($3,"lastJobId"),"nextRunAt"=$4,"updatedAt"=now() WHERE id=$1',
           [schedule.id, scheduledFor, job?.id ?? null, next],
