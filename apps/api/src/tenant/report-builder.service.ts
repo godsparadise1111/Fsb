@@ -83,6 +83,20 @@ export class ReportBuilderService {
 
   private hash(value: unknown) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
+  async reportAccessOptions(tenantId: string, userId: string) {
+    const [membership] = await this.dataSource.query(
+      'SELECT tm."isTenantAdmin" FROM tenant_memberships tm JOIN tenants t ON t.id=tm."tenantId" AND t.status=\'ACTIVE\' JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true',
+      [tenantId,userId],
+    );
+    if (!membership) throw new ForbiddenException('عضویت فعال مشتری یافت نشد');
+    const [platform] = await this.dataSource.query(
+      'SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur."roleId" AND r.scope=\'PLATFORM\' AND r."isActive"=true JOIN role_permissions rp ON rp."roleId"=r.id JOIN permissions p ON p.id=rp."permissionId" AND p.code IN (\'tenant.reports.read\',\'*\') WHERE ur."userId"=$1 AND ur."isActive"=true LIMIT 1',
+      [userId],
+    );
+    const tenantWide = membership.isTenantAdmin === true || Boolean(platform);
+    return { tenantWide, organizations: await this.accessibleOrganizations(tenantId,userId) };
+  }
+
   async accessibleOrganizations(tenantId: string, userId: string) {
     const [membership] = await this.dataSource.query(
       'SELECT tm."isTenantAdmin" FROM tenant_memberships tm JOIN tenants t ON t.id=tm."tenantId" AND t.status=\'ACTIVE\' JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true',
