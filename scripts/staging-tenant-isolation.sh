@@ -10,9 +10,12 @@ set -euo pipefail
 : "${TASK_B_ID:?Set a task UUID that belongs only to Tenant B}"
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 2; }
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
-case "$BASE_URL" in
-  *localhost*|*127.0.0.1*|*staging*|*test*) ;;
-  *) echo "Refusing non-staging host. BASE_URL must contain localhost, 127.0.0.1, staging or test." >&2; exit 2 ;;
+host="${BASE_URL#*://}"
+host="${host%%/*}"
+host="${host%%:*}"
+case "$host" in
+  localhost|127.0.0.1|staging|staging.*|*.staging.*|test.*|*.test|*.test.*) ;;
+  *) echo "Refusing non-staging host. Use localhost, a staging.* host or a .test domain." >&2; exit 2 ;;
 esac
 
 API="${BASE_URL%/}/api"
