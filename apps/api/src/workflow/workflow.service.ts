@@ -81,6 +81,104 @@ export class WorkflowService {
     return new Date(Date.now() + value * 3600000);
   }
 
+  private resolveTransitionTarget(
+    schema: Record<string, unknown>, fromStepIndex: number, action: 'APPROVED' | 'REJECTED' | 'RETURNED',
+    fallbackTarget: number | null, requireExplicit = false,
+  ): number | null {
+    const transitions = schema?.transitions;
+    if (transitions === undefined) return fallbackTarget;
+    if (!Array.isArray(transitions)) throw new ConflictException('Published process transition graph is invalid');
+    const matches = transitions.filter((edge: any) =>
+      edge && edge.fromStepIndex === fromStepIndex && edge.action === action,
+    );
+    if (!matches.length) {
+      if (requireExplicit) throw new BadRequestException(`No ${action} transition is configured for step ${fromStepIndex + 1}`);
+      return fallbackTarget;
+    }
+    if (matches.length !== 1) throw new ConflictException('Process transition graph contains ambiguous rules');
+    const target = matches[0].toStepIndex;
+    if (target === null) return null;
+    if (!Number.isInteger(target) || target < 0) throw new ConflictException('Process transition target is invalid');
+    return target as number;
+  }
+
+  private async createTaskForStep(manager: EntityManager, instance: ProcessInstance, stepIndex: number, tenantId: string) {
+    const version = instance.processVersion ?? await manager.findOne(ProcessVersion, { where: { id: instance.processVersionId } });
+    const rawSteps = version?.schema?.steps;
+    const steps = Array.isArray(rawSteps) ? rawSteps as Array<Record<string, unknown>> : [];
+    const step = steps[stepIndex];
+    if (!step) throw new BadRequestException('Configured transition points to a missing process step');
+    const userIds = Array.isArray(step.assigneeUserIds) ? [...new Set(step.assigneeUserIds.filter((id): id is string => typeof id === 'string'))] : [];
+    if (!userIds.length || userIds.length > 50) throw new BadRequestException('Every target step must have between 1 and 50 configured assignees');
+    const activeUsers = await manager.find(User, { where: { id: In(userIds), isActive: true } });
+    if (activeUsers.length !== userIds.length) throw new BadRequestException('Every target-step assignee must be an active user');
+    const eligible = await manager.query(
+      `SELECT count(DISTINCT up."userId")::int AS count
+         FROM user_positions up
+         JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+         JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
+         JOIN tenant_memberships tm ON tm."tenantId"=$2 AND tm."userId"=up."userId" AND tm."isActive"=true
+         JOIN users u ON u.id=up."userId" AND u."isActive"=true
+        WHERE up."userId"=ANY($3::uuid[]) AND up."isActive"=true
+          AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())`,
+      [instance.organizationId, tenantId, userIds],
+    );
+    if (Number(eligible[0]?.count ?? 0) !== userIds.length) {
+      throw new BadRequestException('Every target-step assignee must have an active position in the process organization and active tenant membership');
+    }
+    const policy = step.assignmentPolicy === 'ANY_ASSIGNEE' ? 'ANY_ASSIGNEE' : 'ALL_ASSIGNEES';
+    const task = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
+      processInstanceId: instance.id,
+      title: typeof step.title === 'string' && step.title.trim() ? step.title.trim().slice(0, 200) : `مرحله ${stepIndex + 1}`,
+      instructions: typeof step.instructions === 'string' ? step.instructions : null,
+      assignmentPolicy: policy,
+      status: 'OPEN',
+      createdByUserId: instance.startedByUserId,
+      dueAt: this.deadlineFromHours(step.dueInHours),
+    }));
+    await manager.save(TaskAssignee, userIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
+    return { task, userIds };
+  }
+
+  async listMyProcesses(userId: string, tenantId?: string | null) {
+    if (!tenantId) return [];
+    return this.instances.createQueryBuilder('instance')
+      .innerJoinAndSelect('instance.organization', 'organization', 'organization.tenantId=:tenantId AND organization.isActive=true', { tenantId })
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status=:active', { active: 'ACTIVE' })
+      .leftJoinAndSelect('instance.processVersion', 'version')
+      .where('instance.startedByUserId=:userId', { userId })
+      .orderBy('instance.startedAt', 'DESC')
+      .take(100)
+      .getMany();
+  }
+
+  async getProcessInstance(instanceId: string, userId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      const instance = await manager.findOne(ProcessInstance, {
+        where: { id: instanceId }, relations: { organization: true, processVersion: true },
+      });
+      if (!instance || instance.organization?.tenantId !== tenantId) throw new NotFoundException('Process instance not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, userId, instance.organizationId);
+      const participant = instance.startedByUserId === userId ||
+        await manager.getRepository(TaskAssignee).exist({
+          where: { userId, task: { processInstanceId: instance.id } as any },
+        }) ||
+        await manager.getRepository(TaskDelegation).createQueryBuilder('delegation')
+          .innerJoin('workflow_tasks', 'task', 'task.id=delegation."taskId"')
+          .where('task."processInstanceId"=:instanceId AND delegation."tenantId"=:tenantId AND delegation."toUserId"=:userId', {
+            instanceId, tenantId, userId,
+          }).getCount() > 0;
+      if (!participant) throw new ForbiddenException('You are not a participant in this process instance');
+      const tasks = await manager.find(WorkflowTask, {
+        where: { processInstanceId: instance.id },
+        relations: { assignees: { user: true } },
+        order: { createdAt: 'ASC' },
+      });
+      return { ...instance, tasks };
+    });
+  }
+
   private async enqueueTaskAssignmentNotifications(manager: EntityManager, tenantId: string, taskId: string, userIds: string[]) {
     if (!userIds.length) return;
     const recipients = await manager.query(
@@ -146,6 +244,11 @@ export class WorkflowService {
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
       await this.enqueueTaskAssignmentNotifications(manager, organization.tenantId, task.id, uniqueIds);
+      await this.tenantAudit.record(manager, {
+        tenantId: organization.tenantId, actorUserId: dto.startedByUserId,
+        action: 'workflow.process.started', resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
+        metadata: { organizationId: dto.organizationId, processVersionId: version.id, initialTaskId: task.id, assigneeCount: uniqueIds.length, assignmentPolicy: task.assignmentPolicy },
+      });
       return manager.findOne(WorkflowTask, { where: { id: task.id }, relations: { assignees: { user: true }, processInstance: true } });
     });
   }
@@ -322,6 +425,11 @@ export class WorkflowService {
         await manager.save(actingDelegation);
       }
       const actionLog = await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null, returnToStepIndex: dto.action === 'RETURNED' ? dto.returnToStepIndex! : null }));
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId: userId, action: 'workflow.task.action_recorded',
+        resourceType: 'WORKFLOW_TASK', resourceId: task.id,
+        metadata: { actionLogId: actionLog.id, action: dto.action, assignmentId: assignment.id, processInstanceId: task.processInstanceId },
+      });
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
       const activeAssignments = all.filter(item => item.status !== 'REASSIGNED');
@@ -342,6 +450,10 @@ export class WorkflowService {
           throw new BadRequestException('RETURNED action must target an earlier step in the same process version');
         }
         if (instance.status !== 'RUNNING') throw new ConflictException('Only a running process can return to an earlier step');
+        if (Array.isArray(instance.processVersion.schema?.transitions)) {
+          const configuredTarget = this.resolveTransitionTarget(instance.processVersion.schema, fromStepIndex, 'RETURNED', null, true);
+          if (configuredTarget !== targetIndex) throw new BadRequestException('RETURNED destination does not match the published transition graph');
+        }
         const target = steps[targetIndex];
         const targetUserIds = [...new Set(target.assigneeUserIds ?? [])];
         if (!targetUserIds.length) throw new BadRequestException('The return target step must have at least one configured assignee');
@@ -387,17 +499,47 @@ export class WorkflowService {
           metadata: { processInstanceId: instance.id, fromStepIndex, toStepIndex: targetIndex, newTaskId: returnedTask.id },
         });
       } else if (rejected) {
+        const instance = await manager.findOne(ProcessInstance, {
+          where: { id: task.processInstanceId }, relations: { processVersion: true },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!instance) throw new NotFoundException('Process instance not found');
+        const rawSteps = instance.processVersion.schema?.steps;
+        const steps = Array.isArray(rawSteps) ? rawSteps : [];
+        const rejectedTarget = this.resolveTransitionTarget(
+          instance.processVersion.schema, instance.currentStepIndex, 'REJECTED', null, false,
+        );
         for (const pending of all.filter(item => item.status === 'PENDING')) {
           pending.status = 'REASSIGNED';
-          pending.comment = 'Closed because another assignee rejected the task';
+          pending.comment = rejectedTarget === null
+            ? 'Closed because another assignee rejected the task'
+            : 'Closed because rejection routed the process to another step';
           pending.actedAt = new Date();
         }
         await manager.save(TaskAssignee, all);
-        task.status = 'CANCELLED';
+        task.status = rejectedTarget === null ? 'CANCELLED' : 'RETURNED';
         task.completedAt = new Date();
-        const instance = await manager.findOneByOrFail(ProcessInstance, { id: task.processInstanceId });
-        instance.status = 'CANCELLED';
-        await manager.save(instance);
+        if (rejectedTarget === null) {
+          instance.status = 'CANCELLED';
+          instance.completedAt = new Date();
+          await manager.save(instance);
+          await this.tenantAudit.record(manager, {
+            tenantId, actorUserId: userId, action: 'workflow.process.cancelled',
+            resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
+            metadata: { reason: 'TASK_REJECTED', taskId },
+          });
+        } else {
+          if (rejectedTarget < 0 || rejectedTarget >= steps.length) throw new BadRequestException('REJECTED transition points to a missing process step');
+          instance.currentStepIndex = rejectedTarget;
+          await manager.save(instance);
+          const routed = await this.createTaskForStep(manager, instance, rejectedTarget, tenantId);
+          notificationAssignments.push({ taskId: routed.task.id, userIds: routed.userIds });
+          await this.tenantAudit.record(manager, {
+            tenantId, actorUserId: userId, action: 'workflow.process.rejected_routed',
+            resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
+            metadata: { taskId, targetStepIndex: rejectedTarget, newTaskId: routed.task.id },
+          });
+        }
       } else if (completed) {
         if (task.assignmentPolicy === 'ANY_ASSIGNEE') {
           for (const pending of all.filter(item => item.status === 'PENDING')) {
@@ -413,39 +555,23 @@ export class WorkflowService {
         if (!instance) throw new NotFoundException('Process instance not found');
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
-        const nextIndex = instance.currentStepIndex + 1;
-        if (nextIndex < steps.length) {
-          const next = steps[nextIndex];
-          const nextUserIds = [...new Set(next.assigneeUserIds ?? [])];
-          if (!nextUserIds.length) throw new BadRequestException('Every configured workflow step must have at least one assignee');
-          const nextUsers = await manager.find(User, { where: { id: In(nextUserIds), isActive: true } });
-          if (nextUsers.length !== nextUserIds.length) throw new BadRequestException('Every next-step assignee must be an active user');
-          const nextMembershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
-            .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
-            .innerJoin('tenant_memberships', 'tenantMembership', 'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true', { tenantId: instance.organization?.tenantId })
-            .where('membership.userId IN (:...userIds)', { userIds: nextUserIds })
-            .andWhere('unit.organizationId = :organizationId', { organizationId: instance.organizationId })
-            .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
-            .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
-            .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
-          if (Number(nextMembershipCount?.count ?? 0) !== nextUserIds.length) throw new BadRequestException('Every next-step assignee must have an active position in the process organization');
-          const nextTask = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
-            processInstanceId: instance.id,
-            title: next.title ?? `مرحله ${nextIndex + 1}`,
-            instructions: next.instructions ?? null,
-            assignmentPolicy: next.assignmentPolicy ?? 'ALL_ASSIGNEES',
-            status: 'OPEN',
-            createdByUserId: instance.startedByUserId,
-            dueAt: this.deadlineFromHours(next.dueInHours),
-          }));
-          await manager.save(TaskAssignee, nextUserIds.map(userId => manager.create(TaskAssignee, { taskId: nextTask.id, userId, status: 'PENDING' })));
-          notificationAssignments.push({ taskId: nextTask.id, userIds: nextUserIds });
+        const fallbackNext = instance.currentStepIndex + 1 < steps.length ? instance.currentStepIndex + 1 : null;
+        const nextIndex = this.resolveTransitionTarget(instance.processVersion.schema, instance.currentStepIndex, 'APPROVED', fallbackNext, true);
+        if (nextIndex !== null) {
+          if (nextIndex < 0 || nextIndex >= steps.length) throw new BadRequestException('APPROVED transition points to a missing process step');
+          const next = await this.createTaskForStep(manager, instance, nextIndex, tenantId);
+          notificationAssignments.push({ taskId: next.task.id, userIds: next.userIds });
           instance.currentStepIndex = nextIndex;
           await manager.save(instance);
         } else {
           instance.status = 'COMPLETED';
           instance.completedAt = new Date();
           await manager.save(instance);
+          await this.tenantAudit.record(manager, {
+            tenantId, actorUserId: userId, action: 'workflow.process.completed',
+            resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
+            metadata: { completedByTaskId: task.id, finalStepIndex: instance.currentStepIndex },
+          });
         }
       } else {
         task.status = 'IN_PROGRESS';
