@@ -1,5 +1,5 @@
 -- Preserve workflow history while terminating operational authority on access revocation.
--- Requires workflow delegation, deferral, tenant composite integrity and inactive-assignee migrations.
+-- Requires workflow delegation, deferral, organization substitution, tenant composite integrity and inactive-assignee migrations.
 BEGIN;
 
 ALTER TABLE organization_substitutions
