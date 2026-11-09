@@ -39,7 +39,7 @@ export class WorkflowRecoveryReplayRegistry {
         handler.mayAdvanceProcessStage !== false) {
       throw new Error('Recovery replay handlers must be system-only, idempotent, key-protected and must never perform human actions or advance stages');
     }
-    if (!handler.incidentTypes.length || handler.incidentTypes.some(type =>
+    if (typeof handler.execute !== 'function' || !Array.isArray(handler.incidentTypes) || !handler.incidentTypes.length || new Set(handler.incidentTypes).size !== handler.incidentTypes.length || handler.incidentTypes.some(type =>
       !['TERMINAL_PROCESS_HAS_ACTIVE_TASKS','RUNNING_PROCESS_TASK_COUNT_MISMATCH'].includes(type))) {
       throw new Error('Handler incident types must be explicitly allow-listed');
     }
@@ -49,7 +49,8 @@ export class WorkflowRecoveryReplayRegistry {
         throw new Error(`A replay handler is already registered for ${type}`);
       }
     }
-    this.handlers.set(handler.id, Object.freeze(handler));
+    const frozen = Object.freeze({ ...handler, incidentTypes: Object.freeze([...handler.incidentTypes]) }) as RecoveryReplayHandler;
+    this.handlers.set(handler.id, frozen);
   }
 
   resolve(incidentType: string): RecoveryReplayHandler | null {
