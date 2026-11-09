@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Header, Query, StreamableFile } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { RequiresFeature } from '../auth/decorators/requires-feature.decorator';
 import { TenantReportsService } from './tenant-reports.service';
 
 @Controller('tenant/reports')
