@@ -78,6 +78,7 @@
 - بستن Tenant باید وظایف باز را CANCELLED، درخواست‌های تعویق را CANCELLED، Outbox در انتظار/در حال پردازش را DEAD و Tenant را برای همیشه غیرقابل‌فعال‌سازی مجدد کند.
 - پیام Outbox با attempts برابر یا بیشتر از ۱۰ و lease منقضی نباید دوباره claim شود؛ پیام alert پس از رفع وضعیت breach یا بسته‌شدن alert باید در Retry به DEAD برود؛ دعوت منقضی/لغوشده/پذیرفته‌شده نیز نباید ارسال شود.
 - سوابق workflow action، task lifecycle، delegation، deferral، audit و فایل‌های پیوست را پس از بستن Tenant بررسی کنید؛ هیچ حذف فیزیکی خودکاری مجاز نیست.
+- اسکریپت read-only `apps/api/database/verification/workflow_lifecycle_invariants.sql` را پس از پایان worker اجرا کنید؛ همه queryهای ناسازگاری باید صفر ردیف برگردانند.
 - سیاست نگهداشت، legal hold، export و حذف قانونی را طبق `docs/DATA_RETENTION.md` مرور و شواهد تأیید owner ثبت کنید.
 
 Migration `20261109_015_workflow_access_revocation_lifecycle.sql` باید پس از migrations مربوط به workflow delegation/deferral، Tenant integrity و inactive-assignee اجرا شود.
