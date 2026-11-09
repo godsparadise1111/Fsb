@@ -22,6 +22,13 @@ CREATE TABLE workflow_recovery_incident_events (
 CREATE INDEX ix_workflow_recovery_incident_events_timeline
   ON workflow_recovery_incident_events ("tenantId","incidentId","createdAt" DESC);
 
+-- Preserve incidents created before the event timeline existed.
+INSERT INTO workflow_recovery_incident_events
+  ("tenantId","incidentId","eventType","eventKey",metadata)
+SELECT "tenantId",id,'WORKER_SCAN','migration-018-backfill:' || rtrim(fingerprint),
+       jsonb_build_object('source','migration-018-backfill','incidentType',"incidentType",'details',details)
+  FROM workflow_recovery_incidents;
+
 CREATE OR REPLACE FUNCTION fsb_validate_workflow_recovery_incident_event()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
