@@ -15,6 +15,18 @@ export class WorkflowController {
   constructor(private readonly workflow: WorkflowService) {}
   @RequirePermissions('workflow.start')
   @Post('process-instances') start(@Body() dto: StartProcessDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.startProcess({ ...dto, startedByUserId: user.sub }); }
+  @RequirePermissions('workflow.history.read')
+  @Get('process-instances/my')
+  myProcesses(@CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listMyProcesses(user.sub, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.history.read')
+  @Get('process-instances/:id')
+  processInstance(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.getProcessInstance(id, user.sub, user.tenantId);
+  }
+
   @RequirePermissions('workflow.tasks.read')
   @Get('tasks/my') myTasks(@CurrentUser() user: AuthenticatedUser) { return this.workflow.listMyTasks(user.sub, user.tenantId); }
   @RequirePermissions('workflow.tasks.act')
