@@ -26,7 +26,8 @@ export class TenantNotificationService {
               count(*) FILTER (WHERE status='PROCESSING' AND "lockedAt"<now()-interval '2 minutes')::int AS staleLeases,
               max("updatedAt") AS "lastUpdated"
          FROM notification_outbox WHERE "tenantId"=$1`, [tenantId]);
-    return { tenantId, ...Object.fromEntries(Object.entries(row).map(([k,v])=>[k,v==null?null:Number(v)])), measuredAt:new Date().toISOString() };
+    const { lastUpdated, ...counts } = row;
+    return { tenantId, ...Object.fromEntries(Object.entries(counts).map(([k,v])=>[k,Number(v ?? 0)])), lastUpdated, measuredAt:new Date().toISOString() };
   }
 
   async listQueue(tenantId: string, status?: string, requestedLimit = 50) {
