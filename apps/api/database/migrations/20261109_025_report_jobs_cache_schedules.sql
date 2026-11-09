@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS tenant_report_jobs (
   result jsonb NULL,
   error text NULL,
   attempts integer NOT NULL DEFAULT 0,
+  "availableAt" timestamptz NOT NULL DEFAULT now(),
   "lockedBy" varchar(120) NULL,
   "lockedAt" timestamptz NULL,
   "startedAt" timestamptz NULL,
