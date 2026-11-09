@@ -2,14 +2,10 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { WorkflowService } from './workflow.service';
+import { resolveWorkflowTransitionTarget } from './workflow-transition';
 import { isAssignmentPolicySatisfied } from './workflow-assignment-policy';
 
-const service = Object.create(WorkflowService.prototype) as WorkflowService;
-const resolve = (service as any).resolveTransitionTarget.bind(service) as (
-  schema: Record<string, unknown>, from: number, action: 'APPROVED' | 'REJECTED' | 'RETURNED',
-  fallback: number | null, requireExplicit?: boolean,
-) => number | null;
+const resolve = resolveWorkflowTransitionTarget;
 
 test('legacy sequential workflow keeps the next-step fallback', () => {
   assert.equal(resolve({ steps: [] }, 0, 'APPROVED', 1), 1);
