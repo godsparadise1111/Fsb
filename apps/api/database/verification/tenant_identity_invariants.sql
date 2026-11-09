@@ -96,3 +96,13 @@ SELECT child.id, child."parentId", child."organizationId", parent."organizationI
   FROM organization_units child
   JOIN organization_units parent ON parent.id = child."parentId"
  WHERE child."organizationId" <> parent."organizationId";
+-- Detect cycles in the organization unit parent graph.
+WITH RECURSIVE unit_paths(start_id, id, "parentId", path, cycle) AS (
+  SELECT ou.id, ou.id, ou."parentId", ARRAY[ou.id], false FROM organization_units ou
+  UNION ALL
+  SELECT walk.start_id, parent.id, parent."parentId", walk.path || parent.id, parent.id = ANY(walk.path)
+    FROM unit_paths walk
+    JOIN organization_units parent ON parent.id = walk."parentId"
+   WHERE walk.cycle = false
+)
+SELECT start_id, path FROM unit_paths WHERE cycle = true;
