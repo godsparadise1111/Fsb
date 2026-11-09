@@ -16,6 +16,36 @@ const composeConfig = JSON.parse(execFileSync('docker', [
 const apiEnvironment = composeConfig.services?.api?.environment ?? {};
 if (apiEnvironment.NODE_ENV !== 'production') throw new Error('Production Compose API must set NODE_ENV=production.');
 if (String(apiEnvironment.DB_SYNCHRONIZE) === 'true') throw new Error('Production Compose API must set DB_SYNCHRONIZE=false.');
+const workerFlags = [
+  'FSB_NOTIFICATION_WORKER_ENABLED',
+  'FSB_REPORT_WORKER_ENABLED',
+  'FSB_WORKFLOW_AUTOMATION_ENABLED',
+  'FSB_WORKFLOW_RECOVERY_ENABLED',
+];
+const expectedWorkers = {
+  api: null,
+  'report-worker': 'FSB_REPORT_WORKER_ENABLED',
+  'notification-worker': 'FSB_NOTIFICATION_WORKER_ENABLED',
+  'workflow-automation-worker': 'FSB_WORKFLOW_AUTOMATION_ENABLED',
+  'workflow-recovery-worker': 'FSB_WORKFLOW_RECOVERY_ENABLED',
+};
+for (const [service, enabledFlag] of Object.entries(expectedWorkers)) {
+  const environment = composeConfig.services?.[service]?.environment;
+  if (!environment) throw new Error('Missing Compose service: ' + service);
+  for (const flag of workerFlags) {
+    const expected = flag === enabledFlag ? 'true' : 'false';
+    if (String(environment[flag]) !== expected) {
+      throw new Error(service + ' must set ' + flag + '=' + expected + ' to prevent worker overlap.');
+    }
+  }
+}
+if (composeConfig.services?.db?.ports?.length) throw new Error('PostgreSQL must not publish a host port in Production Compose.');
+for (const service of ['api', 'web']) {
+  const ports = composeConfig.services?.[service]?.ports ?? [];
+  if (!ports.length || ports.some(port => port.host_ip !== '127.0.0.1')) {
+    throw new Error(service + ' ports must be published only on 127.0.0.1 behind the TLS reverse proxy.');
+  }
+}
 const values = {};
 for (const rawLine of fs.readFileSync('.env', 'utf8').split(/\r?\n/)) {
   const line = rawLine.trim();
@@ -35,7 +65,8 @@ const required = key => {
   if (!values[key]) fail(key + ' is required.');
   return values[key];
 };
-if (required('POSTGRES_PASSWORD') === 'change_me_locally') fail('Replace the example PostgreSQL password.');
+const postgresPassword = required('POSTGRES_PASSWORD');
+if (postgresPassword === 'change_me_locally' || postgresPassword.length < 24) fail('Replace POSTGRES_PASSWORD with at least 24 random characters.');
 if (required('JWT_SECRET') === 'replace_with_a_long_random_secret_at_least_32_chars' || values.JWT_SECRET.length < 32) fail('Replace JWT_SECRET with at least 32 random characters.');
 if (required('BOOTSTRAP_TOKEN') === 'replace_with_a_separate_one_time_secret' || values.BOOTSTRAP_TOKEN.length < 32) fail('Replace BOOTSTRAP_TOKEN with at least 32 random characters.');
 const corsOrigins = required('CORS_ORIGINS');
@@ -57,6 +88,8 @@ required('FSB_EMAIL_FROM');
 if (Boolean(values.FSB_SMTP_USER) !== Boolean(values.FSB_SMTP_PASS)) fail('Configure both SMTP username and password, or neither.');
 const port = Number(values.FSB_SMTP_PORT || 587);
 if (!Number.isInteger(port) || port < 1 || port > 65535) fail('FSB_SMTP_PORT is invalid.');
+if (values.FSB_SMTP_SECURE && !['true', 'false'].includes(values.FSB_SMTP_SECURE.toLowerCase())) fail('FSB_SMTP_SECURE must be true or false.');
+if (values.FSB_METRICS_TOKEN && values.FSB_METRICS_TOKEN.length < 32) fail('FSB_METRICS_TOKEN must contain at least 32 characters when configured.');
 process.stdout.write('Production configuration preflight passed.\n');
 NODE
 
