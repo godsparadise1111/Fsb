@@ -247,7 +247,31 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
            JOIN tenants t ON t.id=j."tenantId" AND t.status='ACTIVE'
            JOIN tenant_memberships tm ON tm."tenantId"=j."tenantId" AND tm."userId"=j."ownerUserId" AND tm."isActive"=true
            JOIN users u ON u.id=tm."userId" AND u."isActive"=true AND lower(u.email)=lower($3)
-          WHERE j.id=$1 AND j."tenantId"=$2 AND j.status='COMPLETED' AND j."organizationId" IS NOT DISTINCT FROM $4::uuid`,
+          WHERE j.id=$1 AND j."tenantId"=$2 AND j.status='COMPLETED'
+            AND j."organizationId" IS NOT DISTINCT FROM $4::uuid
+            AND (
+              (j."isTenantWide"=true AND (
+                tm."isTenantAdmin"=true
+                OR EXISTS (
+                  SELECT 1
+                    FROM user_roles ur
+                    JOIN roles r ON r.id=ur."roleId" AND r.scope='PLATFORM' AND r."isActive"=true
+                    JOIN role_permissions rp ON rp."roleId"=r.id
+                    JOIN permissions p ON p.id=rp."permissionId" AND p.code IN ('tenant.reports.read','*')
+                   WHERE ur."userId"=j."ownerUserId" AND ur."isActive"=true
+                )
+              ))
+              OR
+              (j."isTenantWide"=false AND j."organizationId" IS NOT NULL AND EXISTS (
+                SELECT 1
+                  FROM user_roles ur
+                  JOIN roles r ON r.id=ur."roleId" AND r.scope='ORGANIZATION' AND r."isActive"=true
+                  JOIN role_permissions rp ON rp."roleId"=r.id
+                  JOIN permissions p ON p.id=rp."permissionId" AND p.code='tenant.reports.read'
+                 WHERE ur."tenantId"=j."tenantId" AND ur."userId"=j."ownerUserId"
+                   AND ur."organizationId"=j."organizationId" AND ur."isActive"=true
+              ))
+            )`,
         [jobId,item.tenantId,item.recipient,organizationId],
       );
       if (!job) {
