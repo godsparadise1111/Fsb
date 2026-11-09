@@ -228,7 +228,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const title=String(item.payload.title ?? 'Operational alert');
       const due=String(stage==='RESPONSE' ? item.payload.responseDueAt ?? '' : item.payload.resolutionDueAt ?? '');
       const safeTitle=this.escapeHtml(title), safeDue=this.escapeHtml(due);
-      const subject=(item.subject ?? 'Operational alert SLA breached').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      const subject=(item.subject ?? 'Operational alert SLA breached').replace(/[\r\n]/g,' ').slice(0,160);
       const audienceLabel = audience === 'MANAGER' ? 'management escalation' : 'assigned owner notification';
       await this.transporter.sendMail({
         from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
@@ -240,21 +240,21 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     }
     if (item.eventType === 'report.schedule.completed') {
       const jobId = String(item.payload.jobId ?? '');
+      const organizationId = item.payload.organizationId ? String(item.payload.organizationId) : null;
       const [job] = await this.dataSource.query(
         `SELECT j.id,j.status,j."tenantId",j."ownerUserId",j.result,t.status AS "tenantStatus"
            FROM tenant_report_jobs j
            JOIN tenants t ON t.id=j."tenantId" AND t.status='ACTIVE'
            JOIN tenant_memberships tm ON tm."tenantId"=j."tenantId" AND tm."userId"=j."ownerUserId" AND tm."isActive"=true
            JOIN users u ON u.id=tm."userId" AND u."isActive"=true AND lower(u.email)=lower($3)
-          WHERE j.id=$1 AND j."tenantId"=$2 AND j.status='COMPLETED'`,
-        [jobId,item.tenantId,item.recipient],
+          WHERE j.id=$1 AND j."tenantId"=$2 AND j.status='COMPLETED' AND j."organizationId" IS NOT DISTINCT FROM $4::uuid`,
+        [jobId,item.tenantId,item.recipient,organizationId],
       );
       if (!job) {
         await this.outbox.markDead(item.id,this.workerId,'Scheduled report is no longer available to this active tenant member');
         return false;
       }
       const baseUrl = new URL(process.env.FSB_PUBLIC_APP_URL!);
-      const organizationId = String(item.payload.organizationId ?? '');
       const reportQuery = 'jobId=' + encodeURIComponent(jobId) + (organizationId ? '&organizationId=' + encodeURIComponent(organizationId) : '');
       const reportUrl = new URL('/reports?' + reportQuery,baseUrl).toString();
       const safeUrl = this.escapeHtml(reportUrl);
