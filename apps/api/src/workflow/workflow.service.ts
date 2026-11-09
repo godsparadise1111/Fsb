@@ -23,6 +23,7 @@ import { WorkflowTaskReassignment } from './entities/workflow-task-reassignment.
 import { CreateOrganizationSubstitutionDto } from './dto/create-organization-substitution.dto';
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
+import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 
 @Injectable()
 export class WorkflowService {
@@ -35,6 +36,7 @@ export class WorkflowService {
     @InjectRepository(WorkflowTask) private readonly tasks: Repository<WorkflowTask>,
     @InjectRepository(TaskAssignee) private readonly assignees: Repository<TaskAssignee>,
     private readonly tenantAudit: TenantAuditService,
+    private readonly notificationOutbox: NotificationOutboxService,
   ) {}
 
   private async lockActiveTenant(manager: EntityManager, tenantId: string) {
@@ -79,6 +81,39 @@ export class WorkflowService {
     return new Date(Date.now() + value * 3600000);
   }
 
+  private async enqueueTaskAssignmentNotifications(manager: EntityManager, tenantId: string, taskId: string, userIds: string[]) {
+    if (!userIds.length) return;
+    const recipients = await manager.query(
+      `SELECT DISTINCT u.id AS "userId", u.email, wt.title, pi."organizationId"
+         FROM workflow_tasks wt
+         JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."tenantId"=$1 AND pi.status='RUNNING'
+         JOIN organizations org ON org.id=pi."organizationId" AND org."tenantId"=$1 AND org."isActive"=true
+         JOIN tenants t ON t.id=$1 AND t.status='ACTIVE'
+         JOIN task_assignees ta ON ta."taskId"=wt.id AND ta.status='PENDING'
+         JOIN users u ON u.id=ta."userId" AND u."isActive"=true AND u.email IS NOT NULL
+         JOIN tenant_memberships tm ON tm."tenantId"=$1 AND tm."userId"=u.id AND tm."isActive"=true
+         JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true
+           AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())
+         JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+         JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=pi."organizationId" AND ou."isActive"=true
+        WHERE wt.id=$2 AND wt.status IN ('OPEN','IN_PROGRESS') AND u.id=ANY($3::uuid[])`,
+      [tenantId, taskId, userIds],
+    ) as Array<{userId:string;email:string;title:string;organizationId:string}>;
+    for (const recipient of recipients) {
+      const dedupeKey = createHash('sha256')
+        .update(`workflow-task-assigned:${tenantId}:${taskId}:${recipient.userId}`)
+        .digest('hex');
+      await this.notificationOutbox.enqueue(manager, {
+        tenantId,
+        eventType: 'workflow.task.assigned',
+        recipient: recipient.email,
+        subject: `New workflow task: ${recipient.title}`,
+        dedupeKey,
+        payload: { taskId, organizationId: recipient.organizationId, userId: recipient.userId, title: recipient.title },
+      });
+    }
+  }
+
   async startProcess(dto: StartProcessDto & { startedByUserId: string }) {
     return this.dataSource.transaction(async manager => {
       const version = await manager.findOne(ProcessVersion, { where: { id: dto.processVersionId, status: 'PUBLISHED' }, relations: { definition: true } });
@@ -110,6 +145,7 @@ export class WorkflowService {
         assignmentPolicy: dto.assignmentPolicy ?? 'ALL_ASSIGNEES', status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
+      await this.enqueueTaskAssignmentNotifications(manager, organization.tenantId, task.id, uniqueIds);
       return manager.findOne(WorkflowTask, { where: { id: task.id }, relations: { assignees: { user: true }, processInstance: true } });
     });
   }
@@ -189,6 +225,7 @@ export class WorkflowService {
       if (!task) throw new NotFoundException('Task not found');
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
       await this.assertActiveWorkflowMember(manager, tenantId, userId, task.processInstance.organizationId);
+      const notificationAssignments: Array<{ taskId: string; userIds: string[] }> = [];
       const claimed = await manager.query(
         `INSERT INTO workflow_action_idempotency (\"tenantId\",\"taskId\",\"userId\",\"idempotencyKey\",\"requestHash\")
          VALUES ($1,$2,$3,$4,$5) ON CONFLICT (\"tenantId\",\"taskId\",\"userId\",\"idempotencyKey\") DO NOTHING RETURNING id`,
@@ -343,6 +380,7 @@ export class WorkflowService {
         await manager.save(TaskAssignee, targetUserIds.map(targetUserId => manager.create(TaskAssignee, {
           taskId: returnedTask.id, userId: targetUserId, status: 'PENDING',
         })));
+        notificationAssignments.push({ taskId: returnedTask.id, userIds: targetUserIds });
         await this.tenantAudit.record(manager, {
           tenantId, actorUserId: userId, action: 'workflow.task.returned',
           resourceType: 'WORKFLOW_TASK', resourceId: task.id,
@@ -386,6 +424,7 @@ export class WorkflowService {
             dueAt: this.deadlineFromHours(next.dueInHours),
           }));
           await manager.save(TaskAssignee, nextUserIds.map(userId => manager.create(TaskAssignee, { taskId: nextTask.id, userId, status: 'PENDING' })));
+          notificationAssignments.push({ taskId: nextTask.id, userIds: nextUserIds });
           instance.currentStepIndex = nextIndex;
           await manager.save(instance);
         } else {
@@ -410,6 +449,9 @@ export class WorkflowService {
         }
       }
       await manager.save(task);
+      for (const pending of notificationAssignments) {
+        await this.enqueueTaskAssignmentNotifications(manager, tenantId, pending.taskId, pending.userIds);
+      }
       const response = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { assignees: true, processInstance: true } });
       if (!response) throw new NotFoundException('Updated task could not be loaded');
       await manager.query(
