@@ -22,11 +22,13 @@ import { TenantNotificationController } from './tenant-notification.controller';
 import { NotificationOutbox } from '../notifications/entities/notification-outbox.entity';
 import { TenantReportsService } from './tenant-reports.service';
 import { TenantReportsController } from './tenant-reports.controller';
+import { TenantDashboardService } from './tenant-dashboard.service';
+import { TenantDashboardController } from './tenant-dashboard.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant, TenantMembership, TenantInvitation, TenantAuditLog, NotificationOutbox, User]), NotificationsModule],
-  controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController],
-  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService],
+  controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController, TenantDashboardController],
+  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, TenantDashboardService],
   exports: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService],
 })
 export class TenantModule {}
