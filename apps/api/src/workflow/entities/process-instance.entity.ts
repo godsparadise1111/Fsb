@@ -6,7 +6,7 @@ import { User } from '../../identity/entities/user.entity';
 @Entity('process_instances')
 export class ProcessInstance {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') processVersionId: string;
   @ManyToOne(() => ProcessVersion, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'processVersionId' }) processVersion: ProcessVersion;
