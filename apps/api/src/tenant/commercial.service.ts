@@ -89,7 +89,7 @@ export class CommercialService {
       const periodEnd = input.periodEnd ? new Date(input.periodEnd) : null;
       const trialEndsAt = input.trialEndsAt ? new Date(input.trialEndsAt) : null;
       if (periodEnd && periodEnd <= periodStart) throw new BadRequestException('Subscription period end must be after its start');
-      if (input.status === 'TRIALING' && !trialEndsAt) throw new BadRequestException('Trial subscriptions require trialEndsAt');
+      if (input.status === 'TRIALING' && (!trialEndsAt || trialEndsAt <= periodStart)) throw new BadRequestException('Trial subscriptions require a trialEndsAt later than the period start');
       let subscriptionId: string;
       if (current) {
         const [updated] = await manager.query(
