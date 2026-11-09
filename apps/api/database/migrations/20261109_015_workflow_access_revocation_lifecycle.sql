@@ -109,6 +109,32 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_cancel_workflow_operations_for_membership() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF OLD."isActive" = true AND NEW."isActive" = false THEN
+    INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
+    SELECT DISTINCT OLD."tenantId", d."taskId", 'DELEGATION_ACCESS_REVOKED', OLD."userId",
+           jsonb_build_object('delegationId', d.id, 'membershipId', OLD.id)
+      FROM task_delegations d JOIN workflow_tasks wt ON wt.id=d."taskId"
+     WHERE d."tenantId"=OLD."tenantId" AND d."revokedAt" IS NULL
+       AND (d."fromUserId"=OLD."userId" OR d."toUserId"=OLD."userId")
+       AND wt.status IN ('OPEN','IN_PROGRESS');
+
+    INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
+    SELECT DISTINCT OLD."tenantId", r."taskId", 'DEFERRAL_CANCELLED_ACCESS_REVOKED', OLD."userId",
+           jsonb_build_object('requestId', r.id, 'membershipId', OLD.id)
+      FROM task_deferral_requests r JOIN workflow_tasks wt ON wt.id=r."taskId"
+     WHERE r."tenantId"=OLD."tenantId" AND r."requesterUserId"=OLD."userId"
+       AND r.status='PENDING' AND wt.status IN ('OPEN','IN_PROGRESS');
+
+    INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
+    SELECT DISTINCT OLD."tenantId", wt.id, 'SUBSTITUTION_ACCESS_REVOKED', OLD."userId",
+           jsonb_build_object('substitutionId', s.id, 'membershipId', OLD.id)
+      FROM organization_substitutions s
+      JOIN workflow_tasks wt ON wt."tenantId"=s."tenantId"
+      JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=s."organizationId"
+      JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
+     WHERE s."tenantId"=OLD."tenantId" AND s."revokedAt" IS NULL
+       AND (s."originalUserId"=OLD."userId" OR s."substituteUserId"=OLD."userId")
+       AND wt.status IN ('OPEN','IN_PROGRESS');
+
     UPDATE task_delegations
        SET "revokedAt" = now(), "revokedByUserId" = NULL
      WHERE "tenantId" = OLD."tenantId"
