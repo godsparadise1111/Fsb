@@ -352,7 +352,10 @@ export class ReportBuilderService {
 
   async update(tenantId: string, userId: string, id: string, input: { title?: string; description?: string; isShared?: boolean; config?: ReportSpec }, organizationId?: string, tenantWide = true) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('اطلاعات ویرایش گزارش نامعتبر است');
-    const current = await this.dataSource.query('SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\'organizationId\'=$4::text) AND ($5::boolean OR config->>\'organizationId\' IS NOT NULL)', [id, tenantId, userId, organizationId ?? null, tenantWide]);
+    const current = await this.dataSource.query(
+      'SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\\'organizationId\\'=$4::text) AND ($5::boolean OR config->>\\'organizationId\\' IS NOT NULL)',
+      [id, tenantId, userId, organizationId ?? null, tenantWide],
+    );
     if (!current.length) throw new NotFoundException('گزارش متعلق به کاربر جاری پیدا نشد');
     const sets: string[] = [];
     const params: unknown[] = [id, tenantId, userId];
@@ -367,16 +370,28 @@ export class ReportBuilderService {
     if (input.isShared !== undefined) { params.push(input.isShared === true); sets.push('"isShared"=$' + params.length); }
     if (input.config !== undefined) {
       const source = await this.sourceFor(tenantId, input.config, input.config.organizationId ? [input.config.organizationId] : []);
-      this.validate(input.config, source); params.push(JSON.stringify(input.config)); sets.push('config=$' + params.length + '::jsonb');
+      this.validate(input.config, source);
+      params.push(JSON.stringify(input.config)); sets.push('config=$' + params.length + '::jsonb');
     }
     if (!sets.length) throw new BadRequestException('تغییری برای ذخیره ارسال نشده است');
     sets.push('"updatedAt"=now()');
-    const [row] = await this.dataSource.query('UPDATE tenant_saved_reports SET ' + sets.join(',') + ' WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>'organizationId'=$4::text) AND ($5::boolean OR config->>'organizationId' IS NOT NULL) RETURNING id,title,description,"isShared","createdAt","updatedAt"', params);
+    const organizationParameter = params.length + 1;
+    params.push(organizationId ?? null);
+    const tenantWideParameter = params.length + 1;
+    params.push(tenantWide);
+    const scopeWhere = ' AND ($' + organizationParameter + '::uuid IS NULL OR config->>\\'organizationId\\'=$' + organizationParameter + '::text) AND ($' + tenantWideParameter + '::boolean OR config->>\\'organizationId\\' IS NOT NULL)';
+    const [row] = await this.dataSource.query(
+      'UPDATE tenant_saved_reports SET ' + sets.join(',') + ' WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3' + scopeWhere + ' RETURNING id,title,description,"isShared","createdAt","updatedAt"',
+      params,
+    );
     return row;
   }
 
-  async remove(tenantId: string, userId: string, id: string) {
-    const rows = await this.dataSource.query('DELETE FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 RETURNING id', [id, tenantId, userId]);
+  async remove(tenantId: string, userId: string, id: string, organizationId?: string, tenantWide = true) {
+    const rows = await this.dataSource.query(
+      'DELETE FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\\'organizationId\\'=$4::text) AND ($5::boolean OR config->>\\'organizationId\\' IS NOT NULL) RETURNING id',
+      [id, tenantId, userId, organizationId ?? null, tenantWide],
+    );
     if (!rows.length) throw new NotFoundException('گزارش متعلق به کاربر جاری پیدا نشد');
     return { deleted: true };
   }
@@ -397,12 +412,12 @@ export class ReportBuilderService {
     return job;
   }
 
-  async getJob(tenantId: string, userId: string, id: string) {
+  async getJob(tenantId: string, userId: string, id: string, scope: ReportAccessScope) {
     const [job] = await this.dataSource.query(
-      'SELECT id,status,result,error,"createdAt","startedAt","completedAt" FROM tenant_report_jobs WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3',
+      'SELECT id,status,result,error,"organizationId","createdAt","startedAt","completedAt" FROM tenant_report_jobs WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3',
       [id, tenantId, userId],
     );
-    if (!job) throw new NotFoundException('گزارش پس‌زمینه پیدا نشد');
+    if (!job || (!scope.tenantWide && !scope.organizationIds.includes(job.organizationId))) throw new NotFoundException('گزارش پس‌زمینه پیدا نشد');
     return job;
   }
 
@@ -427,17 +442,17 @@ export class ReportBuilderService {
     return row;
   }
 
-  async listSchedules(tenantId: string, userId: string) {
+  async listSchedules(tenantId: string, userId: string, organizationId?: string, tenantWide = true) {
     return this.dataSource.query(
-      'SELECT id,frequency,weekday,"timeOfDay",timezone,"isActive","nextRunAt","lastRunAt","lastJobId","createdAt" FROM tenant_report_schedules WHERE "tenantId"=$1 AND "ownerUserId"=$2 ORDER BY "createdAt" DESC LIMIT 100',
-      [tenantId, userId],
+      'SELECT id,frequency,weekday,"timeOfDay",timezone,"isActive","nextRunAt","lastRunAt","lastJobId","organizationId","createdAt" FROM tenant_report_schedules WHERE "tenantId"=$1 AND "ownerUserId"=$2 AND ($3::uuid IS NULL OR "organizationId"=$3) AND ($4::boolean OR "organizationId" IS NOT NULL) ORDER BY "createdAt" DESC LIMIT 100',
+      [tenantId, userId, organizationId ?? null, tenantWide],
     );
   }
 
-  async setScheduleActive(tenantId: string, userId: string, id: string, active: boolean) {
+  async setScheduleActive(tenantId: string, userId: string, id: string, active: boolean, organizationId?: string, tenantWide = true) {
     const rows = await this.dataSource.query(
-      'UPDATE tenant_report_schedules SET "isActive"=$4,"updatedAt"=now() WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 RETURNING id,"isActive","nextRunAt"',
-      [id, tenantId, userId, active],
+      'UPDATE tenant_report_schedules SET "isActive"=$4,"updatedAt"=now() WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($5::uuid IS NULL OR "organizationId"=$5) AND ($6::boolean OR "organizationId" IS NOT NULL) RETURNING id,"isActive","nextRunAt"',
+      [id, tenantId, userId, active, organizationId ?? null, tenantWide],
     );
     if (!rows.length) throw new NotFoundException('زمان‌بندی گزارش پیدا نشد');
     return rows[0];
