@@ -61,7 +61,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
 
   private async processInactiveAssigneeBatch() {
     const candidates = await this.dataSource.query(
-      \`SELECT DISTINCT t.id AS "taskId", pi."tenantId" AS "tenantId", pi."organizationId" AS "organizationId"
+      `SELECT DISTINCT t.id AS "taskId", pi."tenantId" AS "tenantId", pi."organizationId" AS "organizationId"
          FROM workflow_tasks t JOIN process_instances pi ON pi.id = t."processInstanceId"
          JOIN process_versions pv ON pv.id = pi."processVersionId"
          JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
@@ -76,7 +76,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
             OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
               JOIN organization_units ou ON ou.id = p."organizationUnitId" AND ou."organizationId" = pi."organizationId" AND ou."isActive" = true
               WHERE up."userId" = ta."userId" AND up."isActive" = true AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now())))
-        ORDER BY t.id LIMIT 50\`,
+        ORDER BY t.id LIMIT 50`,
     );
     for (const candidate of candidates as Array<{taskId:string;tenantId:string;organizationId:string}>) {
       try { await this.reassignInactiveAssignees(candidate); }
@@ -86,29 +86,29 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
 
   private async reassignInactiveAssignees(candidate: {taskId:string;tenantId:string;organizationId:string}) {
     await this.dataSource.transaction(async manager => {
-      const [task] = await manager.query(\`SELECT id, status, "processInstanceId" FROM workflow_tasks WHERE id = $1 FOR UPDATE\`, [candidate.taskId]);
+      const [task] = await manager.query(`SELECT id, status, "processInstanceId" FROM workflow_tasks WHERE id = $1 FOR UPDATE`, [candidate.taskId]);
       if (!task || !['OPEN','IN_PROGRESS'].includes(task.status)) return;
-      const [instance] = await manager.query(\`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE' WHERE pi.id = $1\`, [task.processInstanceId]);
+      const [instance] = await manager.query(`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE' WHERE pi.id = $1`, [task.processInstanceId]);
       if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId || instance.step?.reassignOnInactiveAssignee !== true) return;
       const configured = instance.step?.reassignUserIds;
       if (!Array.isArray(configured) || configured.length < 1 || configured.length > 50 || configured.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) return;
       const targets = [...new Set(configured as string[])]; if (targets.length !== configured.length) return;
-      const [history] = await manager.query(\`SELECT id FROM workflow_task_reassignments WHERE "taskId"=$1 AND "triggerType"='INACTIVE_ASSIGNEE'\`, [candidate.taskId]); if (history) return;
-      const assignments = await manager.query(\`SELECT "userId",status FROM task_assignees WHERE "taskId"=$1 FOR UPDATE\`, [candidate.taskId]) as Array<{userId:string;status:string}>;
+      const [history] = await manager.query(`SELECT id FROM workflow_task_reassignments WHERE "taskId"=$1 AND "triggerType"='INACTIVE_ASSIGNEE'`, [candidate.taskId]); if (history) return;
+      const assignments = await manager.query(`SELECT "userId",status FROM task_assignees WHERE "taskId"=$1 FOR UPDATE`, [candidate.taskId]) as Array<{userId:string;status:string}>;
       const pending = assignments.filter(a => a.status === 'PENDING'); if (!pending.length) return;
-      const invalid = await manager.query(\`SELECT ta."userId" FROM task_assignees ta WHERE ta."taskId"=$1 AND ta.status='PENDING' AND (
+      const invalid = await manager.query(`SELECT ta."userId" FROM task_assignees ta WHERE ta."taskId"=$1 AND ta.status='PENDING' AND (
         NOT EXISTS(SELECT 1 FROM users u WHERE u.id=ta."userId" AND u."isActive"=true) OR
         NOT EXISTS(SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId"=$2 AND tm."userId"=ta."userId" AND tm."isActive"=true) OR
-        NOT EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))\`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
+        NOT EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
       const displaced = invalid.map(x => x.userId); if (!displaced.length) return;
-      const eligible = await manager.query(\`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE u.id=ANY($1::uuid[]) AND u."isActive"=true\`, [targets,candidate.tenantId,candidate.organizationId]) as Array<{id:string}>;
+      const eligible = await manager.query(`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE u.id=ANY($1::uuid[]) AND u."isActive"=true`, [targets,candidate.tenantId,candidate.organizationId]) as Array<{id:string}>;
       if (eligible.length !== targets.length) { this.logger.warn('Inactive-assignee fallback targets are ineligible; assignments unchanged'); return; }
       const byUser = new Map(assignments.map(a => [a.userId,a.status])); if (targets.some(id => byUser.has(id) && byUser.get(id) !== 'PENDING')) return;
       const retained = pending.map(a => a.userId).filter(id => !displaced.includes(id)); const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) return;
       const newTargets = targets.filter(id => !byUser.has(id));
-      await manager.query(\`UPDATE task_assignees SET status='REASSIGNED', comment='Automatically reassigned because assignee is inactive or no longer eligible' WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])\`, [candidate.taskId,displaced]);
-      if (newTargets.length) await manager.query(\`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,target_id,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) AS targets(target_id) ON CONFLICT ("taskId","userId") DO NOTHING\`, [candidate.taskId,newTargets]);
-      await manager.query(\`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)\`, [candidate.tenantId,candidate.taskId,JSON.stringify(displaced),JSON.stringify(finalIds),'Automatic reassignment because pending assignees became inactive or lost valid tenant/organization membership']);
+      await manager.query(`UPDATE task_assignees SET status='REASSIGNED', comment='Automatically reassigned because assignee is inactive or no longer eligible' WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])`, [candidate.taskId,displaced]);
+      if (newTargets.length) await manager.query(`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,target_id,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) AS targets(target_id) ON CONFLICT ("taskId","userId") DO NOTHING`, [candidate.taskId,newTargets]);
+      await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)`, [candidate.tenantId,candidate.taskId,JSON.stringify(displaced),JSON.stringify(finalIds),'Automatic reassignment because pending assignees became inactive or lost valid tenant/organization membership']);
     });
   }
 
@@ -143,7 +143,10 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       if (!Number.isFinite(reassignAfterHours) || new Date(task.dueAt).getTime() + reassignAfterHours * 3600000 > Date.now()) return;
       if (Number(instance.step?.reassignAfterHours) !== Number(candidate.step?.reassignAfterHours) ||
           JSON.stringify(instance.step?.reassignUserIds) !== JSON.stringify(candidate.step?.reassignUserIds)) return;
-      const [existing] = await manager.query('SELECT id FROM workflow_task_reassignments WHERE "taskId" = $1 AND "triggerType" = 'SLA'', [candidate.taskId]);
+      const [existing] = await manager.query(
+        `SELECT id FROM workflow_task_reassignments WHERE "taskId" = $1 AND "triggerType" = 'SLA'`,
+        [candidate.taskId],
+      );
       if (existing) return;
 
       const eligible = await manager.query(
