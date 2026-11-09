@@ -456,6 +456,32 @@ export class WorkflowService {
         .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
         .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
       if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Absent user and substitute must be active tenant members with valid positions at the absence start');
+      const policy = await this.readOrganizationWorkloadPolicy(dto.organizationId, tenantId, manager);
+      if (policy.configured && policy.enforceLimit) {
+        await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantId + ':' + dto.organizationId + ':' + dto.substituteUserId]);
+        const loadRows = await manager.query(
+          `WITH open_load AS (
+             SELECT wt.id AS "taskId"
+               FROM task_assignees ta
+               JOIN workflow_tasks wt ON wt.id=ta."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+               JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+              WHERE ta."userId"=$3 AND ta.status='PENDING'
+             UNION
+             SELECT wt.id
+               FROM organization_substitutions s
+               JOIN workflow_tasks wt ON wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+               JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=s."organizationId"
+               JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
+              WHERE s."tenantId"=$1 AND s."organizationId"=$2 AND s."substituteUserId"=$3
+                AND s."revokedAt" IS NULL AND s."startsAt"<=CURRENT_TIMESTAMP AND s."endsAt">CURRENT_TIMESTAMP
+           ) SELECT COUNT(*)::int AS count FROM open_load`,
+          [tenantId, dto.organizationId, dto.substituteUserId],
+        );
+        const currentLoad = Number(loadRows[0]?.count ?? 0);
+        if (currentLoad >= policy.maxOpenTasksPerSubstitute) {
+          throw new ConflictException(`Selected substitute has reached the organization workload limit (${currentLoad}/${policy.maxOpenTasksPerSubstitute} open tasks)`);
+        }
+      }
       const substitution = await manager.save(OrganizationSubstitution, manager.create(OrganizationSubstitution, {
         tenantId, organizationId: dto.organizationId, originalUserId: dto.userId,
         substituteUserId: dto.substituteUserId, startsAt, endsAt, reason, createdByUserId: actorUserId,
@@ -574,8 +600,10 @@ export class WorkflowService {
        ORDER BY COALESCE(aggregated."openTaskCount", 0) DESC, people."lastName", people."firstName"`,
       [tenantId, organizationId],
     );
+    const policy = await this.readOrganizationWorkloadPolicy(organizationId, tenantId);
     return {
       organizationId,
+      policy,
       items: rows.map((row: any) => ({
         userId: row.userId,
         firstName: row.firstName,
