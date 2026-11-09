@@ -747,6 +747,8 @@ export class WorkflowService {
         UNION ALL
         SELECT substitution."substituteUserId", wt.id, true, false, false
           FROM organization_substitutions substitution
+          JOIN active_people original_person ON original_person.id = substitution."originalUserId"
+          JOIN active_people substitute_person ON substitute_person.id = substitution."substituteUserId"
           JOIN workflow_tasks wt ON wt.status IN ('OPEN', 'IN_PROGRESS')
           JOIN process_instances pi ON pi.id = wt."processInstanceId"
              AND pi."organizationId" = substitution."organizationId"
@@ -1025,7 +1027,9 @@ export class WorkflowService {
             AND oa."cancelledAt" IS NULL AND oa."startsAt" <= now() AND oa."endsAt" > now()
             AND (os."revokedAt" IS NOT NULL OR os."startsAt" > now() OR os."endsAt" <= now()
               OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
-              OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true))
+              OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)
+              OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."originalUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
+              OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."substituteUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))
          UNION ALL
          SELECT 'SUBSTITUTION_ENDING:' || os.id, 'MEDIUM', 'SUBSTITUTION_ENDING',
                 'پایان نزدیک جانشینی',
@@ -1037,6 +1041,8 @@ export class WorkflowService {
             AND os."endsAt" > now() AND os."endsAt" <= now() + interval '48 hours'
             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)
+            AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."originalUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
+            AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."substituteUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
          UNION ALL
          SELECT 'DEFERRAL_PENDING:' || request.id, 'MEDIUM', 'DEFERRAL_REVIEW',
                 'درخواست تغییر مهلت در انتظار بررسی',
@@ -1149,8 +1155,8 @@ export class WorkflowService {
              AND os."startsAt" <= now() AND os."endsAt" > now()
              AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
              AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)
-              OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."originalUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
-              OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."substituteUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))) AS "activeSubstitutions"`,
+             AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."originalUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
+             AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."substituteUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))`,
       [tenantId, organizationId],
     );
 
