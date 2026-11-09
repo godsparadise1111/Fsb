@@ -26,6 +26,12 @@ export default function AbsencesPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [workload, setWorkload] = useState<Workload[]>([]);
+  const [operations, setOperations] = useState<{
+    metrics: Record<string, number>;
+    employeesNearCapacity: Array<{ userId: string; firstName: string; lastName: string; projectedLoad: number; atCapacity: boolean }>;
+    workloadPolicy: { maxOpenTasksPerSubstitute: number; warningThresholdPercent: number; enforceLimit: boolean };
+    generatedAt: string;
+  } | null>(null);
   const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
   const [policySaving, setPolicySaving] = useState(false);
   const [workloadLoading, setWorkloadLoading] = useState(false);
@@ -80,15 +86,16 @@ export default function AbsencesPage() {
         setUsers([]); setItems([]); setTotal(0);
       }
       if (selectedOrg) {
-        const [people, result, workloadResult] = await Promise.all([
+        const [people, result, workloadResult, operationsResult] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
           request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
           request(`/organizations/${selectedOrg}/workload`),
+          request(`/organizations/${selectedOrg}/operations-overview`),
         ]);
-        setUsers(people); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
+        setUsers(people); setOperations(operationsResult); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
         setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       } else {
-        setUsers([]); setWorkload([]); setPolicy({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems([]); setCalendarItems([]); setTotal(0);
+        setUsers([]); setOperations(null); setWorkload([]); setPolicy({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems([]); setCalendarItems([]); setTotal(0);
         setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       }
     } catch (e) {
@@ -326,6 +333,28 @@ export default function AbsencesPage() {
 
       {error && <div className="absence-alert error">{error}</div>}
       {notice && <div className="absence-alert success">{notice}</div>}
+
+      {operations && <section className="absence-panel" style={{ marginTop: 22 }}>
+        <div className="absence-panel-heading">
+          <div><h2>نمای کلی عملیات سازمان</h2><p>تصویر مدیریتی از تداوم گردش کار، غیبت‌ها و توزیع ظرفیت کارکنان.</p></div>
+          <span className="absence-step">به‌روزرسانی: {new Date(operations.generatedAt).toLocaleString("fa-IR")}</span>
+        </div>
+        <div className="absence-summary">
+          <article><span>کارکنان فعال</span><strong>{operations.metrics.activeHeadcount.toLocaleString("fa-IR")}</strong></article>
+          <article><span>وظایف باز</span><strong>{operations.metrics.openTasks.toLocaleString("fa-IR")}</strong></article>
+          <article><span>وظایف معوق</span><strong>{operations.metrics.overdueTasks.toLocaleString("fa-IR")}</strong></article>
+          <article><span>سررسید در ۷ روز</span><strong>{operations.metrics.dueNext7Days.toLocaleString("fa-IR")}</strong></article>
+          <article><span>بدون ارجاع‌گیرندهٔ فعال</span><strong>{operations.metrics.tasksWithoutPendingAssignee.toLocaleString("fa-IR")}</strong></article>
+          <article><span>غیبت‌های جاری</span><strong>{operations.metrics.activeAbsences.toLocaleString("fa-IR")}</strong></article>
+          <article><span>غیبت در ۳۰ روز آینده</span><strong>{operations.metrics.upcomingAbsences30Days.toLocaleString("fa-IR")}</strong></article>
+          <article><span>جانشینی / واگذاری فعال</span><strong>{(operations.metrics.activeSubstitutions + operations.metrics.activeTaskDelegations).toLocaleString("fa-IR")}</strong></article>
+        </div>
+        <div className="absence-panel-heading" style={{ marginTop: 20, marginBottom: 10 }}>
+          <div><h2>هشدار ظرفیت نیروی انسانی</h2><p>آستانه هشدار {operations.workloadPolicy.warningThresholdPercent}٪ از سقف {operations.workloadPolicy.maxOpenTasksPerSubstitute} وظیفه برای هر نفر.</p></div>
+          <span className={operations.metrics.employeesAtCapacity > 0 ? "absence-pill expired" : "absence-pill active"}>{operations.metrics.employeesAtCapacity.toLocaleString("fa-IR")} نفر در سقف ظرفیت</span>
+        </div>
+        {operations.employeesNearCapacity.length === 0 ? <div className="absence-form-note">در حال حاضر نیرویی به آستانه هشدار ظرفیت نرسیده است.</div> : <div className="absence-workload-list">{operations.employeesNearCapacity.map(person => <div className="absence-workload-row" key={person.userId}><span>{person.firstName} {person.lastName}</span><span>{person.projectedLoad.toLocaleString("fa-IR")} وظیفهٔ برآوردی</span><span className={person.atCapacity ? "absence-pill expired" : "absence-pill upcoming"}>{person.atCapacity ? "سقف تکمیل" : "نزدیک سقف"}</span></div>)}</div>}
+      </section>}
 
       {showForm && <section className="absence-panel">
         <div className="absence-panel-heading"><div><h2>ثبت غیبت جدید</h2><p>ثبت غیبت، جانشینی متناظر را نیز به‌صورت اتمیک ایجاد می‌کند.</p></div><span className="absence-step">۱ / اطلاعات غیبت</span></div>
