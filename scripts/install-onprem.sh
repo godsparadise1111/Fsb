@@ -16,6 +16,6 @@ for attempt in {1..60}; do
   if [[ "$attempt" == 60 ]]; then echo "PostgreSQL did not become ready" >&2; exit 1; fi
   sleep 2
 done
-./scripts/migrate-onprem.sh
+bash ./scripts/migrate-onprem.sh
 docker compose --env-file .env -f docker-compose.onprem.yml --profile workers up -d --build --remove-orphans
 docker compose --env-file .env -f docker-compose.onprem.yml ps
