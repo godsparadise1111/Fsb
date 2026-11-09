@@ -77,7 +77,13 @@ CREATE TABLE tenant_invoices (
   CONSTRAINT "CK_tenant_invoices_status" CHECK (status IN ('DRAFT','ISSUED','PAID','VOID','OVERDUE')),
   CONSTRAINT "CK_tenant_invoices_amounts" CHECK ("subtotalMinor" >= 0 AND "taxMinor" >= 0 AND "totalMinor" = "subtotalMinor" + "taxMinor"),
   CONSTRAINT "CK_tenant_invoices_currency" CHECK ("currencyCode" ~ '^[A-Z]{3}$'),
-  CONSTRAINT "CK_tenant_invoices_payment_time" CHECK ((status <> 'PAID') OR "paidAt" IS NOT NULL)
+  CONSTRAINT "CK_tenant_invoices_payment_time" CHECK ((status <> 'PAID') OR "paidAt" IS NOT NULL),
+  CONSTRAINT "CK_tenant_invoices_void_time" CHECK ((status <> 'VOID') OR "voidedAt" IS NOT NULL),
+  CONSTRAINT "CK_tenant_invoices_terminal_timestamps" CHECK (
+    (status <> 'PAID' OR "voidedAt" IS NULL) AND
+    (status <> 'VOID' OR "paidAt" IS NULL)
+  ),
+  CONSTRAINT "CK_tenant_invoices_renewal_receipt" CHECK ("renewedAt" IS NULL OR status='PAID')
 );
 CREATE INDEX "IDX_tenant_invoices_tenant_created" ON tenant_invoices("tenantId","createdAt" DESC);
 
