@@ -201,6 +201,7 @@ export class ReportBuilderService {
     const result: Array<{ key: string; label: string; fields: Array<{ key: string; label: string; type: string; groupable: boolean; filterable: boolean }>; aggregates: string[] }> = [];
     for (const [key, base] of Object.entries(SOURCES)) {
       if (!tenantWide && key === 'users') continue;
+      if (key === 'users' && organizationId) continue;
       const source = await this.sourceFor(tenantId, { source: key, aggregate: 'count', organizationId }, organizationIds);
       result.push({
         key, label: source.label,
@@ -262,6 +263,7 @@ export class ReportBuilderService {
     this.validate(spec, source);
     if (!scope.tenantWide && (!spec.organizationId || !scope.organizationIds.includes(spec.organizationId))) throw new ForbiddenException('گزارش باید به یکی از سازمان‌های مجاز محدود شود');
     if (!scope.tenantWide && !source.organizationExpression) throw new ForbiddenException('این منبع فقط برای گزارش‌خوانی سطح مشتری در دسترس است');
+    if (spec.source === 'users' && spec.organizationId) throw new BadRequestException('گزارش اعضای مشتری فقط در حالت همه سازمان‌ها قابل اجراست');
     const scopedIds = scope.tenantWide ? (spec.organizationId ? [spec.organizationId] : []) : [spec.organizationId as string];
     const scopeHash = this.hash({ tenantWide: scope.tenantWide, organizationIds: scope.tenantWide ? ['*'] : scopedIds });
     const cacheKey = this.hash(spec);
