@@ -222,9 +222,9 @@ export class TenantReportsService {
     }
     const [summary] = await this.dataSource.query(
       `SELECT count(*)::int AS "totalAlerts",
-        count(*) FILTER (WHERE "acknowledgedAt" IS NOT NULL)::int AS "responded",
+        count(*) FILTER (WHERE "acknowledgedAt" IS NOT NULL AND "responseDueAt" IS NOT NULL)::int AS "responded",
         count(*) FILTER (WHERE ("acknowledgedAt" IS NULL AND "responseDueAt"<now()) OR "acknowledgedAt">"responseDueAt")::int AS "responseBreached",
-        count(*) FILTER (WHERE "resolvedAt" IS NOT NULL)::int AS "resolved",
+        count(*) FILTER (WHERE "resolvedAt" IS NOT NULL AND "resolutionDueAt" IS NOT NULL)::int AS "resolved",
         count(*) FILTER (WHERE ("resolvedAt" IS NULL AND "resolutionDueAt"<now()) OR "resolvedAt">"resolutionDueAt")::int AS "resolutionBreached",
         round(avg(EXTRACT(EPOCH FROM ("acknowledgedAt"-"firstDetectedAt"))/60) FILTER (WHERE "acknowledgedAt">="firstDetectedAt")::numeric,2) AS "averageResponseMinutes",
         round(avg(EXTRACT(EPOCH FROM ("resolvedAt"-"firstDetectedAt"))/3600) FILTER (WHERE "resolvedAt">="firstDetectedAt")::numeric,2) AS "averageResolutionHours",
@@ -271,6 +271,23 @@ export class TenantReportsService {
       resolutionCompliancePercent:resolved ? Number((((resolved-resolutionBreached)/resolved)*100).toFixed(2)) : null,
       bySeverity:bySeverity.map(numeric),byOrganization:byOrganization.map(numeric),generatedAt:new Date().toISOString(),
     };
+  }
+
+  async operationalAlertSlaCsv(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
+    const report = await this.operationalAlertSla(tenantId, options);
+    const rows: unknown[][] = [
+      ['بخش','شاخص','مقدار'],['مشتری','نام',report.tenant.name],['بازه','از',report.period.from],['بازه','تا',report.period.to],
+      ...Object.entries(report.summary).map(([key,value])=>['خلاصه',key,value]),
+      ['انطباق','پاسخ درصد',report.responseCompliancePercent],['انطباق','حل درصد',report.resolutionCompliancePercent],
+    ];
+    for (const item of report.bySeverity) for (const [key,value] of Object.entries(item)) rows.push(['شدت',key,value]);
+    for (const item of report.byOrganization) for (const [key,value] of Object.entries(item)) rows.push(['سازمان',key,value]);
+    const cell = (value: unknown) => {
+      let text = value == null ? '' : String(value);
+      if (/^[\\s]*[=+@-]/.test(text) || text.startsWith('\\t') || text.startsWith('\\r')) text = "'" + text;
+      return '"' + text.replace(/"/g,'""') + '"';
+    };
+    return '\\uFEFF' + rows.map(row=>row.map(cell).join(',')).join('\\r\\n') + '\\r\\n';
   }
 
   async overviewCsv(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
