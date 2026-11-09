@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsObject, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
 export class StartProcessDto {
   @IsUUID() processVersionId: string;
   @IsUUID() organizationId: string;
@@ -8,5 +8,5 @@ export class StartProcessDto {
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('4', { each: true }) initialAssigneePositionIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('4', { each: true }) initialAssigneeUnitIds?: string[];
   @IsOptional() @IsString() @Matches(/^(ANY_ASSIGNEE|ALL_ASSIGNEES)$/) assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES';
-  @IsOptional() @IsString() firstTaskTitle?: string;
+  @IsOptional() @IsString() @MaxLength(200) firstTaskTitle?: string;
 }
