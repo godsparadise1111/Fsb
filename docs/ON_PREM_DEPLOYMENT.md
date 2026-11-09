@@ -16,7 +16,7 @@
 4. AGE_RECIPIENT را با کلید عمومی age تنظیم کنید؛ کلید خصوصی را روی همین سرور نگه ندارید.
 5. دستور bash scripts/install-onprem.sh را اجرا کنید.
 
-نصب‌کننده PostgreSQL را آماده می‌کند، migrationها را به ترتیب نام فایل اعمال و checksum آنها را در fsb_schema_migrations ثبت می‌کند، سپس API، وب و worker را بالا می‌آورد. DB_SYNCHRONIZE=false اجباری است. هیچ migration در زمان startup برنامه اجرا نمی‌شود.
+نصب‌کننده PostgreSQL را آماده می‌کند، ابتدا migration پایه 20261107_000_core_schema_baseline.sql را برای ساخت جداول هسته اعمال می‌کند، سپس migrationهای Tenant و قابلیت‌ها را به ترتیب نام فایل اعمال و checksum آنها را در fsb_schema_migrations ثبت می‌کند، و در پایان API، وب و worker را بالا می‌آورد. این مسیر برای پایگاه‌داده تازه است؛ انتقال پایگاه‌داده قدیمی دارای داده باید با نگاشت Tenant و baseline ledger جداگانه و تحت runbook مهاجرت انجام شود. DB_SYNCHRONIZE=false اجباری است. هیچ migration در زمان startup برنامه اجرا نمی‌شود.
 
 ## شبکه و TLS
 PostgreSQL فقط در شبکه داخلی Compose قرار دارد و پورت آن منتشر نمی‌شود. API و وب به‌صورت پیش‌فرض فقط روی loopback میزبان bind می‌شوند؛ reverse proxy میزبان باید TLS، محدودیت اندازه درخواست، هدرهای امنیتی و rate limiting را اعمال کند. اگر reverse proxy در کانتینر دیگری است، bind آدرس API/وب را آگاهانه تغییر دهید. CORS فعلی API عمومی است و پیش از استقرار اینترنتی باید به originهای مجاز محدود شود.
