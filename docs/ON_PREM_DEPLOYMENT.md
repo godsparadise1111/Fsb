@@ -14,7 +14,7 @@
 2. همه مقادیر REPLACE را عوض کنید. رمز JWT و رمز bootstrap مستقل باشند. کلید Outbox را با openssl rand -hex 32 تولید کنید.
 3. NEXT_PUBLIC_API_URL باید URL عمومی API با پیشوند /api باشد و FSB_PUBLIC_APP_URL آدرس عمومی وب.
 4. AGE_RECIPIENT را با کلید عمومی age تنظیم کنید؛ کلید خصوصی را روی همین سرور نگه ندارید.
-5. دستور ./scripts/install-onprem.sh را اجرا کنید.
+5. دستور bash scripts/install-onprem.sh را اجرا کنید.
 
 نصب‌کننده PostgreSQL را آماده می‌کند، migrationها را به ترتیب نام فایل اعمال و checksum آنها را در fsb_schema_migrations ثبت می‌کند، سپس API، وب و worker را بالا می‌آورد. DB_SYNCHRONIZE=false اجباری است. هیچ migration در زمان startup برنامه اجرا نمی‌شود.
 
@@ -22,10 +22,10 @@
 PostgreSQL فقط در شبکه داخلی Compose قرار دارد و پورت آن منتشر نمی‌شود. API و وب به‌صورت پیش‌فرض فقط روی loopback میزبان bind می‌شوند؛ reverse proxy میزبان باید TLS، محدودیت اندازه درخواست، هدرهای امنیتی و rate limiting را اعمال کند. اگر reverse proxy در کانتینر دیگری است، bind آدرس API/وب را آگاهانه تغییر دهید. CORS فعلی API عمومی است و پیش از استقرار اینترنتی باید به originهای مجاز محدود شود.
 
 ## ارتقا
-دستور ./scripts/upgrade-onprem.sh ابتدا از دیتابیس و فایل‌های خصوصی backup رمزگذاری‌شده می‌گیرد، سپس imageها را می‌سازد، migrationهای جدید را با checksum اعمال می‌کند و سرویس‌ها را به‌روز می‌کند. ارتقای نسخه با migration ناسازگار باید release note و برنامه rollback اختصاصی داشته باشد؛ rollback خودکار schema انجام نمی‌شود.
+دستور bash scripts/upgrade-onprem.sh ابتدا از دیتابیس و فایل‌های خصوصی backup رمزگذاری‌شده می‌گیرد، سپس imageها را می‌سازد، migrationهای جدید را با checksum اعمال می‌کند و سرویس‌ها را به‌روز می‌کند. ارتقای نسخه با migration ناسازگار باید release note و برنامه rollback اختصاصی داشته باشد؛ rollback خودکار schema انجام نمی‌شود.
 
 ## Backup و بازیابی
-- دستور ./scripts/backup-onprem.sh فایل custom-format دیتابیس و آرشیو فایل‌های خصوصی را جداگانه با age رمزگذاری می‌کند و SHA-256 خروجی‌ها را ثبت می‌کند.
+- دستور bash scripts/backup-onprem.sh فایل custom-format دیتابیس و آرشیو فایل‌های خصوصی را جداگانه با age رمزگذاری می‌کند و SHA-256 خروجی‌ها را ثبت می‌کند.
 - کلید خصوصی age، FSB_OUTBOX_ENCRYPTION_KEY و فایل .env باید در مخزن امن جداگانه نگهداری شوند. از دست‌رفتن کلید Outbox، payload اعلان‌های تحویل‌نشده را غیرقابل رمزگشایی می‌کند.
 - بازیابی فقط روی محیط ایزوله و پس از تطبیق checksum انجام شود. بعد از restore دیتابیس و فایل‌ها، API/worker را بالا آورده و health، دسترسی فایل و ارسال اعلان را بررسی کنید. خودکارسازی کامل restore در این بسته انجام نشده است.
 
