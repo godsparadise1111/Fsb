@@ -38,6 +38,7 @@ export class IdentityService {
     if (!tenantId) return this.users.find({ where: { isActive: true }, order: { lastName: 'ASC', firstName: 'ASC' } });
     return this.users.createQueryBuilder('user')
       .innerJoin('tenant_memberships', 'membership', 'membership.\"userId\" = user.id AND membership.\"tenantId\" = :tenantId AND membership.\"isActive\" = true', { tenantId })
+      .innerJoin('tenants', 'tenant', 'tenant.id = :tenantId AND tenant.status = :tenantStatus', { tenantId, tenantStatus: 'ACTIVE' })
       .where('user.isActive = true').orderBy('user.lastName', 'ASC').addOrderBy('user.firstName', 'ASC').getMany();
   }
   async setUserActive(id: string, isActive: boolean) {
@@ -111,6 +112,9 @@ export class IdentityService {
       .innerJoin('tenant_memberships', 'tm',
         'tm."userId" = user.id AND tm."tenantId" = :tenantId AND tm."isActive" = true',
         { tenantId })
+      .innerJoin('tenants', 'tenant', 'tenant.id = :tenantId AND tenant.status = :tenantStatus', {
+        tenantId, tenantStatus: 'ACTIVE',
+      })
       .where('user.isActive = true')
       .select(['user.id', 'user.firstName', 'user.lastName', 'user.username', 'user.email'])
       .orderBy('user.lastName', 'ASC').addOrderBy('user.firstName', 'ASC')
