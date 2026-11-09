@@ -291,14 +291,14 @@ export default function ReportBuilderPanel() {
         <label style={{display:'grid',gap:5}}>توضیحات<input style={control} value={description} onChange={e=>setDescription(e.target.value)} maxLength={1000}/></label>
       </div>
       <label style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}><input type="checkbox" checked={isShared} onChange={e=>setIsShared(e.target.checked)}/>اشتراک با مدیران مجاز همین مشتری</label>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>{(!loadedId||canEdit)&&<button style={button} type="button" disabled={busy||!title.trim()} onClick={()=>void save()}>{loadedId?'به‌روزرسانی گزارش':'ذخیره گزارش'}</button>}<button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportCsv()}>خروجی CSV</button></div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>{(!loadedId||canEdit)&&<button style={button} type="button" disabled={busy||!title.trim()} onClick={()=>void save()}>{loadedId?'به‌روزرسانی گزارش':'ذخیره گزارش'}</button>}<button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportCsv()}>CSV</button><button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportFile('xlsx')}>Excel</button><button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportFile('pdf')}>PDF</button></div>
     </div>
     <div style={{borderTop:'1px solid var(--border, #e5e7eb)',marginTop:20,paddingTop:18}}>
       <h3 style={{marginTop:0}}>گزارش‌های ذخیره‌شده</h3>
       {!saved.length&&<p style={{opacity:.7}}>هنوز گزارشی ذخیره نشده است.</p>}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,230px),1fr))',gap:8}}>
         {saved.map(item=><article key={item.id} style={{border:'1px solid var(--border, #e5e7eb)',borderRadius:10,padding:12,minWidth:0}}>
-          <strong>{item.title}</strong><div style={{fontSize:12,opacity:.7,margin:'5px 0 10px'}}>{item.isShared?'اشتراکی برای مشتری':'خصوصی'}{item.description?' · '+item.description:''}</div>
+          <strong>{item.title}</strong><div style={{fontSize:12,opacity:.7,margin:'5px 0 10px'}}>{item.isShared?'اشتراکی در دامنه مجاز':'خصوصی'}{item.description?' · '+item.description:''}</div>
           <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button type="button" style={button} disabled={busy} onClick={()=>void loadSaved(item.id)}>بازکردن و اجرا</button>{item.isOwner&&<button type="button" style={button} disabled={busy} onClick={()=>void removeSaved(item.id)}>حذف</button>}</div>
         </article>)}
       </div>
