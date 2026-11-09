@@ -14,7 +14,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 $compose exec -T db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$tmp/database.dump"
-$compose exec -T api sh -c 'tar -C "$FSB_FILE_STORAGE_PATH" -czf - .' > "$tmp/private-files.tar.gz"
+$compose run --rm -T --no-deps --entrypoint sh api -c 'tar -C "$FSB_FILE_STORAGE_PATH" -czf - .' > "$tmp/private-files.tar.gz"
 (
   cd "$tmp"
   sha256sum database.dump private-files.tar.gz > SHA256SUMS
