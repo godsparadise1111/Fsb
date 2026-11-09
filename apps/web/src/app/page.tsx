@@ -3,7 +3,7 @@ const modules = [
   { title: 'کاربران و دسترسی', description: 'کاربران، انتساب پست، نقش‌ها و مجوزها', status: 'پیاده‌سازی هسته' },
   { title: 'فرم‌ساز', description: 'تعریف فرم، نسخه‌بندی و ثبت اطلاعات', status: 'نسخه‌بندی و API' },
   { title: 'طراحی فرایند', description: 'تعریف فرایند و انتشار نسخه‌های مستقل', status: 'نسخه‌بندی و API' },
-  { title: 'گردش کار', description: 'نمونه فرایند، کارتابل، ارجاع چندنفره و تاریخچه', status: 'هسته اجرایی اولیه' },
+  { title: 'کارتابل گردش کار', description: 'اقدام، تأیید، رد و بازگشت مستند به مراحل قبلی', status: 'کارتابل عملیاتی', href: '/tasks' },
   { title: 'داشبورد مدیریتی مشتری', description: 'شاخص‌های کلان مشتری و وضعیت فرایندها، هشدارها و صف اعلان‌ها', status: 'نمای زنده مدیریتی', href: '/dashboard' },
   { title: 'داشبورد مدیر سازمان', description: 'عملکرد سازمان، وظایف معوق، کارهای بدون مسئول و هشدارهای SLA', status: 'نمای تفکیکی سازمان', href: '/organization-dashboard' },
   { title: 'مدیریت صف اعلان‌ها', description: 'پایش Outbox، Dead Letter Queue و بازپردازش کنترل‌شده', status: 'پنل عملیاتی', href: '/notifications' },
