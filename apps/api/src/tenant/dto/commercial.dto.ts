@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, Length, Matches, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min } from 'class-validator';
 export class UpdateTenantSubscriptionDto {
   @IsString() @Length(3, 24) @Matches(/^[A-Z_]+$/) planCode: string;
   @IsIn(['TRIALING','ACTIVE','PAST_DUE','SUSPENDED','CANCELLED']) status: 'TRIALING'|'ACTIVE'|'PAST_DUE'|'SUSPENDED'|'CANCELLED';
@@ -21,5 +21,5 @@ export class TransitionInvoiceDto {
 }
 
 export class RenewTenantSubscriptionDto {
-  @IsString() @Length(36,36) invoiceId: string;
+  @IsUUID() invoiceId: string;
 }
