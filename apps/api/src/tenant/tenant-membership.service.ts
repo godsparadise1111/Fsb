@@ -5,6 +5,7 @@ import { Tenant } from './entities/tenant.entity';
 import { TenantMembership } from './entities/tenant-membership.entity';
 import { User } from '../identity/entities/user.entity';
 import { TenantAuditService } from './tenant-audit.service';
+import { assertTenantUserCapacity } from './tenant-commercial-limits';
 
 @Injectable()
 export class TenantMembershipService {
@@ -26,8 +27,9 @@ export class TenantMembershipService {
 
       const repository = manager.getRepository(TenantMembership);
       const existing = await repository.findOne({ where: { tenantId, userId }, lock: { mode: 'pessimistic_write' } });
+      if (existing?.isActive) throw new ConflictException('User is already an active member of this tenant');
+      await assertTenantUserCapacity(manager, tenantId, 'RESERVE_NEW_SEAT');
       if (existing) {
-        if (existing.isActive) throw new ConflictException('User is already an active member of this tenant');
         existing.isActive = true;
         existing.isTenantAdmin = isTenantAdmin;
         existing.acceptedAt = new Date();
