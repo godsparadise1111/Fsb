@@ -131,6 +131,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
     if (this.busy) return;
     this.busy = true;
     try {
+      await this.dataSource.query("DELETE FROM tenant_report_cache WHERE id IN (SELECT id FROM tenant_report_cache WHERE \"expiresAt\"<now() ORDER BY \"expiresAt\" LIMIT 250)");
       await this.enqueueDueSchedules();
       const jobs = await this.claimJobs();
       for (const job of jobs) await this.processJob(job);
