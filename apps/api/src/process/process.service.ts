@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Organization } from '../organization/entities/organization.entity';
@@ -138,6 +138,29 @@ export class ProcessService {
         }
         if (config.reassignOnInactiveAssignee === true && config.reassignUserIds === undefined) {
           throw new BadRequestException(`Process step ${index + 1} inactive-assignee reassignment requires reassignUserIds`);
+        }
+      }
+      const usesSla = (configuredSteps ?? []).some((step: unknown) => {
+        if (!step || typeof step !== 'object' || Array.isArray(step)) return false;
+        const config = step as Record<string, unknown>;
+        return ['dueInHours', 'escalateAfterHours', 'reassignAfterHours'].some(key =>
+          config[key] !== undefined && config[key] !== null,
+        );
+      });
+      if (usesSla) {
+        const [entitlement] = await manager.query(
+          `SELECT (p.features->>'sla')::boolean AS enabled
+             FROM process_definitions pd
+             JOIN organizations o ON o.id=pd."organizationId"
+             JOIN tenant_subscriptions s ON s."tenantId"=o."tenantId"
+             JOIN commercial_plans p ON p.code=s."planCode"
+            WHERE pd.id=$1 AND s.status IN ('ACTIVE','TRIALING')
+              AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">now())
+              AND (s.status<>'TRIALING' OR s."trialEndsAt" IS NULL OR s."trialEndsAt">now())`,
+          [definition.id],
+        );
+        if (!entitlement?.enabled) {
+          throw new ForbiddenException('SLA configuration requires an active subscription with the SLA feature');
         }
       }
       version.status = 'PUBLISHED';
