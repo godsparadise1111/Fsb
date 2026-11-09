@@ -143,7 +143,8 @@ export class WorkflowRecoveryWorker implements OnModuleInit, OnModuleDestroy {
 
       if (instance.status === 'RUNNING' && active.length !== 1) {
         const incidentDetails = {
-          ...incidentDetails,
+          activeTaskIds: active.map(task => task.id),
+          reason: active.length === 0 ? 'RUNNING process has no active task; automatic advancement is unsafe' : 'RUNNING process has multiple active tasks; automatic task selection is unsafe',
         };
         await this.recordIncident(manager, instance.tenantId, instance.id, 'RUNNING_PROCESS_TASK_COUNT_MISMATCH', incidentDetails);
         const anchor = tasks[tasks.length - 1];
