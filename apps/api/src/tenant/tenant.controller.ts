@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
@@ -16,6 +16,10 @@ export class TenantController {
   @RequirePermissions('tenants.read')
   @Get()
   list() { return this.tenants.list(); }
+
+  @RequirePermissions('tenants.read')
+  @Get('activation-candidates')
+  activationCandidates(@Query('search') search?: string) { return this.tenants.listActivationCandidates(search); }
 
   @RequirePermissions('tenants.read')
   @Get(':id')
