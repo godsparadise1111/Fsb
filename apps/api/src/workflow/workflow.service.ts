@@ -321,7 +321,7 @@ export class WorkflowService {
         actingDelegation.revokedByUserId = userId;
         await manager.save(actingDelegation);
       }
-      await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null, returnToStepIndex: dto.action === 'RETURNED' ? dto.returnToStepIndex! : null }));
+      const actionLog = await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null, returnToStepIndex: dto.action === 'RETURNED' ? dto.returnToStepIndex! : null }));
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
       const activeAssignments = all.filter(item => item.status !== 'REASSIGNED');
@@ -464,6 +464,11 @@ export class WorkflowService {
         }
       }
       await manager.save(task);
+      await manager.query(
+        `INSERT INTO workflow_task_lifecycle_events (\"tenantId\",\"taskId\",\"eventType\",\"affectedUserId\",\"details\`)
+         VALUES ($1,$2,'ACTION_RECORDED',$3,$4::jsonb)`,
+        [tenantId, taskId, userId, JSON.stringify({ actionLogId: actionLog.id, action: dto.action, assignmentId: assignment.id, taskStatus: task.status, processInstanceId: task.processInstanceId })],
+      );
       for (const pending of notificationAssignments) {
         await this.enqueueTaskAssignmentNotifications(manager, tenantId, pending.taskId, pending.userIds);
       }
