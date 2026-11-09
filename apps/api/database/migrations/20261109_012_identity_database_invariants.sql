@@ -83,7 +83,6 @@ END $$;
 CREATE OR REPLACE FUNCTION fsb_assert_active_identity_assignment() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE user_active boolean;
 DECLARE tenant_status varchar(20);
-DECLARE membership_active boolean;
 DECLARE role_scope varchar(24);
 DECLARE role_active boolean;
 DECLARE organization_active boolean;
@@ -134,7 +133,8 @@ BEGIN
     IF role_scope <> 'ORGANIZATION' THEN RAISE EXCEPTION 'Platform roles cannot be organization-scoped'; END IF;
     SELECT t.status, o."isActive" INTO tenant_status, organization_active
       FROM organizations o INNER JOIN tenants t ON t.id = o."tenantId"
-     WHERE o.id = NEW."organizationId" AND o."tenantId" = NEW."tenantId";
+     WHERE o.id = NEW."organizationId" AND o."tenantId" = NEW."tenantId"
+     FOR SHARE OF o, t;
     IF tenant_status IS DISTINCT FROM 'ACTIVE' OR organization_active IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'Active organization role requires an active tenant and organization';
     END IF;
