@@ -40,4 +40,25 @@ END; $$;
 CREATE TRIGGER "TR_operational_alert_sla_policy_validate"
  BEFORE INSERT OR UPDATE ON organization_operational_alert_sla_policies
  FOR EACH ROW EXECUTE FUNCTION fsb_validate_operational_alert_sla_policy();
+CREATE OR REPLACE FUNCTION fsb_set_operational_alert_sla_deadlines() RETURNS trigger LANGUAGE plpgsql AS $
+DECLARE p organization_operational_alert_sla_policies%ROWTYPE;
+DECLARE response_minutes integer;
+DECLARE resolution_hours integer;
+BEGIN
+ SELECT * INTO p FROM organization_operational_alert_sla_policies
+  WHERE "tenantId"=NEW."tenantId" AND "organizationId"=NEW."organizationId";
+ IF FOUND THEN
+  IF NOT p."enabled" THEN
+   NEW."responseDueAt" := NULL; NEW."resolutionDueAt" := NULL; RETURN NEW;
+  END IF;
+  response_minutes := CASE NEW.severity WHEN 'CRITICAL' THEN p."criticalResponseMinutes" WHEN 'HIGH' THEN p."highResponseMinutes" WHEN 'MEDIUM' THEN p."mediumResponseMinutes" ELSE p."lowResponseMinutes" END;
+  resolution_hours := CASE NEW.severity WHEN 'CRITICAL' THEN p."criticalResolutionHours" WHEN 'HIGH' THEN p."highResolutionHours" WHEN 'MEDIUM' THEN p."mediumResolutionHours" ELSE p."lowResolutionHours" END;
+ ELSE
+  response_minutes := CASE NEW.severity WHEN 'CRITICAL' THEN 15 WHEN 'HIGH' THEN 60 WHEN 'MEDIUM' THEN 240 ELSE 1440 END;
+  resolution_hours := CASE NEW.severity WHEN 'CRITICAL' THEN 4 WHEN 'HIGH' THEN 8 WHEN 'MEDIUM' THEN 24 ELSE 72 END;
+ END IF;
+ NEW."responseDueAt" := COALESCE(NEW."responseDueAt", NEW."firstDetectedAt" + make_interval(mins => response_minutes));
+ NEW."resolutionDueAt" := COALESCE(NEW."resolutionDueAt", NEW."firstDetectedAt" + make_interval(hours => resolution_hours));
+ RETURN NEW;
+END; $;
 COMMIT;
