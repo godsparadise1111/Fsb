@@ -606,6 +606,7 @@ export class WorkflowService {
   async revokeOrganizationSubstitution(organizationId: string, substitutionId: string, actorUserId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
       const substitution = await manager.findOne(OrganizationSubstitution, {
         where: { id: substitutionId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
       });
@@ -1269,6 +1270,7 @@ export class WorkflowService {
   async cancelOrganizationAbsence(organizationId: string, absenceId: string, actorUserId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
       const absence = await manager.findOne(OrganizationAbsence, {
         where: { id: absenceId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
       });
