@@ -49,6 +49,8 @@ git commit -m "build: add root npm workspace lockfile"
 
 اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند. Dockerfileها در صورت وجود lockfile از `npm ci` استفاده می‌کنند؛ در غیر این صورت فقط برای Buildهای موقت به `npm install` fallback می‌کنند. Preflight تولید بدون lockfile commitشده عمداً متوقف می‌شود.
 
+در Windows PowerShell نیز می‌توانید همین دو دستور npm را مستقیم از ریشه اجرا کنید: `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` و سپس `npm ci --no-audit --no-fund`.
+
 ## 4. Migration و Backup
 
 - هیچ Migration را روی Production برای اولین بار اجرا نکنید.
