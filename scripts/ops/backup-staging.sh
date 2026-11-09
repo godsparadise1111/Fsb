@@ -24,6 +24,7 @@ encrypted="$tmp/fsb-$stamp.tar.gz.age"
 )
 # Keep the plaintext archive only inside the mode-0700 temporary directory.
 age -r "$AGE_RECIPIENT" -o "$encrypted" "$archive"
+rm -f "$archive"
 mv "$encrypted" "backups/fsb-$stamp.tar.gz.age"
 sha256sum "backups/fsb-$stamp.tar.gz.age" > "backups/fsb-$stamp.tar.gz.age.sha256"
 echo "Encrypted backup created: backups/fsb-$stamp.tar.gz.age"
