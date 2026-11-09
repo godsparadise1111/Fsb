@@ -8,7 +8,7 @@ SELECT tm.id, tm."tenantId", tm."userId"
   LEFT JOIN users u ON u.id = tm."userId"
   LEFT JOIN tenants t ON t.id = tm."tenantId"
  WHERE tm."isActive" = true
-   AND (u.id IS NULL OR u."isActive" = false OR t.status <> 'ACTIVE');
+   AND (u.id IS NULL OR u."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE');
 
 -- Active position assignments must match tenant membership and active structure.
 SELECT up.id, up."tenantId", up."userId", up."positionId"
@@ -26,7 +26,7 @@ SELECT up.id, up."tenantId", up."userId", up."positionId"
      OR p.id IS NULL OR p."isActive" = false
      OR ou.id IS NULL OR ou."isActive" = false
      OR o.id IS NULL OR o."isActive" = false
-     OR t.status <> 'ACTIVE' OR o."tenantId" <> up."tenantId");
+     OR t.status IS DISTINCT FROM 'ACTIVE' OR o."tenantId" <> up."tenantId");
 
 -- Active organization role assignments must match tenant, active user/member and active organization.
 SELECT ur.id, ur."tenantId", ur."userId", ur."organizationId", ur."roleId"
@@ -54,12 +54,14 @@ SELECT ur.id, ur."userId", ur."roleId"
      OR r.id IS NULL OR r."isActive" = false OR r.scope <> 'PLATFORM');
 
 -- Every tenant must retain at least one active administrator account.
-SELECT tm."tenantId", COUNT(*) FILTER (
+SELECT t.id AS "tenantId", COUNT(*) FILTER (
          WHERE tm."isActive" = true AND tm."isTenantAdmin" = true AND u."isActive" = true
        ) AS active_admins
-  FROM tenant_memberships tm
-  JOIN users u ON u.id = tm."userId"
- GROUP BY tm."tenantId"
+  FROM tenants t
+  LEFT JOIN tenant_memberships tm ON tm."tenantId" = t.id
+  LEFT JOIN users u ON u.id = tm."userId"
+ WHERE t.status = 'ACTIVE'
+ GROUP BY t.id
 HAVING COUNT(*) FILTER (
          WHERE tm."isActive" = true AND tm."isTenantAdmin" = true AND u."isActive" = true
        ) = 0;
