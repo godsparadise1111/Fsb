@@ -634,6 +634,7 @@ export class WorkflowService {
       SELECT people.id AS "userId", people."firstName", people."lastName", people.username,
              COALESCE(aggregated."openTaskCount", 0)::int AS "openTaskCount",
              COALESCE(aggregated."substitutionCoverageCount", 0)::int AS "substitutionCoverageCount",
+             COALESCE(aggregated."delegatedTaskCount", 0)::int AS "delegatedTaskCount",
              COALESCE(aggregated."prospectiveCoverageCount", 0)::int AS "prospectiveCoverageCount"
         FROM active_people people
         LEFT JOIN aggregated ON aggregated."userId" = people.id
