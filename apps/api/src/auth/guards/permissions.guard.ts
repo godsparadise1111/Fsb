@@ -29,6 +29,11 @@ export class PermissionsGuard implements CanActivate {
       request.params?.versionId,
       request.params?.unitId,
       request.params?.positionId,
+      request.params?.submissionId,
+      request.params?.attachmentId,
+      request.params?.taskId,
+      request.body?.submissionId,
+      request.body?.attachmentId,
       request.body?.processVersionId,
       request.body?.formVersionId,
       request.body?.processInstanceId,
@@ -59,6 +64,21 @@ export class PermissionsGuard implements CanActivate {
        SELECT wt.id AS "resourceId", pi."organizationId"
          FROM workflow_tasks wt INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
         WHERE wt.id = ANY($1::uuid[])
+       UNION ALL
+       SELECT fs.id AS "resourceId", COALESCE(pi."organizationId", fd."organizationId") AS "organizationId"
+         FROM form_submissions fs
+         JOIN form_versions fv ON fv.id=fs."formVersionId"
+         JOIN form_definitions fd ON fd.id=fv."definitionId"
+         LEFT JOIN process_instances pi ON pi.id=fs."processInstanceId"
+        WHERE fs.id=ANY($1::uuid[])
+       UNION ALL
+       SELECT fa.id AS "resourceId", COALESCE(pi."organizationId", fd."organizationId") AS "organizationId"
+         FROM file_attachments fa
+         JOIN form_submissions fs ON fs.id=fa."submissionId"
+         JOIN form_versions fv ON fv.id=fs."formVersionId"
+         JOIN form_definitions fd ON fd.id=fv."definitionId"
+         LEFT JOIN process_instances pi ON pi.id=fs."processInstanceId"
+        WHERE fa.id=ANY($1::uuid[])
        UNION ALL
        SELECT ou.id AS "resourceId", ou."organizationId" FROM organization_units ou WHERE ou.id = ANY($1::uuid[])
        UNION ALL
