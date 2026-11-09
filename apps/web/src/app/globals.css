@@ -508,3 +508,7 @@ html[data-theme="dark"] .fsb-api-key { background:var(--fsb-primary-soft); }
  .fsb-commercial-form>button,.fsb-api-key button { width:100%; }
  .fsb-api-key { align-items:stretch; flex-direction:column; }
 }
+
+.fsb-row-actions { display:flex; flex-wrap:wrap; gap:7px; }
+.fsb-row-actions button { white-space:nowrap; }
+@media(max-width:600px) { .fsb-row-actions { flex-direction:column; } .fsb-row-actions button { width:100%; } }
