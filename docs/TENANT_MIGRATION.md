@@ -147,7 +147,7 @@ Migration 015 وضعیت `CANCELLED` را برای درخواست تعویق ا�
 
 - Migration 021 creates the commercial plan catalog, one subscription per tenant and tenant-bound invoice ledger. Existing tenants are backfilled from their legacy plan/status; closed tenants are mapped to CANCELLED subscriptions.
 - New tenants receive a TRIALING subscription. The 14-day trial clock starts only when the platform activates the tenant and assigns its initial Tenant Admin.
-- Feature access is evaluated server-side by the global entitlement guard. User, active organization and process-definition limits are checked in the write transaction under tenant/subscription locks.
+- Feature access is evaluated server-side by the global entitlement guard. User, active organization and process-definition limits are checked in the write transaction under tenant/subscription locks. File storage quota is enforced during attachment upload using a tenant/subscription lock and a sum of stored attachment sizes.
 - Migration 022 stores only a SHA-256 hash of a tenant-scoped API key, its visible prefix, limited scopes, expiry and revocation state. Key identity/scope cannot be edited and hard deletion is blocked.
 - The versioned public API currently exposes only read endpoints under `/api/v1`; scopes are `tenant.read` and `reports.read`. Both require an active API-access entitlement.
 - Migration 023 adds a one-time renewal receipt to paid invoices. A PAID invoice can extend a subscription only once; the receipt and period extension commit in the same transaction.
