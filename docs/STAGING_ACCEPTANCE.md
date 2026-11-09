@@ -156,6 +156,7 @@ Migration `20261109_015_workflow_access_revocation_lifecycle.sql` باید پس 
 - [ ] Verify suspended/closed Tenant lifecycle and that closed tenants cannot be reactivated.
 - [ ] Test CORE, PROFESSIONAL and ENTERPRISE feature flags using real API requests. Reports, dashboard, email notifications, SLA, delegation and API access must be denied when not included or when subscription/period/trial is expired.
 - [ ] Test user, organization and process-definition limits at the exact boundary and with two concurrent create requests; only the allowed number may commit.
+- [ ] Verify pending invitations reserve user seats; invitation create, register, accept, direct membership add, reactivation and direct user creation cannot bypass the same Tenant user cap.
 - [ ] Issue a tenant API key and verify only its prefix/hash is stored; the raw secret is returned once and never appears in list/detail responses.
 - [ ] Verify `tenant.read` can read only `/api/v1/tenant/profile`; verify `reports.read` can read only the tenant-scoped v1 report endpoint; unsupported scopes are rejected.
 - [ ] Verify revoked, expired, malformed and cross-Tenant keys fail; a key from a suspended/closed Tenant or inactive subscription must fail.
