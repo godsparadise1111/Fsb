@@ -154,10 +154,11 @@ export class ReportBuilderService {
       const rawLabel = item.label ?? item.title ?? item.caption ?? item.name;
       const fieldId = typeof rawId === 'string' ? rawId.trim() : '';
       const label = typeof rawLabel === 'string' ? rawLabel.trim() : '';
+      const excluded = /password|secret|file|attachment|signature|hidden|image|camera|document/.test(rawType) || item.sensitive === true || item.isSensitive === true || item.isHidden === true;
       const type: Field['type'] | null = /number|numeric|decimal|integer|currency|amount|rating/.test(rawType) ? 'number'
         : /date|time/.test(rawType) ? 'date'
         : /text|string|email|phone|select|radio|checkbox|boolean|lookup/.test(rawType) ? 'text' : null;
-      if (fieldId && label && type && /^[A-Za-z0-9_-]{1,100}$/.test(fieldId)) {
+      if (!excluded && fieldId && label && type && /^[A-Za-z0-9_-]{1,100}$/.test(fieldId)) {
         const key = 'custom_' + version.versionId.replace(/-/g, '') + '_' + fieldId.replace(/[^A-Za-z0-9_]/g, '_');
         if (!seen.has(key)) {
           seen.add(key);
@@ -415,6 +416,8 @@ export class ReportBuilderService {
     const source = await this.sourceFor(tenantId, input.config, scope.organizationIds);
     this.validate(input.config, source);
     if (!scope.tenantWide && (!input.config.organizationId || !scope.organizationIds.includes(input.config.organizationId))) throw new ForbiddenException('سازمان گزارش باید مشخص و مجاز باشد');
+    const [recipient] = await this.dataSource.query('SELECT u.email FROM tenant_memberships tm JOIN users u ON u.id=tm.\"userId\" AND u.\"isActive\"=true WHERE tm.\"tenantId\"=$1 AND tm.\"userId\"=$2 AND tm.\"isActive\"=true AND u.email IS NOT NULL', [tenantId,userId]);
+    if (!recipient?.email) throw new BadRequestException('برای زمان‌بندی گزارش، حساب کاربر باید ایمیل فعال داشته باشد');
     const [row] = await this.dataSource.query(
       'INSERT INTO tenant_report_schedules ("tenantId","ownerUserId","organizationId",config,"scopeOrganizationIds","isTenantWide",frequency,weekday,"timeOfDay",timezone,"nextRunAt") VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7,$8,$9::time,$10,$11) RETURNING id,frequency,weekday,"timeOfDay",timezone,"nextRunAt","isActive"',
       [tenantId, userId, input.config.organizationId ?? null, JSON.stringify(input.config), JSON.stringify(scope.organizationIds), scope.tenantWide, input.frequency, input.frequency === 'WEEKLY' ? input.weekday : null, input.timeOfDay, input.timezone, nextRunAt],
