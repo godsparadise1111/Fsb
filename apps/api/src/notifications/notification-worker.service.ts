@@ -78,7 +78,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
         if (!alert) return;
         const now = new Date();
         const stage = candidate.stage === 'RESPONSE'
-          ? alert."acknowledgedAt" == null && alert.responseDueAt && new Date(alert.responseDueAt) <= now ? 'RESPONSE' : null
+          ? alert.acknowledgedAt == null && alert.responseDueAt && new Date(alert.responseDueAt) <= now ? 'RESPONSE' : null
           : candidate.stage === 'RESOLUTION'
             ? alert.resolutionDueAt && new Date(alert.resolutionDueAt) <= now ? 'RESOLUTION' : null
             : null;
