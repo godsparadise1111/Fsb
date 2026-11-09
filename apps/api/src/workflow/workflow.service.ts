@@ -316,7 +316,7 @@ export class WorkflowService {
         action: 'workflow.process.started', resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
         metadata: { organizationId: dto.organizationId, processVersionId: version.id, initialTaskId: task.id, assigneeCount: uniqueIds.length, assignmentPolicy: task.assignmentPolicy },
       });
-      return manager.findOne(WorkflowTask, { where: { id: task.id }, relations: { assignees: { user: true }, processInstance: true } });
+      return manager.findOne(WorkflowTask, { where: { id: task.id }, relations: { assignees: true, processInstance: true } });
     });
   }
 
