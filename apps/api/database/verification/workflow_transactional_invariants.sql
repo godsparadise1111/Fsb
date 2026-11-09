@@ -37,7 +37,17 @@ SELECT wal.id AS "actionLogId", wal."tenantId" AS "logTenantId",
   JOIN process_instances pi ON pi.id=wt."processInstanceId"
  WHERE wal."tenantId" IS DISTINCT FROM pi."tenantId";
 
--- 6. A workflow task assignment notification may only remain queued while
+-- 6. Every committed action log must have its matching append-only lifecycle event.
+SELECT wal.id AS "actionLogId", wal."taskId", wal."tenantId"
+  FROM workflow_action_logs wal
+ WHERE NOT EXISTS (
+   SELECT 1 FROM workflow_task_lifecycle_events le
+    WHERE le."tenantId"=wal."tenantId" AND le."taskId"=wal."taskId"
+      AND le."eventType"='ACTION_RECORDED'
+      AND le.details->>'actionLogId'=wal.id::text
+ );
+
+-- 7. A workflow task assignment notification may only remain queued while
 -- its task and recipient are still eligible. The worker revalidates before send.
 SELECT o.id AS "outboxId", o."tenantId", o.recipient,
        (o.payloadCiphertext IS NULL) AS "missingCiphertext"
