@@ -242,7 +242,8 @@ export class TenantReportsService {
        ), actions AS (
          SELECT wal."taskId",
                 count(*)::int AS "actionCount",
-                count(*) FILTER (WHERE wal.action='REJECTED')::int AS "rejectedActions"
+                count(*) FILTER (WHERE wal.action='REJECTED')::int AS "rejectedActions",
+                count(*) FILTER (WHERE wal.action='RETURNED')::int AS "returnActions"
            FROM workflow_action_logs wal
            JOIN scoped s ON s.id=wal."taskId"
           WHERE wal."tenantId"=$1 GROUP BY wal."taskId"
@@ -263,6 +264,7 @@ export class TenantReportsService {
               round((avg(EXTRACT(EPOCH FROM (s."waitEnd"-s."createdAt"))/3600)
                 FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS')))::numeric,2) AS "averageCurrentWaitingHours",
               count(*) FILTER (WHERE COALESCE(a."rejectedActions",0)>0)::int AS "tasksWithRejection",
+              count(*) FILTER (WHERE COALESCE(a."returnActions",0)>0)::int AS "tasksWithReturn",
               count(*) FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS') AND s."dueAt" IS NOT NULL
                 AND s."dueAt"<now())::int AS "lateOpenTasks"
          FROM scoped s LEFT JOIN actions a ON a."taskId"=s.id
@@ -316,7 +318,8 @@ export class TenantReportsService {
       averageWaitToFirstActionHours:number(r.averageWaitToFirstActionHours),
       medianWaitToFirstActionHours:number(r.medianWaitToFirstActionHours),
       averageCurrentWaitingHours:number(r.averageCurrentWaitingHours),
-      tasksWithRejection:Number(r.tasksWithRejection),
+      tasksWithRejection:Number(r.tasksWithRejection),tasksWithReturn:Number(r.tasksWithReturn),
+      returnRatePercent:Number(r.totalTasks)?Number((Number(r.tasksWithReturn)/Number(r.totalTasks)*100).toFixed(2)):0,
       rejectionRatePercent:Number(r.totalTasks)?Number((Number(r.tasksWithRejection)/Number(r.totalTasks)*100).toFixed(2)):0,
     }));
     return { tenant:{id:tenant.id,name:tenant.name},period:{from:from.toISOString(),to:to.toISOString()},filters:{organizationId},
@@ -324,7 +327,8 @@ export class TenantReportsService {
       bottlenecks:data, dailyTrend:dailyTrend.map((r:any)=>({day:r.day,created:Number(r.created),completed:Number(r.completed),lateCompletions:Number(r.lateCompletions)})), generatedAt:new Date().toISOString(),
       metricNotes:{
         waiting:'زمان از ایجاد وظیفه تا اولین اقدام ثبت‌شده؛ برای وظایف باز، زمان جاری به‌عنوان انتهای انتظار استفاده می‌شود.',
-        rejection:'نرخ وظایفی که حداقل یک اقدام REJECTED داشته‌اند؛ موتور فعلی مسیر RETURN/REWORK مستقل ندارد، بنابراین این شاخص معادل نرخ برگشت به مرحله قبل نیست.',
+        rejection:'نرخ وظایفی که حداقل یک اقدام REJECTED داشته‌اند؛ این شاخص از نرخ برگشت مستقل است.',
+        return:'نرخ وظایفی که حداقل یک اقدام RETURNED داشته‌اند؛ بازگشت فقط به مرحله‌ای با اندیس کمتر در همان نسخه فرایند مجاز است. هر بازگشت یک وظیفه جدید برای مرحله مقصد می‌سازد و مقصد/دلیل در تاریخچه ثبت می‌شود.',
         ranking:'رتبه‌بندی بر اساس تعداد وظایف بازِ مهلت‌گذشته، سپس زمان انتظار تا اولین اقدام و زمان چرخه.',
       }};
   }
