@@ -20,7 +20,11 @@ BEGIN
   END IF;
 
   IF removing_admin THEN
-    SELECT status INTO tenant_status FROM tenants WHERE id = scoped_tenant FOR UPDATE;
+    -- Touching the tenant row makes concurrent transactions conflict even
+    -- under REPEATABLE READ, rather than relying only on a row lock snapshot.
+    UPDATE tenants SET "updatedAt" = now()
+     WHERE id = scoped_tenant
+     RETURNING status INTO tenant_status;
     IF tenant_status = 'ACTIVE' AND NOT EXISTS (
       SELECT 1
         FROM tenant_memberships tm
@@ -218,7 +222,9 @@ BEGIN
        ORDER BY tm."tenantId"
     LOOP
       IF membership_row."isTenantAdmin" THEN
-        SELECT status INTO tenant_status FROM tenants WHERE id = membership_row."tenantId" FOR UPDATE;
+        UPDATE tenants SET "updatedAt" = now()
+         WHERE id = membership_row."tenantId"
+         RETURNING status INTO tenant_status;
         IF tenant_status = 'ACTIVE' AND NOT EXISTS (
           SELECT 1
             FROM tenant_memberships tm
