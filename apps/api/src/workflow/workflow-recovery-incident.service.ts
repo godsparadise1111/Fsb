@@ -27,7 +27,8 @@ export class WorkflowRecoveryIncidentService {
     if (filters.organizationId) add('pi."organizationId"=?', filters.organizationId);
     if (filters.processInstanceId) add('i."processInstanceId"=?', filters.processInstanceId);
     if (filters.incidentType) add('i."incidentType"=?', filters.incidentType);
-    if (filters.status === 'ACTIVE' || !filters.status) where.push(`i.status IN ('OPEN','ACKNOWLEDGED')`);\n    else add('i.status=?', filters.status);
+    if (filters.status === 'ACTIVE' || !filters.status) where.push(`i.status IN ('OPEN','ACKNOWLEDGED')`);
+    else add('i.status=?', filters.status);
     if (filters.severity) add(`CASE i."incidentType" WHEN 'RUNNING_PROCESS_TASK_COUNT_MISMATCH' THEN 'CRITICAL' WHEN 'TERMINAL_PROCESS_HAS_ACTIVE_TASKS' THEN 'HIGH' ELSE 'MEDIUM' END=?`, filters.severity);
     const rows = await this.dataSource.query(
       `SELECT i.id,i."tenantId",i."processInstanceId",i."incidentType",i.fingerprint,i.details,i.status,
