@@ -179,6 +179,7 @@ export class WorkflowController {
 
   @RequirePermissions('workflow.tasks.defer.approve')
   @RequiresFeature('delegation')
+  @RequiresFeature('delegation')
   @Get('tasks/deferrals/pending')
   pendingDeferrals(@Query('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listPendingTaskDeferrals(organizationId, user.tenantId, user.sub, limit, offset);
@@ -190,16 +191,19 @@ export class WorkflowController {
     return this.workflow.requestTaskDeferral(id, user.sub, dto, user.tenantId);
   }
   @RequirePermissions('workflow.history.read')
+  @RequiresFeature('delegation')
   @Get('tasks/:id/deferrals')
   deferrals(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listTaskDeferrals(id, user.sub, user.tenantId);
   }
   @RequirePermissions('workflow.tasks.defer.approve')
+  @RequiresFeature('delegation')
   @Post('tasks/:id/deferrals/:requestId/approve')
   approveDeferral(@Param('id') id: string, @Param('requestId') requestId: string, @Body() dto: ReviewTaskDeferralDto, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.reviewTaskDeferral(id, requestId, user.sub, 'APPROVED', dto, user.tenantId);
   }
   @RequirePermissions('workflow.tasks.defer.approve')
+  @RequiresFeature('delegation')
   @Post('tasks/:id/deferrals/:requestId/reject')
   rejectDeferral(@Param('id') id: string, @Param('requestId') requestId: string, @Body() dto: ReviewTaskDeferralDto, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.reviewTaskDeferral(id, requestId, user.sub, 'REJECTED', dto, user.tenantId);
