@@ -24,6 +24,6 @@ export class TenantController {
   @RequirePermissions('tenants.manage')
   @Patch(':id/status')
   changeStatus(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateTenantStatusDto) {
-    return this.tenants.changeStatus(id, dto.status, user.sub);
+    return this.tenants.changeStatus(id, dto.status, user.sub, dto.initialAdminUserId);
   }
 }
