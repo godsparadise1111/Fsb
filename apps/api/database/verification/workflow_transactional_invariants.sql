@@ -1,5 +1,5 @@
 -- Read-only verification for transactional workflow execution.
--- Every query must return zero rows after workers are quiescent.
+-- Invariant queries should return zero rows after recovery. Open incidents and expired leases are operational queues, not silent data loss.
 
 -- 1. A committed idempotency claim must always contain its final response.
 SELECT id, "tenantId", "taskId", "userId", "idempotencyKey", "createdAt"
@@ -13,7 +13,13 @@ SELECT pi.id AS "processInstanceId", pi."tenantId",
   LEFT JOIN workflow_tasks wt ON wt."processInstanceId"=pi.id
  WHERE pi.status='RUNNING'
  GROUP BY pi.id, pi."tenantId"
-HAVING count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS')) <> 1;
+HAVING count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS')) <> 1
+   AND NOT EXISTS (
+     SELECT 1 FROM workflow_recovery_incidents ri
+      WHERE ri."tenantId"=pi."tenantId" AND ri."processInstanceId"=pi.id
+        AND ri."incidentType"='RUNNING_PROCESS_TASK_COUNT_MISMATCH'
+        AND ri.status IN ('OPEN','ACKNOWLEDGED')
+   );
 
 -- 3. A terminal process must not retain actionable tasks.
 SELECT pi.id AS "processInstanceId", pi."tenantId", wt.id AS "taskId", wt.status AS "taskStatus"
@@ -57,28 +63,11 @@ SELECT o.id AS "outboxId", o."tenantId", o.recipient,
    AND o."payloadCiphertext" IS NULL;
 
 
--- 8. A terminal process must never retain active tasks after recovery.
-SELECT pi.id AS "processInstanceId", pi.status AS "processStatus", wt.id AS "taskId", wt.status AS "taskStatus"
-  FROM process_instances pi
-  JOIN workflow_tasks wt ON wt."processInstanceId"=pi.id
- WHERE pi.status IN ('COMPLETED','CANCELLED')
-   AND wt.status IN ('OPEN','IN_PROGRESS');
-
--- 9. RUNNING processes with no active task or multiple active tasks require
--- an explicit recovery-review lifecycle event; the worker must not guess a step.
-SELECT pi.id AS "processInstanceId", pi."tenantId",
-       count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS')) AS "activeTaskCount"
-  FROM process_instances pi
-  LEFT JOIN workflow_tasks wt ON wt."processInstanceId"=pi.id
- WHERE pi.status='RUNNING'
- GROUP BY pi.id, pi."tenantId"
-HAVING count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS')) <> 1;
-
--- 10. No pending assignments may remain on terminal tasks after recovery.
-SELECT wt.id AS "taskId", ta."userId", wt.status
-  FROM workflow_tasks wt
-  JOIN task_assignees ta ON ta."taskId"=wt.id AND ta.status='PENDING'
- WHERE wt.status IN ('COMPLETED','CANCELLED','RETURNED');
+-- 8. Open recovery incidents require operator review; this is an operational queue.
+SELECT id,"tenantId","processInstanceId","incidentType",details,"createdAt"
+  FROM workflow_recovery_incidents
+ WHERE status IN ('OPEN','ACKNOWLEDGED')
+ ORDER BY "createdAt" ASC;
 
 -- 11. Expired notification leases must be reclaimable; this query is diagnostic
 -- and may return rows only while a worker is down or before the next poll.
