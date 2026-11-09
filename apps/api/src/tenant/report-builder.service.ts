@@ -350,9 +350,9 @@ export class ReportBuilderService {
     return row;
   }
 
-  async update(tenantId: string, userId: string, id: string, input: { title?: string; description?: string; isShared?: boolean; config?: ReportSpec }) {
+  async update(tenantId: string, userId: string, id: string, input: { title?: string; description?: string; isShared?: boolean; config?: ReportSpec }, organizationId?: string, tenantWide = true) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('اطلاعات ویرایش گزارش نامعتبر است');
-    const current = await this.dataSource.query('SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3', [id, tenantId, userId]);
+    const current = await this.dataSource.query('SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\'organizationId\'=$4::text) AND ($5::boolean OR config->>\'organizationId\' IS NOT NULL)', [id, tenantId, userId, organizationId ?? null, tenantWide]);
     if (!current.length) throw new NotFoundException('گزارش متعلق به کاربر جاری پیدا نشد');
     const sets: string[] = [];
     const params: unknown[] = [id, tenantId, userId];
@@ -371,7 +371,7 @@ export class ReportBuilderService {
     }
     if (!sets.length) throw new BadRequestException('تغییری برای ذخیره ارسال نشده است');
     sets.push('"updatedAt"=now()');
-    const [row] = await this.dataSource.query('UPDATE tenant_saved_reports SET ' + sets.join(',') + ' WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 RETURNING id,title,description,"isShared","createdAt","updatedAt"', params);
+    const [row] = await this.dataSource.query('UPDATE tenant_saved_reports SET ' + sets.join(',') + ' WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>'organizationId'=$4::text) AND ($5::boolean OR config->>'organizationId' IS NOT NULL) RETURNING id,title,description,"isShared","createdAt","updatedAt"', params);
     return row;
   }
 
