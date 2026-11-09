@@ -84,6 +84,19 @@ export class ReportBuilderService {
   private hash(value: unknown) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 
   async accessibleOrganizations(tenantId: string, userId: string) {
+    const [membership] = await this.dataSource.query(
+      'SELECT tm."isTenantAdmin" FROM tenant_memberships tm JOIN tenants t ON t.id=tm."tenantId" AND t.status=\'ACTIVE\' JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true',
+      [tenantId, userId],
+    );
+    if (!membership) throw new ForbiddenException('عضویت فعال مشتری یافت نشد');
+    if (membership.isTenantAdmin === true) {
+      return this.dataSource.query('SELECT id,name,code FROM organizations WHERE "tenantId"=$1 AND "isActive"=true ORDER BY name', [tenantId]);
+    }
+    const [platform] = await this.dataSource.query(
+      'SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur."roleId" AND r.scope=\'PLATFORM\' AND r."isActive"=true JOIN role_permissions rp ON rp."roleId"=r.id JOIN permissions p ON p.id=rp."permissionId" AND p.code IN (\'tenant.reports.read\',\'*\') WHERE ur."userId"=$1 AND ur."isActive"=true LIMIT 1',
+      [userId],
+    );
+    if (platform) return this.dataSource.query('SELECT id,name,code FROM organizations WHERE "tenantId"=$1 AND "isActive"=true ORDER BY name', [tenantId]);
     return this.dataSource.query(
       `SELECT DISTINCT o.id,o.name,o.code
          FROM user_roles ur
@@ -94,6 +107,26 @@ export class ReportBuilderService {
          JOIN tenant_memberships tm ON tm."tenantId"=ur."tenantId" AND tm."userId"=ur."userId" AND tm."isActive"=true
         WHERE ur."tenantId"=$1 AND ur."userId"=$2 AND ur."isActive"=true
         ORDER BY o.name`, [tenantId, userId]);
+  }
+
+  async resolveScope(tenantId: string, userId: string, organizationId?: string): Promise<ReportAccessScope> {
+    const [membership] = await this.dataSource.query(
+      'SELECT tm."isTenantAdmin" FROM tenant_memberships tm JOIN tenants t ON t.id=tm."tenantId" AND t.status=\'ACTIVE\' JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true',
+      [tenantId, userId],
+    );
+    if (!membership) throw new ForbiddenException('عضویت فعال مشتری یافت نشد');
+    const [platform] = await this.dataSource.query(
+      'SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur."roleId" AND r.scope=\'PLATFORM\' AND r."isActive"=true JOIN role_permissions rp ON rp."roleId"=r.id JOIN permissions p ON p.id=rp."permissionId" AND p.code IN (\'tenant.reports.read\',\'*\') WHERE ur."userId"=$1 AND ur."isActive"=true LIMIT 1',
+      [userId],
+    );
+    if (membership.isTenantAdmin === true || platform) return { tenantWide: true, organizationIds: [] };
+    const organizations = await this.accessibleOrganizations(tenantId, userId);
+    const ids = organizations.map((item: { id: string }) => item.id);
+    if (organizationId) {
+      if (!ids.includes(organizationId)) throw new ForbiddenException('به سازمان انتخاب‌شده دسترسی گزارش ندارید');
+      return { tenantWide: false, organizationIds: [organizationId] };
+    }
+    throw new ForbiddenException('برای گزارش‌خوانی سازمانی، سازمان باید انتخاب شود');
   }
 
   private async sourceFor(tenantId: string, spec: ReportSpec, organizationIds: string[] = []) {
