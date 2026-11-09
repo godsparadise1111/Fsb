@@ -63,7 +63,10 @@ export class TenantDashboardService {
            JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."tenantId"=$1
            WHERE wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
              AND (
-               EXISTS (SELECT 1 FROM task_assignees ta WHERE ta."taskId"=wt.id AND ta."tenantId"=$1 AND ta."userId"=$2 AND ta.status='PENDING')
+               EXISTS (SELECT 1 FROM task_assignees ta WHERE ta."taskId"=wt.id AND ta."tenantId"=$1 AND ta."userId"=$2 AND ta.status='PENDING'
+                 AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" JOIN organization_units ou ON ou.id=p."organizationUnitId"
+                   WHERE up."userId"=$2 AND ou."organizationId"=pi."organizationId" AND up."isActive"=true AND p."isActive"=true AND ou."isActive"=true
+                     AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))
                OR EXISTS (SELECT 1 FROM organization_substitutions os
                  JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=os."originalUserId" AND original.status='PENDING'
                  WHERE os."tenantId"=$1 AND os."organizationId"=pi."organizationId" AND os."substituteUserId"=$2
