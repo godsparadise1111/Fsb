@@ -14,10 +14,29 @@ export class OrganizationService {
   constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>, @InjectRepository(UserRole) private readonly userRoles: Repository<UserRole>) {}
   async createOrganization(dto: CreateOrganizationDto) {
     if (!dto.tenantId) throw new BadRequestException('A tenant must be explicitly selected or derived from the authenticated tenant context');
-    const tenant = await this.tenants.findOne({ where: { id: dto.tenantId } });
-    if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Organization can only be created for an active tenant');
-    if (await this.organizations.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
-    return this.organizations.save(this.organizations.create({ ...dto, tenant }));
+    return this.organizations.manager.transaction(async manager => {
+      const tenant = await manager.findOne(Tenant, { where: { id: dto.tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Organization can only be created for an active tenant');
+      const [commercial] = await manager.query(
+        `SELECT p.limits,s.status,s."currentPeriodEnd",s."trialEndsAt"
+           FROM tenant_subscriptions s JOIN commercial_plans p ON p.code=s."planCode"
+          WHERE s."tenantId"=$1 FOR UPDATE OF s`, [tenant.id],
+      );
+      const now = Date.now();
+      if (!commercial || !['ACTIVE','TRIALING'].includes(commercial.status) ||
+          (commercial.currentPeriodEnd && new Date(commercial.currentPeriodEnd).getTime() <= now) ||
+          (commercial.status === 'TRIALING' && commercial.trialEndsAt && new Date(commercial.trialEndsAt).getTime() <= now)) {
+        throw new ForbiddenException('Tenant subscription is not eligible for creating organizations');
+      }
+      const maxOrganizations = Number(commercial.limits?.maxOrganizations ?? 0);
+      const [{ count }] = await manager.query('SELECT count(*)::int AS count FROM organizations WHERE "tenantId"=$1 AND "isActive"=true', [tenant.id]);
+      if (!Number.isInteger(maxOrganizations) || maxOrganizations < 1 || Number(count) >= maxOrganizations) {
+        throw new BadRequestException('The active subscription organization limit has been reached');
+      }
+      const repository = manager.getRepository(Organization);
+      if (await repository.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
+      return repository.save(repository.create({ ...dto, tenant }));
+    });
   }
   listOrganizations(tenantId?: string | null) { return this.organizations.find({ where: tenantId ? { tenantId, isActive: true } : { isActive: true }, order: { name: 'ASC' } }); }
   async listAccessibleOrganizations(userId: string, tenantId?: string | null, isTenantAdmin = false) {
