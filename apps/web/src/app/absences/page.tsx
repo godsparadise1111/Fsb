@@ -32,6 +32,7 @@ export default function AbsencesPage() {
   const [pageOffset, setPageOffset] = useState(0);
   const pageSize = 25;
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarTruncated, setCalendarTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -61,7 +62,7 @@ export default function AbsencesPage() {
 
   const loadData = useCallback(async () => {
     if (!token) return;
-    setLoading(true); setCalendarLoading(true); setError('');
+    setLoading(true); setCalendarLoading(true); setCalendarTruncated(false); setError('');
     try {
       const orgs = await request('/organizations/accessible');
       setOrganizations(orgs);
@@ -69,7 +70,7 @@ export default function AbsencesPage() {
         ? organizationId : orgs[0]?.id || '';
       if (selectedOrg !== organizationId) {
         setOrganizationId(selectedOrg); setPageOffset(0);
-        setUsers([]); setItems([]); setCalendarItems([]); setTotal(0);
+        setUsers([]); setItems([]); setCalendarItems([]); setTotal(0); setCalendarTruncated(false);
       }
       if (selectedOrg) {
         const from = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).toISOString();
@@ -90,7 +91,7 @@ export default function AbsencesPage() {
           monthTotal = Number(monthResult.total || 0);
           monthOffset += 100;
         } while (monthOffset < monthTotal && monthOffset < 10000);
-        setCalendarItems(monthRows);
+        setCalendarItems(monthRows); setCalendarTruncated(monthOffset < monthTotal);
       } else {
         setUsers([]); setItems([]); setCalendarItems([]); setTotal(0);
         setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
@@ -254,6 +255,7 @@ export default function AbsencesPage() {
         <div className="absence-panel-heading"><div><h2>تقویم غیبت و جانشینی</h2><p>نمای روزانهٔ غیبت‌های ثبت‌شده در سازمان انتخاب‌شده{calendarLoading ? ' · در حال بارگذاری…' : ''}</p></div>
           <div className="absence-calendar-nav"><button className="absence-secondary" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>ماه قبل</button><strong>{calendarLabel}</strong><button className="absence-secondary" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>ماه بعد</button></div>
         </div>
+        {calendarTruncated && <div className="absence-alert error">به‌دلیل حجم بالای داده، تقویم حداکثر ۱۰٬۰۰۰ رکورد این ماه را نمایش می‌دهد؛ برای گزارش کامل از فیلتر و صفحه‌بندی دفتر سوابق استفاده کنید.</div>}
         <div className="absence-calendar-grid">
           {['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'].map(day => <div className="absence-calendar-weekday" key={day}>{day}</div>)}
           {calendarCells.map((day, index) => day ? <div className={day.getMonth() === calendarMonth.getMonth() ? 'absence-calendar-day' : 'absence-calendar-day outside'} key={day.toISOString()}>
