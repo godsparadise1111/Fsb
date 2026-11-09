@@ -319,11 +319,12 @@ DECLARE scoped_status varchar(20);
 BEGIN
   IF TG_TABLE_NAME = 'tenants' THEN
     scoped_tenant := NEW.id;
-    scoped_status := NEW.status;
   ELSE
     scoped_tenant := NEW."tenantId";
-    SELECT status INTO scoped_status FROM tenants WHERE id = scoped_tenant;
   END IF;
+  -- Deferred execution must inspect the final row state at commit, not the
+  -- intermediate NEW.status captured by an earlier update in the transaction.
+  SELECT status INTO scoped_status FROM tenants WHERE id = scoped_tenant;
 
   IF scoped_status = 'ACTIVE' AND NOT EXISTS (
     SELECT 1
