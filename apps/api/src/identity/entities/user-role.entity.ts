@@ -7,7 +7,7 @@ import { Organization } from '../../organization/entities/organization.entity';
 @Unique('UQ_user_role_scope', ['userId', 'roleId', 'organizationId'])
 export class UserRole {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { nullable: true, insert: false, update: false }) tenantId: string | null;
+  @Column({ type: 'uuid', nullable: true, insert: false, update: false }) tenantId: string | null;
   @Column('uuid') userId: string;
   @ManyToOne(() => User, user => user.roles, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'userId' }) user: User;
