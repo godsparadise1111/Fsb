@@ -79,7 +79,7 @@ export class NotificationOutboxService {
         `UPDATE notification_outbox
             SET status='DEAD', "lockedBy"=NULL, "lockedAt"=NULL,
                 lastError='Maximum delivery attempts reached before worker recovery', "updatedAt"=now()
-          WHERE attempts >= 10 AND status IN ('PENDING','PROCESSING')`,
+          WHERE attempts >= 10 AND (status = 'PENDING' OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '2 minutes'))`,
       );
       return manager.query(
         `WITH candidates AS (
