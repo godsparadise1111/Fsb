@@ -158,6 +158,34 @@ export class TenantReportsService {
       [tenantId, from, to, orgFilter],
     );
 
+    const [recoverySummary] = await this.dataSource.query(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE ri.status='OPEN')::int AS open,
+              count(*) FILTER (WHERE ri.status='ACKNOWLEDGED')::int AS acknowledged,
+              count(*) FILTER (WHERE ri.status='RESOLVED')::int AS resolved,
+              count(*) FILTER (WHERE ri.status='RESOLVED' AND ri."resolvedAt">=$2 AND ri."resolvedAt"<$3)::int AS "resolvedInPeriod",
+              round(avg(EXTRACT(EPOCH FROM (ri."resolvedAt"-ri."createdAt"))/3600)
+                FILTER (WHERE ri.status='RESOLVED' AND ri."resolvedAt" IS NOT NULL)::numeric,2) AS "averageResolutionHours",
+              count(*) FILTER (WHERE ri."incidentType"='RUNNING_PROCESS_TASK_COUNT_MISMATCH')::int AS "processStateMismatches",
+              count(*) FILTER (WHERE ri."incidentType"='TERMINAL_PROCESS_HAS_ACTIVE_TASKS')::int AS "terminalProcessTaskConflicts"
+         FROM workflow_recovery_incidents ri
+         JOIN process_instances pi ON pi.id=ri."processInstanceId" AND pi."tenantId"=ri."tenantId"
+        WHERE ri."tenantId"=$1 AND ri."createdAt">=$2 AND ri."createdAt"<$3
+          AND ($4::uuid IS NULL OR pi."organizationId"=$4)`,
+      [tenantId,from,to,orgFilter],
+    );
+    const [recoveryEvents] = await this.dataSource.query(
+      `SELECT count(*) FILTER (WHERE e."eventType"='WORKER_SCAN')::int AS "workerScans",
+              count(*) FILTER (WHERE e."eventType"='ACKNOWLEDGE')::int AS acknowledgements,
+              count(*) FILTER (WHERE e."eventType"='RESOLVED')::int AS resolutions,
+              count(*) FILTER (WHERE e."eventType"='REPLAY_REJECTED')::int AS "replayRejected"
+         FROM workflow_recovery_incident_events e
+         JOIN workflow_recovery_incidents ri ON ri.id=e."incidentId" AND ri."tenantId"=e."tenantId"
+         JOIN process_instances pi ON pi.id=ri."processInstanceId" AND pi."tenantId"=ri."tenantId"
+        WHERE ri."tenantId"=$1 AND e."createdAt">=$2 AND e."createdAt"<$3
+          AND ($4::uuid IS NULL OR pi."organizationId"=$4)`,
+      [tenantId,from,to,orgFilter],
+    );
     return {
       tenant: { id: tenant.id, name: tenant.name, plan: tenant.plan },
       period: { from: from.toISOString(), to: to.toISOString() },
@@ -171,6 +199,16 @@ export class TenantReportsService {
         uniqueStarters: Number(summary.uniqueStarters ?? 0),
       },
       tasksByStatus: tasks.map((item: any) => ({ status: item.status, count: Number(item.count) })),
+      recoveryIncidents: {
+        total: Number(recoverySummary.total ?? 0), open: Number(recoverySummary.open ?? 0),
+        acknowledged: Number(recoverySummary.acknowledged ?? 0), resolved: Number(recoverySummary.resolved ?? 0),
+        resolvedInPeriod: Number(recoverySummary.resolvedInPeriod ?? 0),
+        averageResolutionHours: recoverySummary.averageResolutionHours == null ? null : Number(recoverySummary.averageResolutionHours),
+        processStateMismatches: Number(recoverySummary.processStateMismatches ?? 0),
+        terminalProcessTaskConflicts: Number(recoverySummary.terminalProcessTaskConflicts ?? 0),
+        workerScans: Number(recoveryEvents.workerScans ?? 0), acknowledgements: Number(recoveryEvents.acknowledgements ?? 0),
+        resolutions: Number(recoveryEvents.resolutions ?? 0), replayRejected: Number(recoveryEvents.replayRejected ?? 0),
+      },
       taskAging: {
         openTasks: Number(taskAging[0]?.openTasks ?? 0),
         overdueTasks: Number(taskAging[0]?.overdueTasks ?? 0),
@@ -450,6 +488,17 @@ export class TenantReportsService {
       ['وظایف باز', 'قدیمی‌تر از ۷ روز', String(report.taskAging.olderThan7Days)],
       ['وظایف باز', 'قدیمی‌تر از ۱۴ روز', String(report.taskAging.olderThan14Days)],
       ['وظایف باز', 'میانگین سن (ساعت)', String(report.taskAging.averageOpenHours ?? '')],
+      ['بازیابی گردش‌کار','کل رخدادها',String(report.recoveryIncidents.total)],
+      ['بازیابی گردش‌کار','باز',String(report.recoveryIncidents.open)],
+      ['بازیابی گردش‌کار','در حال رسیدگی',String(report.recoveryIncidents.acknowledged)],
+      ['بازیابی گردش‌کار','بسته‌شده در بازه',String(report.recoveryIncidents.resolvedInPeriod)],
+      ['بازیابی گردش‌کار','میانگین زمان رسیدگی (ساعت)',String(report.recoveryIncidents.averageResolutionHours ?? '')],
+      ['بازیابی گردش‌کار','ناهماهنگی وضعیت فرایند',String(report.recoveryIncidents.processStateMismatches)],
+      ['بازیابی گردش‌کار','تعارض وظیفه فرایند خاتمه‌یافته',String(report.recoveryIncidents.terminalProcessTaskConflicts)],
+      ['بازیابی گردش‌کار','تلاش‌های Worker',String(report.recoveryIncidents.workerScans)],
+      ['بازیابی گردش‌کار','تأیید رسیدگی',String(report.recoveryIncidents.acknowledgements)],
+      ['بازیابی گردش‌کار','بستن رخداد',String(report.recoveryIncidents.resolutions)],
+      ['بازیابی گردش‌کار','Replay ردشده',String(report.recoveryIncidents.replayRejected)],
     ];
     for (const item of report.tasksByStatus) lines.push(['وضعیت وظایف', item.status, String(item.count)]);
     for (const item of report.dailyThroughput) {
