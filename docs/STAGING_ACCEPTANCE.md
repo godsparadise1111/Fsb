@@ -145,3 +145,35 @@ Migration `20261109_015_workflow_access_revocation_lifecycle.sql` باید پس 
 - حتی اگر Handler آزمایشی واجد شرایط به Registry اضافه شود، endpoint Replay تا تکمیل executor تراکنشی و جدول/receipt پایدار idempotency همچنان باید fail-closed بماند. هیچ اقدام انسانی یا انتقال مرحله‌ای نباید اجرا شود.
 - دسترسی مستقیم به مسیر پنل یا جعل شناسه Tenant نباید مجوز PLATFORM ایجاد کند؛ مجوز فقط از نقش و permission سمت سرور به دست می‌آید.
 
+
+
+## 14. Commercial plans, tenant activation and API v1
+
+- [ ] Apply migrations 021, 022 and 023 in order; verify checksums in `fsb_schema_migrations`.
+- [ ] Create a new Tenant and confirm it remains PENDING with one TRIALING subscription and no active membership.
+- [ ] Activate the Tenant with one selected active user; verify that the user becomes its initial Tenant Admin and the 14-day trial begins at activation time.
+- [ ] Attempt activation without an initial administrator; expect a controlled 400 response and no partial activation.
+- [ ] Verify suspended/closed Tenant lifecycle and that closed tenants cannot be reactivated.
+- [ ] Test CORE, PROFESSIONAL and ENTERPRISE feature flags using real API requests. Reports, dashboard, email notifications, SLA, delegation and API access must be denied when not included or when subscription/period/trial is expired.
+- [ ] Test user, organization and process-definition limits at the exact boundary and with two concurrent create requests; only the allowed number may commit.
+- [ ] Issue a tenant API key and verify only its prefix/hash is stored; the raw secret is returned once and never appears in list/detail responses.
+- [ ] Verify `tenant.read` can read only `/api/v1/tenant/profile`; verify `reports.read` can read only the tenant-scoped v1 report endpoint; unsupported scopes are rejected.
+- [ ] Verify revoked, expired, malformed and cross-Tenant keys fail; a key from a suspended/closed Tenant or inactive subscription must fail.
+- [ ] Issue a paid invoice, renew once, then replay the same renewal request; first request succeeds and the second returns conflict without extending the period again.
+- [ ] Verify all subscription, invoice and API credential changes create Tenant audit events.
+
+## 15. Production observability and deployment gates
+
+- [ ] Set explicit `CORS_ORIGINS`; wildcard origin must fail installer/startup validation in Production.
+- [ ] Set independent secrets for JWT, Outbox encryption and metrics; verify `FSB_METRICS_TOKEN` is never logged.
+- [ ] Verify `/api/health` liveness and `/api/health/ready` database readiness; stop PostgreSQL and confirm readiness returns HTTP 503.
+- [ ] Verify `/api/health/metrics` returns 404 without a valid bearer token and Prometheus text only with the configured token.
+- [ ] Verify request logs are JSON, contain X-Request-ID, route, status and duration, and never contain body, query, cookies or Authorization.
+- [ ] Verify Docker log rotation and external log collection/retention.
+- [ ] Run the smoke script and confirm every SQL migration file has an exact ledger checksum match and DB_SYNCHRONIZE=false.
+- [ ] Run two or more Tenant isolation suites for reads, writes, exports, API keys and administrative actions.
+- [ ] Run load tests against concurrent task actions, report queries, tenant activation and subscription limit enforcement; record p95/p99 and DB pool saturation.
+- [ ] Run an independent security assessment and verify reverse-proxy TLS, rate limiting, request-size limits, secret rotation and backup-key separation.
+- [ ] Restore database and private files into a clean isolated host; record actual RPO/RTO and verify workflow, attachment, Outbox and Tenant invariants.
+- [ ] Configure external alerts for API readiness, HTTP 5xx/latency, PostgreSQL availability/storage, worker heartbeat, notification DEAD queue, recovery incidents and backup age.
+- [ ] Obtain business approval for contractual SLA, support coverage, RPO/RTO and maintenance windows before production launch.
