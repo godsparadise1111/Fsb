@@ -286,7 +286,7 @@ CREATE TRIGGER "ZZZ_roles_revoke_assignments"
 
 -- Deferred checks permit tenant activation and initial-admin membership creation
 -- in one transaction, while making an active tenant without an active admin impossible.
-CREATE OR REPLACE FUNCTION fsb_assert_tenant_has_active_admin() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION fsb_assert_tenant_has_active_admin() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE scoped_tenant uuid;
 DECLARE scoped_status varchar(20);
 BEGIN
