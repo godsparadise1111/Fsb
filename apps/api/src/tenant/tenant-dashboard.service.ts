@@ -102,7 +102,9 @@ export class TenantDashboardService {
 
   async getOrganization(tenantId: string, organizationId: string, userId: string) {
     const [organization] = await this.dataSource.query(
-      `SELECT id,name FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true`,
+      `SELECT id,name FROM organizations
+         WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true
+           AND EXISTS (SELECT 1 FROM tenants t WHERE t.id=organizations."tenantId" AND t.status='ACTIVE')`,
       [organizationId,tenantId],
     );
     if (!organization) throw new NotFoundException('Organization not found in active tenant');
