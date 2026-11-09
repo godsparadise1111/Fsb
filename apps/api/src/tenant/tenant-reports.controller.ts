@@ -48,6 +48,7 @@ export class TenantReportsController {
   }
 
   @RequirePermissions('tenant.reports.read')
+  @RequiresFeature('advanced_reports')
   @Get('process-bottlenecks')
   processBottlenecks(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string, @Query('organizationId') organizationId?: string) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
