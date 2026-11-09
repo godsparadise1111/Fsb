@@ -56,7 +56,7 @@ export class TenantInvitationService {
       const token = randomBytes(32).toString('base64url');
       const repository = manager.getRepository(TenantInvitation);
       const invitation = repository.create({
-        tenantId, email, tokenHash: this.hashToken(token), invitedByUserId,
+        tenantId, email, tokenHash: this.hashToken(token), invitedByUserId: inviterUserId,
         isTenantAdmin, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       });
       const saved = await repository.save(invitation);
