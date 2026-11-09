@@ -156,7 +156,7 @@ export class PermissionsGuard implements CanActivate {
     // rows by the authenticated user id and the verified tenant id.
     const requestPath = String(request.path ?? request.url ?? '').split('?')[0];
     // The service filters this collection against the caller's explicit organization.read grants.
-    if (request.method === 'GET' && requestPath.endsWith('/organizations/accessible') && required.length === 1 && required[0] === 'organization.read') return true;
+    if (request.method === 'GET' && requestPath.endsWith('/organizations/accessible') && required.length === 1 && (required[0] === 'organization.read' || required[0] === 'tenant.reports.read')) return true;
     if (request.method === 'GET' && requestPath.endsWith('/tasks/my') && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
     if (request.method === 'GET' && requestPath.endsWith('/tenant/dashboard/me') && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
 
