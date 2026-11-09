@@ -130,7 +130,11 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
         await finalizeWithoutReplacement('Invalid assignee removed; one or more configured fallback recipients are no longer eligible');
         return;
       }
-      const byUser = new Map(assignments.map(a => [a.userId,a.status])); if (targets.some(id => byUser.has(id) && byUser.get(id) !== 'PENDING')) return;
+      const byUser = new Map(assignments.map(a => [a.userId,a.status]));
+      if (targets.some(id => byUser.has(id) && byUser.get(id) !== 'PENDING')) {
+        await finalizeWithoutReplacement('Invalid assignee removed; a configured fallback recipient has already completed or rejected this task');
+        return;
+      }
       const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) {
         await finalizeWithoutReplacement('Invalid assignee removed; no eligible replacement remains');
         return;
