@@ -123,7 +123,18 @@ export class IdentityService {
       .innerJoinAndSelect('membership.position', 'position')
       .innerJoinAndSelect('position.unit', 'unit')
       .where('membership.userId = :userId AND membership.isActive = true', { userId });
-    if (tenantId) query.innerJoin('unit.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId });
+    if (tenantId) {
+      query
+        .innerJoin('unit.organization', 'organization',
+          'organization.tenantId = :tenantId AND organization.isActive = true', { tenantId })
+        .innerJoin('tenant_memberships', 'tenantMembership',
+          'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true', { tenantId })
+        .innerJoin('tenants', 'tenant', 'tenant.id = :tenantId AND tenant.status = :activeTenantStatus', {
+          tenantId, activeTenantStatus: 'ACTIVE',
+        })
+        .andWhere('membership.tenantId = :tenantId', { tenantId })
+        .andWhere('user.isActive = true');
+    }
     return query.orderBy('membership.isPrimary', 'DESC').addOrderBy('membership.validFrom', 'DESC').getMany();
   }
   async createPermission(dto: CreatePermissionDto) {
