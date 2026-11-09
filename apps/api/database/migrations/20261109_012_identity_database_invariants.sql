@@ -105,7 +105,8 @@ BEGIN
       INNER JOIN organization_units ou ON ou.id = p."organizationUnitId"
       INNER JOIN organizations o ON o.id = ou."organizationId"
       INNER JOIN tenants t ON t.id = o."tenantId"
-     WHERE p.id = NEW."positionId";
+     WHERE p.id = NEW."positionId"
+     FOR SHARE OF p, ou, o, t;
     IF tenant_status IS DISTINCT FROM 'ACTIVE'
        OR organization_active IS DISTINCT FROM true
        OR unit_active IS DISTINCT FROM true
@@ -120,7 +121,7 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'Position assignee must be an active member of the same tenant'; END IF;
   ELSIF TG_TABLE_NAME = 'user_roles' THEN
     SELECT r.scope, r."isActive" INTO role_scope, role_active
-      FROM roles r WHERE r.id = NEW."roleId";
+      FROM roles r WHERE r.id = NEW."roleId" FOR SHARE;
     IF role_active IS DISTINCT FROM true THEN RAISE EXCEPTION 'Active role assignment requires an active role'; END IF;
 
     IF NEW."organizationId" IS NULL THEN
