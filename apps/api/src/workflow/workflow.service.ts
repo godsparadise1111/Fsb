@@ -181,7 +181,63 @@ export class WorkflowService {
       const completed = task.assignmentPolicy === 'ANY_ASSIGNEE'
         ? activeAssignments.some(item => item.status === 'APPROVED')
         : activeAssignments.length > 0 && activeAssignments.every(item => item.status === 'APPROVED');
-      if (rejected) {
+      if (dto.action === 'RETURNED') {
+        const instance = await manager.findOne(ProcessInstance, {
+          where: { id: task.processInstanceId }, relations: { processVersion: true },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!instance) throw new NotFoundException('Process instance not found');
+        const targetIndex = dto.returnToStepIndex;
+        const rawSteps = instance.processVersion.schema?.steps;
+        const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
+        if (!Number.isInteger(targetIndex) || targetIndex === undefined || targetIndex < 0 || targetIndex >= instance.currentStepIndex || targetIndex >= steps.length) {
+          throw new BadRequestException('RETURNED action must target an earlier step in the same process version');
+        }
+        if (instance.status !== 'RUNNING') throw new ConflictException('Only a running process can return to an earlier step');
+        const target = steps[targetIndex];
+        const targetUserIds = [...new Set(target.assigneeUserIds ?? [])];
+        if (!targetUserIds.length) throw new BadRequestException('The return target step must have at least one configured assignee');
+        const targetUsers = await manager.find(User, { where: { id: In(targetUserIds), isActive: true } });
+        if (targetUsers.length !== targetUserIds.length) throw new BadRequestException('Every return-step assignee must be an active user');
+        const targetMembershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
+          .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+          .innerJoin('tenant_memberships', 'tenantMembership',
+            'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true',
+            { tenantId })
+          .where('membership.userId IN (:...userIds)', { userIds: targetUserIds })
+          .andWhere('unit.organizationId = :organizationId', { organizationId: instance.organizationId })
+          .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
+          .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
+          .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
+        if (Number(targetMembershipCount?.count ?? 0) !== targetUserIds.length) {
+          throw new BadRequestException('Every return-step assignee must have an active position in the process organization');
+        }
+        for (const pending of all.filter(item => item.status === 'PENDING')) {
+          if (pending.id !== assignment.id) pending.status = 'REASSIGNED';
+        }
+        await manager.save(TaskAssignee, all);
+        task.status = 'RETURNED';
+        task.completedAt = new Date();
+        instance.currentStepIndex = targetIndex;
+        await manager.save(instance);
+        const returnedTask = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
+          processInstanceId: instance.id,
+          title: target.title ?? `مرحله ${targetIndex + 1}`,
+          instructions: target.instructions ?? null,
+          assignmentPolicy: target.assignmentPolicy ?? 'ALL_ASSIGNEES',
+          status: 'OPEN',
+          createdByUserId: instance.startedByUserId,
+          dueAt: this.deadlineFromHours(target.dueInHours),
+        }));
+        await manager.save(TaskAssignee, targetUserIds.map(targetUserId => manager.create(TaskAssignee, {
+          taskId: returnedTask.id, userId: targetUserId, status: 'PENDING',
+        })));
+        await this.tenantAudit.record(manager, {
+          tenantId, actorUserId: userId, action: 'workflow.task.returned',
+          resourceType: 'WORKFLOW_TASK', resourceId: task.id,
+          metadata: { processInstanceId: instance.id, fromStepIndex: instance.currentStepIndex, toStepIndex: targetIndex, newTaskId: returnedTask.id },
+        });
+      } else if (rejected) {
         task.status = 'CANCELLED';
         const instance = await manager.findOneByOrFail(ProcessInstance, { id: task.processInstanceId });
         instance.status = 'CANCELLED';
@@ -231,14 +287,14 @@ export class WorkflowService {
       }
       const remainingDelegations = await manager.find(TaskDelegation, { where: { taskId, tenantId, revokedAt: null } });
       for (const delegation of remainingDelegations) {
-        if (task.status === 'COMPLETED' || task.status === 'CANCELLED' || delegation.fromUserId === userId) {
+        if (task.status === 'COMPLETED' || task.status === 'CANCELLED' || task.status === 'RETURNED' || delegation.fromUserId === userId) {
           delegation.revokedAt = new Date();
           delegation.revokedByUserId = userId;
           await manager.save(delegation);
           await this.tenantAudit.record(manager, {
             tenantId, actorUserId: userId, targetUserId: delegation.toUserId,
             action: 'workflow.task.delegation_closed', resourceType: 'TASK_DELEGATION', resourceId: delegation.id,
-            metadata: { taskId, reason: task.status === 'COMPLETED' || task.status === 'CANCELLED' ? 'TASK_CLOSED' : 'ORIGINAL_ASSIGNEE_ACTED' },
+            metadata: { taskId, reason: task.status === 'COMPLETED' || task.status === 'CANCELLED' || task.status === 'RETURNED' ? 'TASK_CLOSED' : 'ORIGINAL_ASSIGNEE_ACTED' },
           });
         }
       }
