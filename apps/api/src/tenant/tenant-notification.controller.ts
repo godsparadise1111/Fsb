@@ -5,6 +5,7 @@ import { RequiresFeature } from '../auth/decorators/requires-feature.decorator';
 import { TenantNotificationService } from './tenant-notification.service';
 
 @Controller('tenant/notifications')
+@RequiresFeature('email_notifications')
 export class TenantNotificationController {
   constructor(private readonly notifications: TenantNotificationService) {}
 
