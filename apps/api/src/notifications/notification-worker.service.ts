@@ -180,7 +180,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const baseUrl=new URL(process.env.FSB_PUBLIC_APP_URL!);
       const taskUrl=new URL('/',baseUrl).toString();
       const safeUrl=this.escapeHtml(taskUrl);
-      const subject=(item.subject ?? `New workflow task: ${title}`).replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      const subject=(item.subject ?? `New workflow task: ${title}`).replace(/[\\r\\n]/g,' ').slice(0,160);
       await this.transporter.sendMail({
         from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
         text:`A workflow task has been assigned to you: "${title}". Open: ${taskUrl}`,
@@ -261,7 +261,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const result = job.result ?? {};
       const csvCell = (value: unknown) => {
         let text = value === null || value === undefined ? '' : String(value);
-        if (/^[\\s]*[=+@-]/.test(text)) text = "'" + text;
+        if (['=', '+', '-', '@'].includes(text.trimStart()[0] ?? '')) text = "'" + text;
         return '"' + text.replace(/"/g,'""') + '"';
       };
       const reportRows = [[result.groupLabel ?? 'گروه',result.measureLabel ?? 'تعداد'], ...(Array.isArray(result.rows) ? result.rows.map((row: any) => [row.dimension ?? 'همه',row.value]) : [])];
