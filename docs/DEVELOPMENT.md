@@ -218,7 +218,7 @@
 - GET /api/tenant/reports/process-bottlenecks?from=YYYY-MM-DD&to=YYYY-MM-DD&organizationId=... با مجوز tenant.reports.read و محدوده Tenant، زمان چرخه، زمان ایجاد تا اولین اقدام ثبت‌شده، انتظار جاری وظایف باز، تعداد/نسبت وظایف معوق و نرخ وظایف دارای اقدام REJECTED را به تفکیک فرایند/مرحله برمی‌گرداند.
 - رتبه‌بندی ابتدا بر اساس تعداد وظایف باز مهلت‌گذشته و سپس زمان انتظار و چرخه انجام می‌شود. بازه پیش‌فرض ۳۰ و حداکثر ۳۶۶ روز است.
 - موتور گردش‌کار فعلی فقط APPROVED/REJECTED را پشتیبانی می‌کند و Transition صریح RETURN/REWORK ندارد؛ بنابراین شاخص REJECTED به‌عنوان «نرخ رد/عدم تأیید» گزارش می‌شود و معادل نرخ برگشت به مرحله قبل نیست. برای نرخ برگشت واقعی باید مدل Transition و رویداد بازگشت مستقل اضافه شود.
-- صفحه فارسی /process-analytics گزارش را نمایش می‌دهد. همه queryها با tenantId از JWT و سازمان متعلق به همان Tenant محدود هستند.
+- صفحه فارسی /process-analytics گزارش را نمایش می‌دهد. همه queryها با tenantId از JWT و سازمان متعلق به همان Tenant محدود هستند. Migration 20261109_008_process_analytics_and_outbox_indexes.sql ایندکس‌های tenant-aware برای زمان‌بندی/تاریخچه اقدامات و پایش Outbox اضافه می‌کند؛ هنوز اجرا نشده است.
 
 ## استقرار On-prem
 
