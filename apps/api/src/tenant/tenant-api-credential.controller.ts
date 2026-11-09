@@ -16,7 +16,7 @@ class CreateApiCredentialDto {
 @Controller('tenant/api-credentials')
 @RequiresFeature('api_access')
 export class TenantApiCredentialController {
-  constructor(private readonly credentials: TenantApiCredentialService, private readonly reports: TenantReportsService) {}
+  constructor(private readonly credentials: TenantApiCredentialService) {}
 
   @RequirePermissions('tenant.api.manage')
   @Get()
@@ -42,7 +42,7 @@ export class TenantApiCredentialController {
 
 @Controller('v1/tenant')
 export class VersionedTenantPublicApiController {
-  constructor(private readonly credentials: TenantApiCredentialService) {}
+  constructor(private readonly credentials: TenantApiCredentialService, private readonly reports: TenantReportsService) {}
 
   @Public()
   @Get('profile')
