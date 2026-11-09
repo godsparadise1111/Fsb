@@ -21,3 +21,11 @@
 @media(max-width:700px){.absence-alert-top{align-items:flex-start;flex-direction:column}.absence-alert-item{padding:12px}}
 
 .absence-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.absence-actions select{min-width:145px;max-width:220px;border:1px solid #dce2ec;border-radius:7px;padding:7px 9px;background:#fff;color:#43516a;font:inherit;font-size:10px}.absence-button{border:1px solid #d8e1f0;border-radius:7px;padding:7px 10px;background:#365b98;color:#fff;font:inherit;font-size:10px;cursor:pointer}.absence-button.secondary{background:#f5f7fb;color:#465a7b}.absence-button:hover{filter:brightness(.97)}.absence-step{font-size:10px;color:#7b879a}@media(max-width:700px){.absence-actions{width:100%}.absence-actions select{flex:1;max-width:none}}
+
+
+.absence-sla-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;width:100%}
+.absence-sla-level{min-width:0;border:1px solid var(--border,#ddd);border-radius:10px;padding:12px;display:grid;gap:10px}
+.absence-sla-level legend{font-weight:700;padding:0 6px}
+.absence-sla-level label{display:grid;gap:5px;font-size:13px}
+@media(max-width:900px){.absence-sla-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.absence-sla-grid{grid-template-columns:1fr}}
