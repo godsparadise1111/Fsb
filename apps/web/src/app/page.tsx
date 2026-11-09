@@ -6,6 +6,7 @@ const modules = [
   { title: 'کارتابل گردش کار', description: 'اقدام، تأیید، رد و بازگشت مستند به مراحل قبلی', status: 'کارتابل عملیاتی', href: '/tasks', icon: '☷' },
   { title: 'داشبورد مدیریتی مشتری', description: 'شاخص‌های کلان، وظایف، فرایندها و هشدارهای سازمان', status: 'نمای مدیریتی', href: '/dashboard', icon: '▦' },
   { title: 'سلامت تجمیعی پلتفرم', description: 'پایش چندمشتری موتور گردش‌کار و صف اعلان‌ها', status: 'ویژه مدیر پلتفرم', href: '/platform-workflow-health', icon: '⌁' },
+  { title: 'مدیریت تجاری پلتفرم', description: 'پلن‌ها، اشتراک مشتریان و صورتحساب‌های سازمانی', status: 'ویژه مدیر پلتفرم', href: '/platform-commercial', icon: '◫' },
   { title: 'داشبورد مدیر سازمان', description: 'عملکرد سازمان، وظایف معوق و هشدارهای SLA', status: 'تحلیل سازمانی', href: '/organization-dashboard', icon: '▥' },
   { title: 'رخدادهای بازیابی', description: 'بررسی رخدادهای Worker و رسیدگی ممیزی‌شده', status: 'پایش و بازیابی', href: '/recovery-incidents', icon: '↻' },
   { title: 'مدیریت صف اعلان‌ها', description: 'پایش Outbox، پیام‌های ناموفق و پردازش کنترل‌شده', status: 'عملیات اعلان', href: '/notifications', icon: '♧' },
