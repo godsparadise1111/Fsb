@@ -1409,6 +1409,23 @@ export class WorkflowService {
     });
   }
 
+  async listTaskLifecycleEvents(taskId: string, requesterId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    await this.taskHistory(taskId, requesterId, tenantId);
+    return this.dataSource.query(
+      `SELECT e.id, e."tenantId", e."taskId", e."eventType", e."affectedUserId", e.details, e."createdAt"
+         FROM workflow_task_lifecycle_events e
+         JOIN workflow_tasks wt ON wt.id=e."taskId" AND wt."tenantId"=e."tenantId"
+         JOIN process_instances pi ON pi.id=wt."processInstanceId"
+         JOIN organizations o ON o.id=pi."organizationId" AND o."tenantId"=e."tenantId" AND o."isActive"=true
+         JOIN tenants t ON t.id=e."tenantId" AND t.status='ACTIVE'
+         JOIN tenant_memberships tm ON tm."tenantId"=e."tenantId" AND tm."userId"=$3 AND tm."isActive"=true
+         JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+        WHERE e."taskId"=$1 AND e."tenantId"=$2 ORDER BY e."createdAt" ASC, e.id ASC`,
+      [taskId, tenantId, requesterId],
+    );
+  }
+
   async taskHistory(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required to view workflow history');
     const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
