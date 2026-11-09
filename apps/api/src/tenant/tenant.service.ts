@@ -6,6 +6,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { TenantAuditService } from './tenant-audit.service';
 import { User } from '../identity/entities/user.entity';
 import { TenantMembership } from './entities/tenant-membership.entity';
+import { assertTenantUserCapacity } from './tenant-commercial-limits';
 
 @Injectable()
 export class TenantService {
@@ -102,6 +103,9 @@ export class TenantService {
         }
       }
 
+      if (status === 'ACTIVE' && activeAdminCount === 0 && initialAdminUserId) {
+        await assertTenantUserCapacity(manager, tenant.id, 'RESERVE_NEW_SEAT');
+      }
       if (previousStatus === status && !(status === 'ACTIVE' && activeAdminCount === 0)) return tenant;
       tenant.status = status;
       if (status === 'ACTIVE' && !tenant.activatedAt) tenant.activatedAt = new Date();
