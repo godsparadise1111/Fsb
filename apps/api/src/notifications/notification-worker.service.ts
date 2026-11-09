@@ -96,7 +96,8 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
              JOIN permissions p ON p.id=rp."permissionId" AND p.code='workflow.substitutions.manage'
              JOIN users u ON u.id=ur."userId" AND u."isActive"=true AND u.email IS NOT NULL
              JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$1 AND tm."isActive"=true
-            WHERE ur."organizationId"=$4 AND ur."isActive"=true`,
+             JOIN organizations o ON o.id=ur."organizationId" AND o."tenantId"=ur."tenantId" AND o."isActive"=true
+            WHERE ur."tenantId"=$1 AND ur."organizationId"=$4 AND ur."isActive"=true`,
           [alert.tenantId,alert.assignedToUserId,alert.assignedToUserId,alert.organizationId],
         ) as Array<{userId:string;email:string;audience:'ASSIGNEE'|'MANAGER'}>;
         for (const recipient of recipients) {
@@ -158,7 +159,8 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
           ? `SELECT a.id FROM organization_operational_alerts a
               JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
               JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
-              JOIN user_roles ur ON ur."userId"=u.id AND ur."organizationId"=a."organizationId" AND ur."isActive"=true
+              JOIN organizations o ON o.id=a."organizationId" AND o."tenantId"=a."tenantId" AND o."isActive"=true
+              JOIN user_roles ur ON ur."userId"=u.id AND ur."tenantId"=a."tenantId" AND ur."organizationId"=a."organizationId" AND ur."isActive"=true
               JOIN roles r ON r.id=ur."roleId" AND r."isActive"=true AND r.scope='ORGANIZATION'
               JOIN role_permissions rp ON rp."roleId"=r.id
               JOIN permissions p ON p.id=rp."permissionId" AND p.code='workflow.substitutions.manage'
