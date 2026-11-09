@@ -286,6 +286,28 @@ export class TenantReportsService {
           AND ($4::uuid IS NULL OR pi."organizationId"=$4)`,
       [tenantId,from,to,organizationId],
     );
+
+    const dailyTrend = await this.dataSource.query(
+      `WITH days AS (
+         SELECT generate_series(date_trunc('day',$2::timestamptz),
+           date_trunc('day',$3::timestamptz-interval '1 millisecond'),interval '1 day') AS day
+       )
+       SELECT days.day::date::text AS day,
+         count(wt.id) FILTER (WHERE wt."createdAt">=days.day AND wt."createdAt"<days.day+interval '1 day')::int AS created,
+         count(wt.id) FILTER (WHERE wt."completedAt">=days.day AND wt."completedAt"<days.day+interval '1 day')::int AS completed,
+         count(wt.id) FILTER (WHERE wt."completedAt">=days.day AND wt."completedAt"<days.day+interval '1 day'
+           AND wt."dueAt" IS NOT NULL AND wt."completedAt">wt."dueAt")::int AS lateCompletions
+       FROM days
+       LEFT JOIN workflow_tasks wt ON
+         ((wt."createdAt">=days.day AND wt."createdAt"<days.day+interval '1 day')
+          OR (wt."completedAt">=days.day AND wt."completedAt"<days.day+interval '1 day'))
+       LEFT JOIN process_instances pi ON pi.id=wt."processInstanceId"
+       LEFT JOIN organizations o ON o.id=pi."organizationId" AND o."tenantId"=$1
+         AND ($4::uuid IS NULL OR o.id=$4)
+       WHERE wt.id IS NULL OR o.id IS NOT NULL
+       GROUP BY days.day ORDER BY days.day`,
+      [tenantId,from,to,organizationId],
+    );
     const number = (v: unknown) => v == null ? null : Number(v);
     const data = stages.map((r:any,index:number)=>({
       rank:index+1,processName:r.processName,stageName:r.stageName,totalTasks:Number(r.totalTasks),
@@ -299,7 +321,7 @@ export class TenantReportsService {
     }));
     return { tenant:{id:tenant.id,name:tenant.name},period:{from:from.toISOString(),to:to.toISOString()},filters:{organizationId},
       summary:Object.fromEntries(Object.entries(summary[0]??{}).map(([k,v])=>[k,Number(v??0)])),
-      bottlenecks:data, generatedAt:new Date().toISOString(),
+      bottlenecks:data, dailyTrend:dailyTrend.map((r:any)=>({day:r.day,created:Number(r.created),completed:Number(r.completed),lateCompletions:Number(r.lateCompletions)})), generatedAt:new Date().toISOString(),
       metricNotes:{
         waiting:'زمان از ایجاد وظیفه تا اولین اقدام ثبت‌شده؛ برای وظایف باز، زمان جاری به‌عنوان انتهای انتظار استفاده می‌شود.',
         rejection:'نرخ وظایفی که حداقل یک اقدام REJECTED داشته‌اند؛ موتور فعلی مسیر RETURN/REWORK مستقل ندارد، بنابراین این شاخص معادل نرخ برگشت به مرحله قبل نیست.',
