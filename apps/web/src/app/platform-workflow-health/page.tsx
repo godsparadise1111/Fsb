@@ -29,7 +29,7 @@ export default function PlatformWorkflowHealthPage() {
     finally { setBusy(false); }
   },[token]);
   useEffect(()=>{const saved=localStorage.getItem('fsb.accessToken')||'';setToken(saved);},[]);
-  useEffect(()=>{if(token) void load();},[token,load]);
+  useEffect(()=>{if(!token)return;void load();const timer=setInterval(()=>void load(),30000);return()=>clearInterval(timer);},[token,load]);
   const cards = data ? [
     ['مشتریان فعال',data.totals.activeTenants],['فرایندهای در حال اجرا',data.totals.runningProcesses],
     ['وظایف فعال',data.totals.activeTasks],['وظایف معوق',data.totals.overdueTasks],
