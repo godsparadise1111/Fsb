@@ -45,6 +45,7 @@ export class IdentityService {
         .getOne();
       if (existing) throw new ConflictException('Email or username already exists');
       const { password, ...profile } = dto;
+      void password;
       const userRepository = manager.getRepository(User);
       const user = await userRepository.save(userRepository.create({
         ...profile, passwordHash, email: normalizedEmail,
@@ -54,6 +55,7 @@ export class IdentityService {
         tenantId, userId: user.id, isActive: true, isTenantAdmin: false, acceptedAt: new Date(),
       }));
       const { passwordHash: omittedPasswordHash, ...safeUser } = user;
+      void omittedPasswordHash;
       return safeUser;
     });
   }
