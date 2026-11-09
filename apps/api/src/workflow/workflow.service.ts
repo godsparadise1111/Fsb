@@ -669,6 +669,88 @@ export class WorkflowService {
     };
   }
 
+  async getOrganizationOperationsOverview(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    const [metrics] = await this.dataSource.query(
+      `WITH active_people AS (
+         SELECT DISTINCT u.id
+           FROM users u
+           JOIN tenant_memberships tm ON tm."userId" = u.id AND tm."tenantId" = $1 AND tm."isActive" = true
+           JOIN user_positions up ON up."userId" = u.id AND up."isActive" = true
+           JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
+           JOIN organization_units ou ON ou.id = p."organizationUnitId" AND ou."organizationId" = $2 AND ou."isActive" = true
+          WHERE u."isActive" = true AND up."validFrom" <= now()
+            AND (up."validUntil" IS NULL OR up."validUntil" >= now())
+       ), scoped_tasks AS (
+         SELECT wt.id, wt."dueAt"
+           FROM workflow_tasks wt
+           JOIN process_instances pi ON pi.id = wt."processInstanceId"
+          WHERE wt."tenantId" = $1 AND pi."organizationId" = $2
+            AND wt.status IN ('OPEN', 'IN_PROGRESS')
+       )
+       SELECT
+         (SELECT COUNT(*)::int FROM active_people) AS "activeHeadcount",
+         (SELECT COUNT(*)::int FROM scoped_tasks) AS "openTasks",
+         (SELECT COUNT(*)::int FROM scoped_tasks WHERE "dueAt" < now()) AS "overdueTasks",
+         (SELECT COUNT(*)::int FROM scoped_tasks WHERE "dueAt" >= now() AND "dueAt" < now() + interval '7 days') AS "dueNext7Days",
+         (SELECT COUNT(*)::int FROM scoped_tasks st
+           WHERE NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta."taskId" = st.id AND ta.status = 'PENDING')) AS "tasksWithoutPendingAssignee",
+         (SELECT COUNT(DISTINCT oa.id)::int FROM organization_absences oa
+           WHERE oa."tenantId" = $1 AND oa."organizationId" = $2 AND oa."cancelledAt" IS NULL
+             AND oa."startsAt" <= now() AND oa."endsAt" > now()) AS "activeAbsences",
+         (SELECT COUNT(DISTINCT oa.id)::int FROM organization_absences oa
+           WHERE oa."tenantId" = $1 AND oa."organizationId" = $2 AND oa."cancelledAt" IS NULL
+             AND oa."startsAt" > now() AND oa."startsAt" < now() + interval '30 days') AS "upcomingAbsences30Days",
+         (SELECT COUNT(DISTINCT td.id)::int FROM task_delegations td
+           JOIN scoped_tasks st ON st.id = td."taskId"
+          WHERE td."tenantId" = $1 AND td."revokedAt" IS NULL AND td."startsAt" <= now() AND td."endsAt" > now()) AS "activeTaskDelegations",
+         (SELECT COUNT(DISTINCT os.id)::int FROM organization_substitutions os
+           WHERE os."tenantId" = $1 AND os."organizationId" = $2 AND os."revokedAt" IS NULL
+             AND os."startsAt" <= now() AND os."endsAt" > now()) AS "activeSubstitutions"`,
+      [tenantId, organizationId],
+    );
+
+    const workload = await this.getOrganizationWorkload(organizationId, tenantId);
+    const cap = workload.policy.maxOpenTasksPerSubstitute;
+    const warningAt = Math.ceil(cap * workload.policy.warningThresholdPercent / 100);
+    const highLoad = workload.items
+      .map((person: any) => ({
+        userId: person.userId,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        openTaskCount: person.openTaskCount,
+        projectedLoad: person.openTaskCount + person.prospectiveCoverageCount,
+        atCapacity: person.openTaskCount + person.prospectiveCoverageCount >= cap,
+        nearCapacity: person.openTaskCount + person.prospectiveCoverageCount >= warningAt,
+      }))
+      .filter((person: any) => person.nearCapacity)
+      .sort((a: any, b: any) => b.projectedLoad - a.projectedLoad)
+      .slice(0, 10);
+
+    return {
+      organizationId,
+      generatedAt: new Date().toISOString(),
+      metrics: {
+        activeHeadcount: Number(metrics.activeHeadcount ?? 0),
+        openTasks: Number(metrics.openTasks ?? 0),
+        overdueTasks: Number(metrics.overdueTasks ?? 0),
+        dueNext7Days: Number(metrics.dueNext7Days ?? 0),
+        tasksWithoutPendingAssignee: Number(metrics.tasksWithoutPendingAssignee ?? 0),
+        activeAbsences: Number(metrics.activeAbsences ?? 0),
+        upcomingAbsences30Days: Number(metrics.upcomingAbsences30Days ?? 0),
+        activeSubstitutions: Number(metrics.activeSubstitutions ?? 0),
+        activeTaskDelegations: Number(metrics.activeTaskDelegations ?? 0),
+        employeesNearCapacity: highLoad.length,
+        employeesAtCapacity: highLoad.filter((person: any) => person.atCapacity).length,
+      },
+      workloadPolicy: workload.policy,
+      employeesNearCapacity: highLoad,
+    };
+  }
+
   async listOrganizationAbsences(
     organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string,
     fromValue?: string, toValue?: string, statusValue?: string,
