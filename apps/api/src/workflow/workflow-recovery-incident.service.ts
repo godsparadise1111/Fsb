@@ -18,7 +18,7 @@ export class WorkflowRecoveryIncidentService {
   async list(tenantId: string, filters: { organizationId?: string; processInstanceId?: string; incidentType?: string; severity?: string; status?: string; limit?: number; offset?: number }) {
     if (filters.incidentType && !INCIDENT_TYPES.includes(filters.incidentType as IncidentType)) throw new BadRequestException('Unsupported incident type');
     if (filters.severity && !['CRITICAL','HIGH','MEDIUM'].includes(filters.severity)) throw new BadRequestException('Unsupported severity');
-    if (filters.status && !['OPEN','ACKNOWLEDGED','RESOLVED'].includes(filters.status)) throw new BadRequestException('Unsupported incident status');
+    if (filters.status && !['ACTIVE','OPEN','ACKNOWLEDGED','RESOLVED'].includes(filters.status)) throw new BadRequestException('Unsupported incident status');
     const limit = Math.min(100, Math.max(1, Math.floor(filters.limit ?? 25)));
     const offset = Math.max(0, Math.floor(filters.offset ?? 0));
     const params: unknown[] = [tenantId];
@@ -27,7 +27,7 @@ export class WorkflowRecoveryIncidentService {
     if (filters.organizationId) add('pi."organizationId"=?', filters.organizationId);
     if (filters.processInstanceId) add('i."processInstanceId"=?', filters.processInstanceId);
     if (filters.incidentType) add('i."incidentType"=?', filters.incidentType);
-    if (filters.status) add('i.status=?', filters.status);
+    if (filters.status === 'ACTIVE' || !filters.status) where.push(`i.status IN ('OPEN','ACKNOWLEDGED')`);\n    else add('i.status=?', filters.status);
     if (filters.severity) add(`CASE i."incidentType" WHEN 'RUNNING_PROCESS_TASK_COUNT_MISMATCH' THEN 'CRITICAL' WHEN 'TERMINAL_PROCESS_HAS_ACTIVE_TASKS' THEN 'HIGH' ELSE 'MEDIUM' END=?`, filters.severity);
     const rows = await this.dataSource.query(
       `SELECT i.id,i."tenantId",i."processInstanceId",i."incidentType",i.fingerprint,i.details,i.status,
