@@ -108,8 +108,8 @@ export class IdentityService {
       .innerJoin('unit.organization', 'organization',
         'organization.id = :organizationId AND organization."tenantId" = :tenantId AND organization."isActive" = true',
         { organizationId, tenantId })
-      .innerJoin('tenant_memberships', 'tenantMembership',
-        'tenantMembership."userId" = user.id AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true',
+      .innerJoin('tenant_memberships', 'tm',
+        'tm."userId" = user.id AND tm."tenantId" = :tenantId AND tm."isActive" = true',
         { tenantId })
       .where('user.isActive = true')
       .select(['user.id', 'user.firstName', 'user.lastName', 'user.username', 'user.email'])
