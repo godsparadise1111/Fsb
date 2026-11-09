@@ -156,3 +156,11 @@
 - عملیات مدیر: `POST .../:alertId/acknowledge`، `POST .../:alertId/assign` با `assignedToUserId)، `POST .../:alertId/resolve` با یادداشت حل و `POST .../:alertId/reopen`.
 - تغییر وضعیت‌ها در Tenant Audit ثبت می‌شوند؛ مالک پیگیری باید عضو فعال همان Tenant باشد.
 - Migration و queryها هنوز اجرا یا در PostgreSQL واقعی اعتبارسنجی نشده‌اند.
+
+
+## تاریخچه و یادداشت‌های هشدار عملیاتی
+
+- Migration `20261109_003_operational_alert_events.sql` تاریخچهٔ تغییر وضعیت، تخصیص مسئول و یادداشت‌های پیگیری را در جدول append-only رویدادهای هشدار ذخیره می‌کند.
+- مسیر `GET /api/organizations/:organizationId/operational-alerts/:alertId/history` تاریخچهٔ محدود به Tenant و سازمان را برمی‌گرداند (حداکثر ۲۰۰ رویداد، جدیدترین ابتدا).
+- مسیر `POST /api/organizations/:organizationId/operational-alerts/:alertId/notes` با بدنهٔ `{ "note": "..." }` یادداشت ۳ تا ۴۰۰۰ کاراکتری ثبت می‌کند؛ برای هشدار بسته ابتدا باید بازگشایی انجام شود.
+- تغییر وضعیت/مسئول و یادداشت‌ها در همان تراکنش با Tenant Audit ثبت می‌شوند. این APIها هنوز build یا در PostgreSQL اجرا نشده‌اند.
