@@ -84,6 +84,10 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
 
   private async reassignInactiveAssignees(candidate: {taskId:string;tenantId:string;organizationId:string}) {
     await this.dataSource.transaction(async manager => {
+      const tenants = await manager.query(`SELECT id FROM tenants WHERE id=$1 AND status='ACTIVE' FOR SHARE`, [candidate.tenantId]);
+      if (!tenants.length) return;
+      const organizations = await manager.query(`SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true FOR SHARE`, [candidate.organizationId, candidate.tenantId]);
+      if (!organizations.length) return;
       const [task] = await manager.query(`SELECT id, status, "processInstanceId" FROM workflow_tasks WHERE id = $1 FOR UPDATE`, [candidate.taskId]);
       if (!task || !['OPEN','IN_PROGRESS'].includes(task.status)) return;
       const [instance] = await manager.query(`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
@@ -165,6 +169,10 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.dataSource.transaction(async manager => {
+      const tenants = await manager.query(`SELECT id FROM tenants WHERE id=$1 AND status='ACTIVE' FOR SHARE`, [candidate.tenantId]);
+      if (!tenants.length) return;
+      const organizations = await manager.query(`SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true FOR SHARE`, [candidate.organizationId, candidate.tenantId]);
+      if (!organizations.length) return;
       const [task] = await manager.query(
         `SELECT t.id, t."tenantId", t.status, t."dueAt", t."processInstanceId"
            FROM workflow_tasks t WHERE t.id = $1 AND t."tenantId" = $2 FOR UPDATE`,
