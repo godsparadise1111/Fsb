@@ -124,6 +124,20 @@ export class PermissionsGuard implements CanActivate {
     }
     if (!user.tenantId) throw new ForbiddenException('An active tenant context is required');
 
+    // Never trust tenant-admin claims from an old JWT: resolve current membership and
+    // tenant status from the database on every tenant-scoped request.
+    const [activeContext] = await this.dataSource.query(
+      `SELECT tm."isTenantAdmin"
+         FROM tenant_memberships tm
+         INNER JOIN users u ON u.id = tm."userId" AND u."isActive" = true
+         INNER JOIN tenants t ON t.id = tm."tenantId" AND t.status = 'ACTIVE'
+        WHERE tm."tenantId" = $1 AND tm."userId" = $2 AND tm."isActive" = true
+        LIMIT 1`,
+      [user.tenantId, user.sub],
+    );
+    if (!activeContext) throw new ForbiddenException('An active membership in the selected tenant is required');
+    const isTenantAdmin = activeContext.isTenantAdmin === true;
+
     const organizationId = await this.resolveOrganizationId(request);
     let organization: Organization | null = null;
     if (organizationId) {
@@ -142,7 +156,7 @@ export class PermissionsGuard implements CanActivate {
     if (request.method === 'GET' && requestPath.endsWith('/tenant/dashboard/me') && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
 
     // Tenant administrators get only explicitly listed tenant-level capabilities.
-    if (user.isTenantAdmin) {
+    if (isTenantAdmin) {
       if (required.every(code => ['tenant.members.read', 'tenant.members.manage', 'tenant.invitations.read', 'tenant.invitations.manage', 'tenant.audit.read', 'tenant.usage.read', 'tenant.notifications.read', 'tenant.notifications.manage', 'tenant.reports.read', 'tenant.organizations.manage', 'workflow.substitutions.manage'].includes(code))) return true;
       const tenantScopedUserRead = request.method === 'GET' && (requestPath.endsWith('/users') || /\/users\/[^/]+\/positions$/.test(requestPath));
       if (tenantScopedUserRead && required.length === 1 && required[0] === 'users.read') return true;
