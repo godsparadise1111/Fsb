@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { IsArray, IsIn, IsISO8601, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { RequiresFeature } from '../auth/decorators/requires-feature.decorator';
 import { TenantApiCredentialService } from './tenant-api-credential.service';
+import { TenantReportsService } from './tenant-reports.service';
 
 class CreateApiCredentialDto {
   @IsString() @Length(3,100) name: string;
@@ -57,6 +58,20 @@ export class VersionedTenantPublicApiController {
         plan: authenticated.tenant.plan,
       },
       scopes: authenticated.scopes,
+    };
+  }
+
+  @Public()
+  @Get('reports/overview')
+  async reportOverview(
+    @Headers('x-fsb-api-key') apiKey?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const authenticated = await this.credentials.authenticate(apiKey ?? '', 'reports.read');
+    return {
+      apiVersion: 'v1',
+      report: await this.reports.overview(authenticated.tenant.id, { from, to }),
     };
   }
 }
