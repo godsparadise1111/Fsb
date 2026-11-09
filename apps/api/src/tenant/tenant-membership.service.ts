@@ -63,7 +63,10 @@ export class TenantMembershipService {
       });
       if (!membership) throw new NotFoundException('Active tenant membership not found');
       if (membership.isTenantAdmin && !isTenantAdmin) {
-        const admins = await repository.count({ where: { tenantId, isActive: true, isTenantAdmin: true } });
+        const admins = await repository.createQueryBuilder('admin')
+          .innerJoin('admin.user', 'adminUser', 'adminUser.isActive = true')
+          .where('admin.tenantId = :tenantId AND admin.isActive = true AND admin.isTenantAdmin = true', { tenantId })
+          .getCount();
         if (admins <= 1) throw new BadRequestException('A tenant must retain at least one active administrator');
       }
       const previous = membership.isTenantAdmin;
