@@ -16,11 +16,41 @@ export class ProcessService {
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
   ) {}
   async createDefinition(dto: CreateProcessDto) {
-    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
-    if (!organization) throw new NotFoundException('Active organization not found');
-    if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
-    if (await this.definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) throw new ConflictException('Process code already exists in this organization');
-    return this.definitions.save(this.definitions.create({ ...dto, status: 'DRAFT' }));
+    return this.dataSource.transaction(async manager => {
+      const [organization] = await manager.query(
+        `SELECT o.id,o."tenantId",t.status AS "tenantStatus"
+           FROM organizations o JOIN tenants t ON t.id=o."tenantId"
+          WHERE o.id=$1 AND o."isActive"=true FOR UPDATE OF t`,
+        [dto.organizationId],
+      );
+      if (!organization) throw new NotFoundException('Active organization not found');
+      if (organization.tenantStatus !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
+      const [commercial] = await manager.query(
+        `SELECT p.limits,s.status,s."currentPeriodEnd",s."trialEndsAt"
+           FROM tenant_subscriptions s JOIN commercial_plans p ON p.code=s."planCode"
+          WHERE s."tenantId"=$1 FOR UPDATE OF s`, [organization.tenantId],
+      );
+      const now = Date.now();
+      if (!commercial || !['ACTIVE','TRIALING'].includes(commercial.status) ||
+          (commercial.currentPeriodEnd && new Date(commercial.currentPeriodEnd).getTime() <= now) ||
+          (commercial.status === 'TRIALING' && commercial.trialEndsAt && new Date(commercial.trialEndsAt).getTime() <= now)) {
+        throw new BadRequestException('Tenant subscription is not eligible for creating process definitions');
+      }
+      const maxProcesses = Number(commercial.limits?.maxProcesses ?? 0);
+      const [{ count }] = await manager.query(
+        `SELECT count(*)::int AS count FROM process_definitions pd
+          JOIN organizations o ON o.id=pd."organizationId" WHERE o."tenantId"=$1`,
+        [organization.tenantId],
+      );
+      if (!Number.isInteger(maxProcesses) || maxProcesses < 1 || Number(count) >= maxProcesses) {
+        throw new BadRequestException('The active subscription process limit has been reached');
+      }
+      const definitions = manager.getRepository(ProcessDefinition);
+      if (await definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) {
+        throw new ConflictException('Process code already exists in this organization');
+      }
+      return definitions.save(definitions.create({ ...dto, status: 'DRAFT' }));
+    });
   }
   listDefinitions(organizationId?: string, tenantId?: string | null) {
     const query = this.definitions.createQueryBuilder('definition')
