@@ -5,9 +5,10 @@ import { ProcessDefinition } from './entities/process-definition.entity';
 import { ProcessVersion } from './entities/process-version.entity';
 import { ProcessController } from './process.controller';
 import { ProcessService } from './process.service';
+import { TenantModule } from '../tenant/tenant.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Organization, ProcessDefinition, ProcessVersion])],
+  imports: [TypeOrmModule.forFeature([Organization, ProcessDefinition, ProcessVersion]), TenantModule],
   controllers: [ProcessController],
   providers: [ProcessService],
 })
