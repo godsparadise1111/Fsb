@@ -146,7 +146,7 @@ export class WorkflowController {
     @Query('status') status: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.workflow.listOrganizationAbsences(organizationId, user.tenantId, limit, offset, from, to, status);
+    return this.workflow.listOrganizationAbsences(organizationId, user.tenantId, user.sub, limit, offset, from, to, status);
   }
   @RequirePermissions('workflow.substitutions.manage')
   @Delete('organizations/:organizationId/absences/:absenceId')
