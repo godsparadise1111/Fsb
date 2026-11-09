@@ -4,13 +4,17 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  build:
+  build-and-verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-      - run: npm install
+      - run: npm install --no-audit --no-fund
       - run: npm run build
+      - run: npm run test:workflow --workspace @fsb/api
+      - name: Validate production Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env -f compose.production.yaml config --quiet
