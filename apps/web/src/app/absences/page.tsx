@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 type Organization = { id: string; name: string; code: string };
 type User = { id: string; firstName: string; lastName: string; username: string; email: string };
-type Workload = { userId: string; openTaskCount: number; substitutionCoverageCount: number };
+type Workload = { userId: string; openTaskCount: number; substitutionCoverageCount: number; delegatedTaskCount: number };
 type Absence = {
   id: string; organizationId: string; userId: string; substituteUserId: string;
   startsAt: string; endsAt: string; reason: string; createdAt: string;
@@ -309,7 +309,7 @@ export default function AbsencesPage() {
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
           {selectedSubstituteAtLimit && <div className="absence-conflict absence-full"><strong>ظرفیت جانشین تکمیل است</strong><span>این جانشین {selectedSubstituteLoad?.openTaskCount ?? 0} وظیفه باز دارد و سقف سازمان {policy.maxOpenTasksPerSubstitute} است. با فعال بودن محدودیت ظرفیت، ثبت در سمت سرور نیز رد خواهد شد.</span></div>}
-          <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} وظیفه تحت پوشش جانشینی). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
+          <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} جانشینی و {workload.find(row => row.userId === form.substituteUserId)?.delegatedTaskCount ?? 0} واگذاری). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
           {conflicts.length > 0 && <div className="absence-conflict absence-full"><strong>تداخل زمانی شناسایی شد</strong><span>این بازه با {conflicts.length.toLocaleString('fa-IR')} سابقهٔ فعال تداخل دارد. اگر فرد غایب از قبل جانشینی هم‌پوشان داشته باشد، ثبت توسط سرور رد می‌شود؛ حضور جانشین در چند جانشینی هم‌زمان نیز نیازمند بررسی مدیریتی است.</span></div>}
           <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || !organizationId || form.userId === form.substituteUserId || conflicts.some(item => item.userId === form.userId) || selectedSubstituteAtLimit}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
         </form>
@@ -333,7 +333,7 @@ export default function AbsencesPage() {
               <span>{personName(users.find(u => u.id === person.userId))}</span>
               <span>{person.openTaskCount.toLocaleString('fa-IR')} / {policy.maxOpenTasksPerSubstitute.toLocaleString('fa-IR')} وظیفه</span>
               <div className="absence-workload-track"><i style={{ width: `${Math.min(100, percent)}%` }} /></div>
-              <small>{person.substitutionCoverageCount.toLocaleString('fa-IR')} تحت جانشینی · {warning ? 'نیازمند توجه' : 'ظرفیت مناسب'}</small>
+              <small>{person.substitutionCoverageCount.toLocaleString('fa-IR')} جانشینی · {person.delegatedTaskCount.toLocaleString('fa-IR')} واگذاری · {warning ? 'نیازمند توجه' : 'ظرفیت مناسب'}</small>
             </div>;
           })}
         </div>
