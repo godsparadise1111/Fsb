@@ -58,6 +58,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
               a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",breach.stage
          FROM organization_operational_alerts a
          JOIN tenants t ON t.id=a."tenantId" AND t.status='ACTIVE'
+         JOIN organizations active_org ON active_org.id=a."organizationId" AND active_org."tenantId"=a."tenantId" AND active_org."isActive"=true
          CROSS JOIN LATERAL (VALUES
            ('RESPONSE'::text, a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now()),
            ('RESOLUTION'::text, a."resolutionDueAt" <= now())
@@ -169,6 +170,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
           : `SELECT a.id FROM organization_operational_alerts a
               JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
               JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
+              JOIN organizations o ON o.id=a."organizationId" AND o."tenantId"=a."tenantId" AND o."isActive"=true
              WHERE a.id=$1 AND a."tenantId"=$2 AND a."assignedToUserId"=u.id
                AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
         audience === 'MANAGER' ? [alertId,item.tenantId,userId,item.recipient,organizationId] : [alertId,item.tenantId,userId,item.recipient],
