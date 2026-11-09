@@ -465,7 +465,7 @@ export class WorkflowService {
       }
       await manager.save(task);
       await manager.query(
-        `INSERT INTO workflow_task_lifecycle_events (\"tenantId\",\"taskId\",\"eventType\",\"affectedUserId\",\"details\`)
+        `INSERT INTO workflow_task_lifecycle_events (\"tenantId\",\"taskId\",\"eventType\",\"affectedUserId\",\"details\")
          VALUES ($1,$2,'ACTION_RECORDED',$3,$4::jsonb)`,
         [tenantId, taskId, userId, JSON.stringify({ actionLogId: actionLog.id, action: dto.action, assignmentId: assignment.id, taskStatus: task.status, processInstanceId: task.processInstanceId })],
       );
