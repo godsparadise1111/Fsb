@@ -478,3 +478,6 @@ html[data-theme="dark"] .absence-logout, html[data-theme="dark"] .absence-button
   .absence-toolbar>* { max-width: 100%; }
   .absence-summary article { overflow-wrap: anywhere; }
 }
+
+.fsb-theme-menu button { background:transparent !important; color:var(--fsb-text) !important; border:0 !important; }
+.fsb-theme-menu button:hover, .fsb-theme-menu button.selected { background:var(--fsb-primary-soft) !important; color:var(--fsb-primary) !important; }
