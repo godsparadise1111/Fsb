@@ -7,6 +7,8 @@ set -a; source .env; set +a
 shopt -s nullglob
 files=(apps/api/database/migrations/*.sql)
 if (("${#files[@]}" == 0)); then echo "No migration files found"; exit 1; fi
+tmp_migration=""
+trap '[[ -z "${tmp_migration:-}" ]] || rm -f "$tmp_migration"' EXIT
 for file in "${files[@]}"; do
   name="$(basename "$file")"
   checksum="$(sha256sum "$file" | awk '{print $1}')"
@@ -16,7 +18,17 @@ for file in "${files[@]}"; do
     echo "SKIP $name"; continue
   fi
   echo "APPLY $name"
-  "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "/migrations/$name"
-  "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "INSERT INTO fsb_schema_migrations(filename,checksum) VALUES ('$name','$checksum');"
+  # Each migration file owns an explicit BEGIN/COMMIT. Strip only those
+  # standalone transaction markers, then commit the migration and its ledger
+  # row together so a crash cannot leave applied DDL without a recorded checksum.
+  tmp_migration="$(mktemp)"
+  {
+    printf 'BEGIN;\n'
+    sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/d; /^[[:space:]]*COMMIT;[[:space:]]*$/d' "$file"
+    printf "\nINSERT INTO fsb_schema_migrations(filename,checksum) VALUES ('%s','%s');\nCOMMIT;\n" "$name" "$checksum"
+  } > "$tmp_migration"
+  "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$tmp_migration"
+  rm -f "$tmp_migration"
+  tmp_migration=""
 done
 echo "Migration pass completed. Review the migration ledger."
