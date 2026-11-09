@@ -1,6 +1,9 @@
 BEGIN;
 
-ALTER TABLE workflow_recovery_incidents\n  ADD CONSTRAINT uq_workflow_recovery_incident_tenant_id UNIQUE ("tenantId","id");\n\nCREATE TABLE workflow_recovery_incident_events (
+ALTER TABLE workflow_recovery_incidents
+  ADD CONSTRAINT uq_workflow_recovery_incident_tenant_id UNIQUE ("tenantId","id");
+
+CREATE TABLE workflow_recovery_incident_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "tenantId" uuid NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
   "incidentId" uuid NOT NULL,
@@ -9,7 +12,8 @@ ALTER TABLE workflow_recovery_incidents\n  ADD CONSTRAINT uq_workflow_recovery_i
   "eventKey" varchar(180) NOT NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT fk_workflow_recovery_event_incident_tenant FOREIGN KEY ("tenantId","incidentId") REFERENCES workflow_recovery_incidents("tenantId","id") ON DELETE RESTRICT,\n  CONSTRAINT uq_workflow_recovery_incident_event_key UNIQUE ("incidentId","eventKey"),
+  CONSTRAINT fk_workflow_recovery_event_incident_tenant FOREIGN KEY ("tenantId","incidentId") REFERENCES workflow_recovery_incidents("tenantId","id") ON DELETE RESTRICT,
+  CONSTRAINT uq_workflow_recovery_incident_event_key UNIQUE ("incidentId","eventKey"),
   CONSTRAINT ck_workflow_recovery_incident_event_type
     CHECK ("eventType" IN ('WORKER_SCAN','ACKNOWLEDGE','RESOLVED','REPLAY_REJECTED')),
   CONSTRAINT uq_workflow_recovery_incident_event_tenant_id UNIQUE ("tenantId","id")
@@ -36,6 +40,10 @@ $function$;
 
 CREATE TRIGGER trg_validate_workflow_recovery_incident_event
 BEFORE INSERT OR UPDATE OR DELETE ON workflow_recovery_incident_events
-FOR EACH ROW EXECUTE FUNCTION fsb_validate_workflow_recovery_incident_event();\n\nCREATE TRIGGER trg_prevent_workflow_recovery_incident_event_truncate\nBEFORE TRUNCATE ON workflow_recovery_incident_events\nFOR EACH STATEMENT EXECUTE FUNCTION fsb_validate_workflow_recovery_incident_event();
+FOR EACH ROW EXECUTE FUNCTION fsb_validate_workflow_recovery_incident_event();
+
+CREATE TRIGGER trg_prevent_workflow_recovery_incident_event_truncate
+BEFORE TRUNCATE ON workflow_recovery_incident_events
+FOR EACH STATEMENT EXECUTE FUNCTION fsb_validate_workflow_recovery_incident_event();
 
 COMMIT;
