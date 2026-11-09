@@ -5,7 +5,7 @@ import { ProcessDefinition } from './process-definition.entity';
 @Unique('UQ_process_version_number', ['definitionId', 'versionNumber'])
 export class ProcessVersion {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') definitionId: string;
   @ManyToOne(() => ProcessDefinition, definition => definition.versions, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'definitionId' }) definition: ProcessDefinition;
