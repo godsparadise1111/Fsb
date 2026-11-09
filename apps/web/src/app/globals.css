@@ -512,3 +512,92 @@ html[data-theme="dark"] .fsb-api-key { background:var(--fsb-primary-soft); }
 .fsb-row-actions { display:flex; flex-wrap:wrap; gap:7px; }
 .fsb-row-actions button { white-space:nowrap; }
 @media(max-width:600px) { .fsb-row-actions { flex-direction:column; } .fsb-row-actions button { width:100%; } }
+
+
+/* Phase 6 — application-wide responsive behavior */
+:root { --fsb-page-gutter: clamp(12px, 3vw, 38px); --fsb-mobile-bottom-safe: env(safe-area-inset-bottom, 0px); }
+*, *::before, *::after { min-width: 0; }
+img, video, canvas, svg { max-width: 100%; }
+pre, code, kbd, samp { direction: ltr; unicode-bidi: plaintext; overflow-wrap: anywhere; }
+pre { max-width: 100%; overflow: auto; }
+main, .absence-shell { width: 100%; max-width: 1440px; margin-inline: auto; padding-inline: var(--fsb-page-gutter); }
+.absence-table-wrap, .table-wrap, .table-responsive, [data-table-scroll] { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
+table { max-width: 100%; }
+input, select, textarea, button { max-width: 100%; }
+input[type="date"], input[type="datetime-local"], input[type="time"], input[type="number"] { direction: ltr; text-align: start; }
+[dir="ltr"], .ltr, .text-ltr, [data-direction="ltr"] { direction: ltr; unicode-bidi: plaintext; }
+.fsb-page, .fsb-content, .page-content, .dashboard-content { width: 100%; max-width: 100%; }
+.fsb-grid, .dashboard-grid, .stats-grid, .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: clamp(10px, 1.5vw, 18px); }
+.fsb-toolbar, .page-toolbar, .form-actions, .toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.fsb-toolbar > *, .page-toolbar > *, .form-actions > *, .toolbar-actions > * { max-width: 100%; }
+.dialog, [role="dialog"], .modal, .modal-content, .drawer, .side-panel { max-width: min(100vw - 24px, 900px); max-height: calc(100dvh - 24px); overflow: auto; overscroll-behavior: contain; }
+@media (max-width: 1100px) {
+  main, .absence-shell { padding-top: 20px; }
+  .absence-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .absence-sla-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  main { padding-block: 18px; }
+  .topbar, .absence-header { gap: 12px; flex-wrap: wrap; }
+  .absence-intro { align-items: flex-start; flex-direction: column; }
+  .absence-panel-heading { align-items: flex-start; flex-wrap: wrap; }
+  .absence-create-grid { grid-template-columns: minmax(0, 1fr); }
+  .absence-full { grid-column: auto; }
+  .absence-workload-list { grid-template-columns: minmax(0, 1fr); }
+  .absence-calendar-grid { min-width: 0; }
+  .absence-calendar-day { min-width: 0; overflow: hidden; }
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  :root { --fsb-page-gutter: 13px; }
+  html { scroll-padding-top: 12px; }
+  main, .absence-shell { padding-top: 14px; padding-bottom: calc(18px + var(--fsb-mobile-bottom-safe)); }
+  .topbar { height: auto; min-height: 48px; margin-bottom: 22px; }
+  .brand { font-size: 16px; }
+  .hero { padding: 18px; border-radius: 17px; gap: 16px; }
+  .hero h1 { font-size: clamp(21px, 6vw, 27px); line-height: 1.65; }
+  .hero-actions, .absence-form-actions { width: 100%; flex-direction: column; }
+  .hero-actions > *, .absence-form-actions > * { width: 100%; text-align: center; justify-content: center; }
+  .module-grid, .absence-summary, .absence-sla-grid { grid-template-columns: minmax(0, 1fr); }
+  .module-card { min-height: 0; padding: 17px; }
+  .section-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .absence-login { width: calc(100% - 26px); margin: 24px auto; padding: 21px; }
+  .absence-panel { padding: 14px; margin-block: 12px; }
+  .absence-table { min-width: 720px; }
+  .absence-pagination { align-items: stretch; flex-direction: column; }
+  .absence-pagination > div { width: 100%; }
+  .absence-pagination button { flex: 1; }
+  .absence-calendar-day { min-height: 62px; padding: 4px 2px; }
+  .absence-calendar-event { max-width: 100%; }
+  .absence-footer, footer { flex-direction: column; gap: 8px; }
+  .absence-workload-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .absence-actions { align-items: stretch; }
+  .absence-actions select, .absence-actions button { min-height: 40px; }
+  .absence-toolbar { align-items: stretch; flex-direction: column; }
+  .absence-toolbar > * { width: 100%; }
+  .dialog, [role="dialog"], .modal, .modal-content, .drawer, .side-panel { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+}
+@media (max-width: 380px) {
+  .absence-calendar-weekday { font-size: 8px; }
+  .absence-calendar-number { font-size: 9px; }
+  .absence-calendar-day { min-height: 54px; }
+  .status { padding: 5px 8px; }
+}
+
+/* Phase 7 — consistent Persian typography, bidi and localization primitives */
+html[lang="fa"], html[lang="fa"] body { font-family: var(--fsb-font); }
+body, button, input, select, textarea, option, label, th, td, summary {
+  font-family: var(--fsb-font) !important;
+  font-synthesis: none;
+}
+:lang(fa) { font-family: var(--fsb-font); }
+[dir="rtl"] { text-align: inherit; }
+[dir="ltr"], .ltr, .text-ltr, [data-direction="ltr"] { text-align: left; }
+bdi, [dir="auto"], .bidi-auto { unicode-bidi: plaintext; }
+.fsb-number, .numeric, time, [data-numeric], .tabular-nums { font-variant-numeric: tabular-nums lining-nums; }
+.fsb-code, code, pre, kbd, samp, .font-mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace !important; }
+input::placeholder, textarea::placeholder { font-family: var(--fsb-font); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
