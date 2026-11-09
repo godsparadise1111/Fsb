@@ -99,6 +99,7 @@ INSERT INTO tenant_subscriptions (
 SELECT t.id, t.plan,
        CASE WHEN t.status = 'ACTIVE' THEN 'ACTIVE'
             WHEN t.status = 'SUSPENDED' THEN 'SUSPENDED'
+            WHEN t.status = 'CLOSED' THEN 'CANCELLED'
             ELSE 'TRIALING' END,
        'MONTHLY', COALESCE(t."activatedAt", t."createdAt"),
        COALESCE(t."activatedAt", t."createdAt"), NULL,
