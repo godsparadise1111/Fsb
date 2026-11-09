@@ -30,7 +30,7 @@ SELECT r.id, r."tenantId", r."taskId", r."requesterUserId"
   LEFT JOIN tenant_memberships tm ON tm."tenantId" = r."tenantId" AND tm."userId" = r."requesterUserId"
   LEFT JOIN users u ON u.id = r."requesterUserId"
  WHERE r.status = 'PENDING'
-   AND (wt.status NOT IN ('OPEN','IN_PROGRESS') OR t.status <> 'ACTIVE'
+   AND (wt.status NOT IN ('OPEN','IN_PROGRESS') OR t.status = 'CLOSED'
      OR o."isActive" = false OR tm.id IS NULL OR tm."isActive" = false
      OR u.id IS NULL OR u."isActive" = false);
 
