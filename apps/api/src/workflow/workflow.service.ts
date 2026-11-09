@@ -611,12 +611,12 @@ export class WorkflowService {
            AND substitution."revokedAt" IS NULL
            AND substitution."startsAt" <= $3 AND substitution."endsAt" > $3
         UNION ALL
-        SELECT $4::uuid, wt.id, false, false, true
-          FROM task_assignees source
+        SELECT candidate.id, wt.id, false, false, true
+          FROM active_people candidate
+          CROSS JOIN task_assignees source
           JOIN workflow_tasks wt ON wt.id=source."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
-         WHERE $4::uuid IS NOT NULL AND $5::uuid IS NOT NULL
-           AND source."userId"=$5 AND source.status='PENDING'
+         WHERE $4::uuid IS NOT NULL AND source."userId"=$4 AND source.status='PENDING'
         UNION ALL
         SELECT td."toUserId", wt.id, false, true, false
           FROM task_delegations td
@@ -639,7 +639,7 @@ export class WorkflowService {
         FROM active_people people
         LEFT JOIN aggregated ON aggregated."userId" = people.id
        ORDER BY (COALESCE(aggregated."openTaskCount", 0) + COALESCE(aggregated."prospectiveCoverageCount", 0)) DESC, people."lastName", people."firstName"`,
-      [tenantId, organizationId, asOf, substituteUserId ?? null, absentUserId ?? null],
+      [tenantId, organizationId, asOf, absentUserId ?? null],
     );
     const activeIds = new Set(rows.map((row: any) => String(row.userId)));
     if (absentUserId && !activeIds.has(absentUserId)) throw new BadRequestException('Absent employee is not an active member with a valid position in this organization at the requested time');
