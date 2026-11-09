@@ -95,6 +95,28 @@ export class IdentityService {
       }));
     });
   }
+  async listOrganizationUsers(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    return this.users.createQueryBuilder('user')
+      .distinct(true)
+      .innerJoin('user.positions', 'membership',
+        'membership.isActive = true AND membership."validFrom" <= CURRENT_TIMESTAMP AND (membership."validUntil" IS NULL OR membership."validUntil" >= CURRENT_TIMESTAMP)')
+      .innerJoin('membership.position', 'position', 'position.isActive = true')
+      .innerJoin('position.unit', 'unit', 'unit.isActive = true AND unit."organizationId" = :organizationId', { organizationId })
+      .innerJoin('unit.organization', 'organization',
+        'organization.id = :organizationId AND organization."tenantId" = :tenantId AND organization."isActive" = true',
+        { organizationId, tenantId })
+      .innerJoin('tenant_memberships', 'tenantMembership',
+        'tenantMembership."userId" = user.id AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true',
+        { tenantId })
+      .where('user.isActive = true')
+      .select(['user.id', 'user.firstName', 'user.lastName', 'user.username', 'user.email'])
+      .orderBy('user.lastName', 'ASC').addOrderBy('user.firstName', 'ASC')
+      .getMany();
+  }
+
   async listUserPositions(userId: string, tenantId?: string | null) {
     if (!await this.users.exist({ where: { id: userId } })) throw new NotFoundException('User not found');
     const query = this.memberships.createQueryBuilder('membership')
