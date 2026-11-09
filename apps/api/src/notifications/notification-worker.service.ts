@@ -269,7 +269,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const reportRows = [[result.groupLabel ?? 'گروه',result.measureLabel ?? 'تعداد'], ...(Array.isArray(result.rows) ? result.rows.map((row: any) => [row.dimension ?? 'همه',row.value]) : [])];
       const reportCsv = '\uFEFF' + reportRows.map((row: unknown[]) => row.map(csvCell).join(',')).join('\r\n');
 
-      const subject = (item.subject ?? 'گزارش زمان‌بندی‌شده آماده است').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      const subject = (item.subject ?? 'گزارش زمان‌بندی‌شده آماده است').replace(/[\r\n]/g,' ').slice(0,160);
       await this.transporter.sendMail({
         from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
         text:'گزارش زمان‌بندی‌شده شما آماده است. منبع: ' + String(item.payload.sourceLabel ?? 'گزارش') + '. تعداد ردیف: ' + rowCount + '. مشاهده: ' + reportUrl,
