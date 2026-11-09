@@ -106,3 +106,14 @@ WITH RECURSIVE unit_paths(start_id, id, "parentId", path, cycle) AS (
    WHERE walk.cycle = false
 )
 SELECT start_id, path FROM unit_paths WHERE cycle = true;
+-- A user must not have multiple active primary positions in one tenant.
+SELECT "tenantId", "userId", COUNT(*) AS primary_count
+  FROM user_positions
+ WHERE "isActive" = true AND "isPrimary" = true
+ GROUP BY "tenantId", "userId"
+HAVING COUNT(*) > 1;
+
+-- Position validity ranges must be strictly increasing.
+SELECT id, "validFrom", "validUntil"
+  FROM user_positions
+ WHERE "validUntil" IS NOT NULL AND "validUntil" <= "validFrom";
