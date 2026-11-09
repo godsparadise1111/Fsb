@@ -91,6 +91,9 @@
 
 ## فاز 4: طراحی و اجرای فرایند
 - [x] تعریف فرایند، نسخه و انتشار
+- [x] رابط فارسی `/process-design` برای ایجاد تعریف، ساخت نسخه، طراحی مراحل/مسئولان/ALL-ANY/گراف انتقال، انتشار و شروع نمونه فرایند
+- [x] اعمال Tenant و سازمان فعال در لایه ProcessService برای ایجاد/خواندن نسخه/انتشار/بایگانی، مستقل از کنترل Guard
+- [x] ثبت Audit ایجاد تعریف، ایجاد نسخه، انتشار و بایگانی فرایند با actor و metadata
 - [x] ایجاد نمونه فرایند و وظیفه
 - [x] حل تخصیص مرحله به کاربر مستقیم، سمت سازمانی یا واحد سازمانی با resolve اعضای فعال و سقف ۵۰ نفر در لحظه ایجاد وظیفه
 - [x] همگام‌سازی قراردادهای shared برای وضعیت RETURNED، اقدام‌ها، گراف انتقال و تخصیص کاربر/سمت/واحد
@@ -158,6 +161,8 @@
 - [ ] اجرای prepare-lockfile، بازبینی و commit کردن package-lock.json ریشه (Dockerfileها و Preflight آماده‌اند)
 - [ ] اجرای Build و تست Compose، Migrationهای 024/025، SMTP واقعی، PDF فارسی، XLSX و آزمون بار/امنیت در Staging
 - [x] اسکریپت smoke استقرار و چک‌لیست پذیرش staging شامل بررسی ledger/checksum، readiness، tenant isolation، RETURN/REWORK، worker و restore
+- [x] Preflight سخت‌گیرانه Production برای secrets، جداسازی flagهای Worker، عدم انتشار پورت PostgreSQL و bind شدن API/Web به loopback؛ Dockerfileهای Production فقط با lockfile و `npm ci` ساخته می‌شوند
+- [x] اسکریپت deploy smoke برای بررسی API readiness، HTTP وب، وضعیت سرویس‌ها و ledger مهاجرت‌های گزارش/گردش‌کار
 - [x] لاگ ساخت‌یافته درخواست با Request ID، readiness دیتابیس، متریک‌های پایه Prometheus با endpoint محافظت‌شده و rotation لاگ Docker
 - [ ] tracing توزیع‌شده، مانیتورینگ منابع میزبان/دیتابیس و هشدار بیرونی
 - [ ] تست بار، تست امنیت مستقل و آزمون بازیابی بحران (تعریف شده؛ اجرا نشده)
