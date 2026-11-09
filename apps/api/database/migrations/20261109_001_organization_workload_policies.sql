@@ -22,9 +22,6 @@ CREATE TABLE organization_workload_policies (
     CHECK ("warningThresholdPercent" BETWEEN 1 AND 100)
 );
 
-CREATE INDEX "IDX_org_workload_policy_tenant_org"
-  ON organization_workload_policies ("tenantId", "organizationId");
-
 CREATE OR REPLACE FUNCTION fsb_validate_org_workload_policy() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
