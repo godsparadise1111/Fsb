@@ -13,7 +13,7 @@ export class TaskAssignee {
   @Column('uuid') userId: string;
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'userId' }) user: User;
-  @Column({ default: 'PENDING', length: 20 }) status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REASSIGNED';
+  @Column({ default: 'PENDING', length: 20 }) status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REASSIGNED' | 'RETURNED';
   @Column({ type: 'text', nullable: true }) comment: string | null;
   @Column({ type: 'timestamptz', nullable: true }) actedAt: Date | null;
   @CreateDateColumn() assignedAt: Date;
