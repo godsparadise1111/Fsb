@@ -16,6 +16,10 @@ export class PlatformCommercialController {
   @Get('subscriptions')
   subscriptions() { return this.commercial.listSubscriptions(); }
 
+  @RequirePermissions('tenants.read')
+  @Get('invoices')
+  invoices() { return this.commercial.listInvoices(); }
+
   @RequirePermissions('tenants.manage')
   @Patch('tenants/:tenantId/subscription')
   updateSubscription(
