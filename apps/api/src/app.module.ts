@@ -32,6 +32,10 @@ import { FileAttachment } from './forms/entities/file-attachment.entity';
 import { NotificationOutbox } from './notifications/entities/notification-outbox.entity';
 import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
 
+if (process.env.NODE_ENV === 'production' && process.env.DB_SYNCHRONIZE === 'true') {
+  throw new Error('DB_SYNCHRONIZE=true is forbidden in production; use versioned SQL migrations.');
+}
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -42,7 +46,7 @@ import { TenantAuditLog } from './tenant/entities/tenant-audit-log.entity';
       password: process.env.POSTGRES_PASSWORD ?? 'change_me_locally',
       database: process.env.POSTGRES_DB ?? 'fsb',
       entities: [TenantAuditLog, NotificationOutbox, Tenant, TenantMembership, TenantInvitation, Organization, OrganizationUnit, Position, User, UserPosition, Role, Permission, UserRole, ProcessDefinition, ProcessVersion, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, FormDefinition, FormVersion, FormSubmission, FileAttachment],
-      synchronize: process.env.DB_SYNCHRONIZE === 'true',
+      synchronize: process.env.NODE_ENV !== 'production' && process.env.DB_SYNCHRONIZE === 'true',
       autoLoadEntities: true,
     }),
     HealthModule, OrganizationModule, IdentityModule, ProcessModule, WorkflowModule, FormsModule, AuthModule, TenantModule,
