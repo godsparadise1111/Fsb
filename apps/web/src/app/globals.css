@@ -486,3 +486,25 @@ html[data-theme="dark"] .absence-logout, html[data-theme="dark"] .absence-button
 .fsb-theme-dismiss { z-index:0; }
 .fsb-theme-trigger, .fsb-theme-menu { position:relative; z-index:1; }
 .fsb-theme-menu { position:absolute; }
+
+/* Commercial console and tenant developer portal */
+.fsb-commercial-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; align-items:end; }
+.fsb-commercial-form>label { display:grid; gap:6px; min-width:0; color:var(--fsb-text-muted); font-size:11px; font-weight:700; }
+.fsb-commercial-form input,.fsb-commercial-form select { width:100%; min-width:0; }
+.fsb-commercial-form>button { min-height:43px; }
+.fsb-entitlement-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
+.fsb-entitlement-grid>div { display:flex; align-items:center; gap:9px; padding:10px 12px; border:1px solid var(--fsb-border); border-radius:10px; background:var(--fsb-surface-muted); color:var(--fsb-text); font-size:11px; }
+.fsb-entitlement-grid .enabled { color:var(--fsb-success); font-weight:900; }
+.fsb-entitlement-grid .disabled { color:var(--fsb-text-soft); font-weight:900; }
+.fsb-api-key { display:flex; align-items:center; gap:12px; padding:12px; border:1px dashed var(--fsb-primary); border-radius:12px; background:var(--fsb-primary-soft); }
+.fsb-api-key code { flex:1; min-width:0; overflow-wrap:anywhere; color:var(--fsb-text); font-size:11px; }
+.fsb-api-scopes { display:flex; flex-wrap:wrap; gap:12px; grid-column:1/-1; }
+.fsb-api-scopes label { display:flex; align-items:center; gap:7px; color:var(--fsb-text); font-size:11px; }
+.fsb-api-scopes input { width:16px; min-height:16px; }
+html[data-theme="dark"] .fsb-api-key { background:var(--fsb-primary-soft); }
+@media(max-width:850px) { .fsb-commercial-form { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:560px) {
+ .fsb-commercial-form { grid-template-columns:1fr; }
+ .fsb-commercial-form>button,.fsb-api-key button { width:100%; }
+ .fsb-api-key { align-items:stretch; flex-direction:column; }
+}
