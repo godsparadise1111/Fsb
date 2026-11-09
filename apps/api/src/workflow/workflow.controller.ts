@@ -73,6 +73,27 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/operational-alerts/:alertId/acknowledge')
+  acknowledgeOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'ACKNOWLEDGE');
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/operational-alerts/:alertId/assign')
+  assignOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @Body() body: { assignedToUserId: string }, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'ASSIGN', body.assignedToUserId);
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/operational-alerts/:alertId/resolve')
+  resolveOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @Body() body: { note: string }, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'RESOLVE', null, body.note);
+  }
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/operational-alerts/:alertId/reopen')
+  reopenOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'REOPEN');
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/operational-alerts')
   organizationOperationalAlerts(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listOrganizationOperationalAlerts(organizationId, user.tenantId);
