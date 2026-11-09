@@ -179,8 +179,8 @@ export class ProcessService {
                 AND (up."userId"=ANY($3::uuid[]) OR p.id=ANY($4::uuid[]) OR ou.id=ANY($5::uuid[]))`,
             [definition.organizationId, definition.tenantId, userIds, positionIds, unitIds],
           );
-          if (Number(resolvedTargets?.count ?? 0) < 1 || Number(resolvedTargets?.count ?? 0) > 50) {
-            throw new BadRequestException(`Process step ${index + 1} targets must currently resolve to between 1 and 50 active users`);
+          if (Number(resolvedTargets?.count ?? 0) > 50) {
+            throw new BadRequestException(`Process step ${index + 1} targets currently resolve to more than 50 active users`);
           }
         }
         const dueInHours = config.dueInHours;
