@@ -58,8 +58,15 @@ export class WorkflowController {
   }
   @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/absences')
-  absences(@Param('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.workflow.listOrganizationAbsences(organizationId, user.tenantId, limit, offset);
+  absences(
+    @Param('organizationId') organizationId: string,
+    @Query('limit') limit: string,
+    @Query('offset') offset: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.workflow.listOrganizationAbsences(organizationId, user.tenantId, limit, offset, from, to);
   }
   @RequirePermissions('workflow.substitutions.manage')
   @Delete('organizations/:organizationId/absences/:absenceId')
