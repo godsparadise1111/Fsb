@@ -89,7 +89,14 @@ export class WorkflowService {
       .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId })
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
-      .andWhere(`(assignment.id IS NOT NULL OR EXISTS (
+      .andWhere(`(assignment.id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM user_positions up
+        JOIN positions p ON p.id=up."positionId"
+        JOIN organization_units ou ON ou.id=p."organizationUnitId"
+        WHERE up."userId"=:userId AND ou."organizationId"=instance."organizationId"
+          AND up."isActive"=true AND p."isActive"=true AND ou."isActive"=true
+          AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())
+      ) OR EXISTS (
         SELECT 1 FROM organization_substitutions substitution
          JOIN task_assignees original ON original."taskId" = task.id
           AND original."userId" = substitution."originalUserId" AND original.status = 'PENDING'
