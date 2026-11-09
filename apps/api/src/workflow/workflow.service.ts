@@ -217,11 +217,16 @@ export class WorkflowService {
         await manager.getRepository(TaskAssignee).exist({
           where: { userId, task: { processInstanceId: instance.id } as any },
         }) ||
+        await manager.getRepository(WorkflowActionLog).exist({
+          where: { userId, task: { processInstanceId: instance.id } as any },
+        }) ||
         await manager.getRepository(TaskDelegation).createQueryBuilder('delegation')
           .innerJoin('workflow_tasks', 'task', 'task.id=delegation."taskId"')
           .where('task."processInstanceId"=:instanceId AND delegation."tenantId"=:tenantId AND delegation."toUserId"=:userId', {
             instanceId, tenantId, userId,
-          }).getCount() > 0;
+          })
+          .andWhere('delegation."revokedAt" IS NULL AND delegation."startsAt"<=now() AND delegation."endsAt">now()')
+          .getCount() > 0;
       if (!participant) throw new ForbiddenException('You are not a participant in this process instance');
       const tasks = await manager.find(WorkflowTask, {
         where: { processInstanceId: instance.id },
