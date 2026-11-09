@@ -3,13 +3,15 @@ BEGIN;
 CREATE TABLE workflow_action_idempotency (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "tenantId" uuid NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-  "taskId" uuid NOT NULL REFERENCES workflow_tasks(id) ON DELETE RESTRICT,
+  "taskId" uuid NOT NULL,
   "userId" uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   "idempotencyKey" varchar(128) NOT NULL,
   "requestHash" char(64) NOT NULL,
   response jsonb,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
   "completedAt" timestamptz,
+  CONSTRAINT fk_workflow_action_idempotency_task_tenant
+    FOREIGN KEY ("tenantId", "taskId") REFERENCES workflow_tasks("tenantId", id) ON DELETE RESTRICT,
   CONSTRAINT uq_workflow_action_idempotency_scope
     UNIQUE ("tenantId", "taskId", "userId", "idempotencyKey"),
   CONSTRAINT ck_workflow_action_idempotency_key
