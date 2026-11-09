@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
@@ -175,8 +176,10 @@ export class WorkflowService {
       .addOrderBy('task.createdAt', 'ASC').getMany();
   }
 
-  async act(taskId: string, userId: string, dto: ActTaskDto, tenantId?: string | null) {
+  async act(taskId: string, userId: string, dto: ActTaskDto, tenantId: string | null | undefined, idempotencyKey: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required for workflow actions');
+    if (typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) throw new BadRequestException('A valid Idempotency-Key header (16-128 safe characters) is required');
+    const requestHash = createHash('sha256').update(JSON.stringify({ action: dto.action, comment: dto.comment ?? null, returnToStepIndex: dto.returnToStepIndex ?? null })).digest('hex');
     if (dto.action === 'RETURNED' && (typeof dto.comment !== 'string' || dto.comment.trim().length < 3)) {
       throw new BadRequestException('A return reason of at least 3 characters is required');
     }
@@ -186,6 +189,22 @@ export class WorkflowService {
       if (!task) throw new NotFoundException('Task not found');
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
       await this.assertActiveWorkflowMember(manager, tenantId, userId, task.processInstance.organizationId);
+      const claimed = await manager.query(
+        `INSERT INTO workflow_action_idempotency (\"tenantId\",\"taskId\",\"userId\",\"idempotencyKey\",\"requestHash\")
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (\"tenantId\",\"taskId\",\"userId\",\"idempotencyKey\") DO NOTHING RETURNING id`,
+        [tenantId, taskId, userId, idempotencyKey, requestHash],
+      );
+      if (!claimed.length) {
+        const [prior] = await manager.query(
+          `SELECT \"requestHash\", response FROM workflow_action_idempotency
+            WHERE \"tenantId\"=$1 AND \"taskId\"=$2 AND \"userId\"=$3 AND \"idempotencyKey\"=$4 FOR UPDATE`,
+          [tenantId, taskId, userId, idempotencyKey],
+        );
+        if (!prior) throw new ConflictException('Idempotent action claim could not be recovered; retry with the same key');
+        if (prior.requestHash !== requestHash) throw new ConflictException('Idempotency-Key was already used with a different action payload');
+        if (!prior.response) throw new ConflictException('The previous action has no committed response; administrator reconciliation is required');
+        return prior.response;
+      }
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
       let assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
       if (assignment) {
@@ -391,7 +410,14 @@ export class WorkflowService {
         }
       }
       await manager.save(task);
-      return manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { assignees: true, processInstance: true } });
+      const response = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { assignees: true, processInstance: true } });
+      if (!response) throw new NotFoundException('Updated task could not be loaded');
+      await manager.query(
+        `UPDATE workflow_action_idempotency SET response=$5::jsonb, \"completedAt\"=now()
+          WHERE \"tenantId\"=$1 AND \"taskId\"=$2 AND \"userId\"=$3 AND \"idempotencyKey\"=$4`,
+        [tenantId, taskId, userId, idempotencyKey, JSON.stringify(response)],
+      );
+      return response;
     });
   }
 
