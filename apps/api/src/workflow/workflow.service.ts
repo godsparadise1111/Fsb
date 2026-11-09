@@ -1282,6 +1282,7 @@ export class WorkflowService {
     if (reason.length < 5 || reason.length > 1000) throw new BadRequestException('A reason between 5 and 1000 characters is required');
 
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId }, relations: { processInstance: { organization: true } },
         lock: { mode: 'pessimistic_write' },
