@@ -28,11 +28,13 @@ import { PlatformWorkflowHealthController } from './platform-workflow-health.con
 import { PlatformWorkflowHealthService } from './platform-workflow-health.service';
 import { CommercialService } from './commercial.service';
 import { PlatformCommercialController, TenantCommercialController } from './commercial.controller';
+import { TenantApiCredentialService } from './tenant-api-credential.service';
+import { TenantApiCredentialController, VersionedTenantPublicApiController } from './tenant-api-credential.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant, TenantMembership, TenantInvitation, TenantAuditLog, NotificationOutbox, User]), NotificationsModule],
-  controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController, TenantDashboardController, PlatformWorkflowHealthController, PlatformCommercialController, TenantCommercialController],
-  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, TenantDashboardService, PlatformWorkflowHealthService, CommercialService],
+  controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController, TenantDashboardController, PlatformWorkflowHealthController, PlatformCommercialController, TenantCommercialController, TenantApiCredentialController, VersionedTenantPublicApiController],
+  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, TenantDashboardService, PlatformWorkflowHealthService, CommercialService, TenantApiCredentialService],
   exports: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService],
 })
 export class TenantModule {}
