@@ -226,6 +226,14 @@ export class WorkflowService {
             instanceId, tenantId, userId,
           })
           .andWhere('delegation."revokedAt" IS NULL AND delegation."startsAt"<=now() AND delegation."endsAt">now()')
+          .getCount() > 0 ||
+        await manager.getRepository(OrganizationSubstitution).createQueryBuilder('substitution')
+          .innerJoin('workflow_tasks', 'task', 'task."processInstanceId"=:instanceId', { instanceId })
+          .innerJoin('task_assignees', 'original', 'original."taskId"=task.id AND original."userId"=substitution."originalUserId" AND original.status=\'PENDING\'')
+          .where('substitution."tenantId"=:tenantId AND substitution."organizationId"=:organizationId AND substitution."substituteUserId"=:userId', {
+            tenantId, organizationId: instance.organizationId, userId,
+          })
+          .andWhere('substitution."revokedAt" IS NULL AND substitution."startsAt"<=now() AND substitution."endsAt">now()')
           .getCount() > 0;
       if (!participant) throw new ForbiddenException('You are not a participant in this process instance');
       const tasks = await manager.find(WorkflowTask, {
