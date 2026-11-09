@@ -2,6 +2,7 @@
 set -eu
 
 [ -f .env ] || { echo "ERROR: .env is missing; copy .env.example and configure production values." >&2; exit 1; }
+[ -s package-lock.json ] || { echo "ERROR: generate and commit the root package-lock.json before Production (sh scripts/ops/prepare-lockfile.sh)." >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || { echo "ERROR: Docker CLI is required." >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "ERROR: Docker Compose plugin is required." >&2; exit 1; }
 
