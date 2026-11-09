@@ -435,8 +435,8 @@ export default function AbsencesPage() {
           <div className="absence-sla-grid">
             {([['بحرانی','critical'],['زیاد','high'],['متوسط','medium'],['کم','low']] as const).map(([label,key]) => <fieldset key={key} className="absence-sla-level">
               <legend>{label}</legend>
-              <label>مهلت پاسخ (دقیقه)<input type="number" min="1" max="10080" required value={alertSlaPolicy[`${key}ResponseMinutes`]} onChange={e => setAlertSlaPolicy(v => ({ ...v, [`${key}ResponseMinutes`]: Number(e.target.value) }))} /></label>
-              <label>مهلت حل (ساعت)<input type="number" min="1" max="720" required value={alertSlaPolicy[`${key}ResolutionHours`]} onChange={e => setAlertSlaPolicy(v => ({ ...v, [`${key}ResolutionHours`]: Number(e.target.value) }))} /></label>
+              <label>مهلت پاسخ (دقیقه)<input type="number" min="1" max="10080" required value={alertSlaPolicy[`${key}ResponseMinutes` as keyof AlertSlaPolicy] as number} onChange={e => setAlertSlaPolicy(v => ({ ...v, [`${key}ResponseMinutes`]: Number(e.target.value) } as AlertSlaPolicy))} /></label>
+              <label>مهلت حل (ساعت)<input type="number" min="1" max="720" required value={alertSlaPolicy[`${key}ResolutionHours` as keyof AlertSlaPolicy] as number} onChange={e => setAlertSlaPolicy(v => ({ ...v, [`${key}ResolutionHours`]: Number(e.target.value) } as AlertSlaPolicy))} /></label>
             </fieldset>)}
           </div>
           <div className="absence-form-actions absence-full"><button className="absence-primary" disabled={alertSlaSaving || !organizationId}>{alertSlaSaving ? 'در حال ذخیره…' : 'ذخیره سیاست SLA'}</button></div>
