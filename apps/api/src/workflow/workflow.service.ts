@@ -241,7 +241,20 @@ export class WorkflowService {
         relations: { assignees: true },
         order: { createdAt: 'ASC' },
       });
-      return { ...instance, tasks };
+      const taskIds = tasks.map(task => task.id);
+      const actionLogs = taskIds.length
+        ? await manager.find(WorkflowActionLog, { where: { taskId: In(taskIds) }, order: { createdAt: 'ASC' } })
+        : [];
+      const lifecycleEvents = taskIds.length
+        ? await manager.query(
+            `SELECT id,"taskId","eventType","affectedUserId",details,"createdAt"
+               FROM workflow_task_lifecycle_events
+              WHERE "tenantId"=$1 AND "taskId"=ANY($2::uuid[])
+              ORDER BY "createdAt" ASC,id ASC`,
+            [tenantId, taskIds],
+          )
+        : [];
+      return { ...instance, tasks, actionLogs, lifecycleEvents };
     });
   }
 
