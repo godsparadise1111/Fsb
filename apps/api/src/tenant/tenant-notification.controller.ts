@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, DefaultValuePipe, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { BadRequestException, Controller, DefaultValuePipe, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { TenantNotificationService } from './tenant-notification.service';
@@ -30,7 +30,7 @@ export class TenantNotificationController {
 
   @RequirePermissions('tenant.notifications.manage')
   @Post(':id/retry')
-  retry(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  retry(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
     return this.notifications.retryDead(user.tenantId, id, user.sub);
   }
