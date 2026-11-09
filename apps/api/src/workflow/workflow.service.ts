@@ -938,8 +938,6 @@ export class WorkflowService {
         description: row.description, resourceId: row.resourceId,
         occurredAt: row.occurredAt ? new Date(row.occurredAt).toISOString() : null,
         dueAt: row.dueAt ? new Date(row.dueAt).toISOString() : null,
-        responseDueAt: row.responseDueAt ? new Date(row.responseDueAt).toISOString() : null,
-        resolutionDueAt: row.resolutionDueAt ? new Date(row.resolutionDueAt).toISOString() : null,
         status: row.status, assignedToUserId: row.assignedToUserId,
         acknowledgedAt: row.acknowledgedAt ? new Date(row.acknowledgedAt).toISOString() : null,
         resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).toISOString() : null,
