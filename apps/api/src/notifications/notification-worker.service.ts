@@ -51,18 +51,56 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  private async enqueueOverdueEscalations() {
+  private async enqueueOperationalAlertSlaEscalations() {
     const candidates = await this.dataSource.query(
-      `SELECT t.id AS "taskId", t.title AS "taskTitle", t."dueAt" AS "dueAt",
-              pi.id AS "instanceId", pi.title AS "processTitle", pi."tenantId" AS "tenantId",
-              pi."organizationId" AS "organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step
-         FROM workflow_tasks t
-         JOIN process_instances pi ON pi.id = t."processInstanceId"
-         JOIN process_versions pv ON pv.id = pi."processVersionId"
-         JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
-        WHERE t.status IN ('OPEN', 'IN_PROGRESS') AND t."dueAt" IS NOT NULL
-          AND jsonb_typeof(pv.schema->'steps') = 'array'
-          AND COALESCE(pv.schema->'steps'->pi."currentStepIndex"->>'escalateAfterHours', '') ~ '^[0-9]+([.][0-9]+)? { id: string; tenantId: string; eventType: string; recipient: string; subject: string | null; payload: Record<string, unknown> }): Promise<boolean> {
+      `SELECT a.id,a."tenantId",a."organizationId",a.title,a.severity,a.status,
+              a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",
+              u.email,
+              CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE'
+                   WHEN a."resolutionDueAt" <= now() THEN 'RESOLUTION' END AS stage
+         FROM organization_operational_alerts a
+         JOIN tenants t ON t.id=a."tenantId" AND t.status='ACTIVE'
+         JOIN users u ON u.id=a."assignedToUserId" AND u."isActive"=true AND u.email IS NOT NULL
+         JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
+        WHERE a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
+          AND ((a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now())
+            OR a."resolutionDueAt" <= now())
+          AND NOT EXISTS (
+            SELECT 1 FROM notification_outbox n
+             WHERE n."tenantId"=a."tenantId"
+               AND n."dedupeKey"='alert-sla:'||a.id::text||':'||
+                 CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE' ELSE 'RESOLUTION' END
+          )
+        ORDER BY a."resolutionDueAt" ASC LIMIT 100`,
+    ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;assignedToUserId:string;responseDueAt:Date;resolutionDueAt:Date;email:string;stage:string}>;
+    for (const alert of candidates) {
+      await this.dataSource.transaction(async manager => {
+        await this.outbox.enqueue(manager, {
+          tenantId: alert.tenantId,
+          eventType: 'organization.alert.sla.breached',
+          recipient: alert.email,
+          subject: `Operational alert SLA breached: ${alert.title}`,
+          dedupeKey: `alert-sla:${alert.id}:${alert.stage}`,
+          payload: {
+            alertId: alert.id, organizationId: alert.organizationId, title: alert.title,
+            severity: alert.severity, stage: alert.stage, userId: alert.assignedToUserId,
+            responseDueAt: new Date(alert.responseDueAt).toISOString(),
+            resolutionDueAt: new Date(alert.resolutionDueAt).toISOString(),
+          },
+        });
+      });
+      await this.dataSource.query(
+        `UPDATE organization_operational_alerts
+            SET "escalatedAt"=COALESCE("escalatedAt",now()),
+                "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
+                "updatedAt"=now()
+          WHERE id=$1 AND "tenantId"=$3 AND status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
+        [alert.id,alert.stage,alert.tenantId],
+      );
+    }
+  }
+
+  private async send(item: { id: string; tenantId: string; eventType: string; recipient: string; subject: string | null; payload: Record<string, unknown> }): Promise<boolean> {
     if (!this.transporter) throw new Error('SMTP transport is unavailable');
     const [tenant] = await this.dataSource.query('SELECT status FROM tenants WHERE id = $1', [item.tenantId]);
     if (!tenant || tenant.status !== 'ACTIVE') {
@@ -94,44 +132,6 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
         text:`The operational alert "${title}" has breached its ${stage.toLowerCase()} deadline. Deadline: ${due}`,
         html:`<p>The operational alert <strong>${safeTitle}</strong> has breached its ${stage.toLowerCase()} deadline.</p><p>Deadline: ${safeDue}</p>`,
         messageId:`<fsb-${item.id}@${new URL(process.env.FSB_PUBLIC_APP_URL!).hostname}>`,
-      });
-      return true;
-    }
-    if (item.eventType === 'workflow.sla.overdue') {
-      const taskId = String(item.payload.taskId ?? '');
-      const userId = String(item.payload.userId ?? '');
-      const [valid] = await this.dataSource.query(
-        `SELECT t.id
-           FROM workflow_tasks t
-           JOIN process_instances pi ON pi.id = t."processInstanceId"
-           JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
-           JOIN users u ON u.id = $3 AND u."isActive" = true AND lower(u.email) = lower($4)
-           JOIN tenant_memberships tm ON tm."userId" = u.id AND tm."tenantId" = pi."tenantId" AND tm."isActive" = true
-           JOIN user_positions up ON up."userId" = u.id AND up."isActive" = true
-             AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now())
-           JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
-           JOIN organization_units unit ON unit.id = p."organizationUnitId"
-             AND unit."organizationId" = pi."organizationId" AND unit."isActive" = true
-          WHERE t.id = $1 AND pi."tenantId" = $2
-            AND t.status IN ('OPEN', 'IN_PROGRESS') AND t."dueAt" IS NOT NULL AND t."dueAt" <= now()`,
-        [taskId, item.tenantId, userId, item.recipient],
-      );
-      if (!valid) {
-        await this.outbox.markDead(item.id, this.workerId, 'Task is no longer overdue/actionable or recipient is no longer an active tenant member');
-        return false;
-      }
-      const taskTitle = String(item.payload.taskTitle ?? 'Workflow task');
-      const processTitle = String(item.payload.processTitle ?? 'Process');
-      const dueAt = String(item.payload.dueAt ?? '');
-      const safeTask = this.escapeHtml(taskTitle);
-      const safeProcess = this.escapeHtml(processTitle);
-      const safeDue = this.escapeHtml(dueAt);
-      const subject = (item.subject ?? `SLA overdue: ${taskTitle}`).replaceAll('\\r', ' ').replaceAll('\\n', ' ').slice(0, 160);
-      await this.transporter.sendMail({
-        from: process.env.FSB_EMAIL_FROM, to: item.recipient, subject,
-        text: `The task "${taskTitle}" in process "${processTitle}" is overdue. Due at: ${dueAt}.`,
-        html: `<p>The task <strong>${safeTask}</strong> in process <strong>${safeProcess}</strong> is overdue.</p><p>Due at: ${safeDue}</p>`,
-        messageId: `<fsb-${item.id}@${new URL(process.env.FSB_PUBLIC_APP_URL!).hostname}>`,
       });
       return true;
     }
@@ -169,178 +169,10 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     this.busy = true;
     try {
       try {
-        await this.enqueueOverdueEscalations();
         await this.enqueueOperationalAlertSlaEscalations();
       } catch (error) {
-        this.logger.warn(`SLA escalation scan failed: ${String(error).slice(0, 400)}`);
+        this.logger.warn(`Operational alert SLA scan failed: ${String(error).slice(0, 400)}`);
       }
-      const items = await this.outbox.claimBatch(this.workerId, 20);
-      for (const item of items) {
-        try {
-          const sent = await this.send(item);
-          if (sent) {
-            const acknowledged = await this.outbox.markDelivered(item.id, this.workerId);
-            if (!acknowledged) this.logger.warn(`Notification ${item.id} was sent but its lease could not be acknowledged`);
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Notification ${item.id} failed: ${message.slice(0, 300)}`);
-          await this.outbox.scheduleRetry(item.id, this.workerId, error).catch(retryError => {
-            this.logger.error(`Could not schedule retry for ${item.id}: ${String(retryError).slice(0, 300)}`);
-          });
-        }
-      }
-    } catch (error) {
-      this.logger.error(`Notification batch failed: ${String(error).slice(0, 500)}`);
-    } finally {
-      this.busy = false;
-    }
-  }
-}
-
-          AND t."dueAt" + ((pv.schema->'steps'->pi."currentStepIndex"->>'escalateAfterHours')::numeric * interval '1 hour') <= now()
-          AND NOT EXISTS (
-            SELECT 1 FROM notification_outbox queued
-             WHERE queued."tenantId" = pi."tenantId"
-               AND queued."dedupeKey" LIKE ('sla:' || t.id::text || ':%')
-          )
-        ORDER BY t."dueAt" ASC LIMIT 100`,
-    ) as Array<{ taskId: string; taskTitle: string; dueAt: Date; instanceId: string; processTitle: string; tenantId: string; organizationId: string; step: Record<string, unknown> }>;
-
-    for (const candidate of candidates) {
-      const configuredIds = Array.isArray(candidate.step?.escalationUserIds)
-        ? candidate.step.escalationUserIds.filter((id): id is string => typeof id === 'string')
-        : [];
-      const assignees = await this.dataSource.query(
-        `SELECT "userId" FROM task_assignees WHERE "taskId" = $1 AND status = 'PENDING'`,
-        [candidate.taskId],
-      ) as Array<{ userId: string }>;
-      const recipientIds = [...new Set([...assignees.map(row => row.userId), ...configuredIds])];
-      if (!recipientIds.length) continue;
-      const recipients = await this.dataSource.query(
-        `SELECT DISTINCT u.id AS "userId", u.email
-           FROM users u
-           JOIN tenant_memberships tm ON tm."userId" = u.id
-             AND tm."tenantId" = $2 AND tm."isActive" = true
-           JOIN user_positions up ON up."userId" = u.id AND up."isActive" = true
-             AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now())
-           JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
-           JOIN organization_units unit ON unit.id = p."organizationUnitId"
-             AND unit."organizationId" = $3 AND unit."isActive" = true
-          WHERE u.id = ANY($1::uuid[]) AND u."isActive" = true`,
-        [recipientIds, candidate.tenantId, candidate.organizationId],
-      ) as Array<{ userId: string; email: string }>;
-      if (!recipients.length) continue;
-      await this.dataSource.transaction(async manager => {
-        for (const recipient of recipients) {
-          await this.outbox.enqueue(manager, {
-            tenantId: candidate.tenantId,
-            eventType: 'workflow.sla.overdue',
-            recipient: recipient.email,
-            subject: `SLA overdue: ${candidate.taskTitle}`,
-            dedupeKey: `sla:${candidate.taskId}:${recipient.userId}`,
-            payload: {
-              taskId: candidate.taskId,
-              taskTitle: candidate.taskTitle,
-              processTitle: candidate.processTitle,
-              dueAt: new Date(candidate.dueAt).toISOString(),
-              userId: recipient.userId,
-            },
-          });
-        }
-      });
-    }
-  }
-
-  private async enqueueOperationalAlertSlaEscalations() {
-    const candidates = await this.dataSource.query(
-      `SELECT a.id,a."tenantId",a."organizationId",a.title,a.severity,a.status,
-              a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",
-              u.email,u."firstName",u."lastName",
-              CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE'
-                   WHEN a."resolutionDueAt" <= now() THEN 'RESOLUTION' END AS stage
-         FROM organization_operational_alerts a
-         JOIN tenants t ON t.id=a."tenantId" AND t.status='ACTIVE'
-         JOIN users u ON u.id=a."assignedToUserId" AND u."isActive"=true
-         JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
-        WHERE a.status IN ('ACKNOWLEDGED','IN_PROGRESS','OPEN')
-          AND a."assignedToUserId" IS NOT NULL AND u.email IS NOT NULL
-          AND ((a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now())
-            OR a."resolutionDueAt" <= now())
-          AND NOT EXISTS (
-            SELECT 1 FROM notification_outbox n
-             WHERE n."tenantId"=a."tenantId"
-               AND n."dedupeKey"='alert-sla:'||a.id::text||':'||
-                 CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE' ELSE 'RESOLUTION' END
-          )
-        ORDER BY a."resolutionDueAt" ASC LIMIT 100`,
-    ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;status:string;assignedToUserId:string;responseDueAt:Date;resolutionDueAt:Date;email:string;firstName:string;lastName:string;stage:string}>;
-    for (const alert of candidates) {
-      await this.dataSource.transaction(async manager => {
-        await this.outbox.enqueue(manager, {
-          tenantId: alert.tenantId,
-          eventType: 'organization.alert.sla.breached',
-          recipient: alert.email,
-          subject: `Operational alert SLA breached: ${alert.title}`,
-          dedupeKey: `alert-sla:${alert.id}:${alert.stage}`,
-          payload: {
-            alertId: alert.id, organizationId: alert.organizationId, title: alert.title,
-            severity: alert.severity, stage: alert.stage, userId: alert.assignedToUserId,
-            responseDueAt: new Date(alert.responseDueAt).toISOString(),
-            resolutionDueAt: new Date(alert.resolutionDueAt).toISOString(),
-          },
-        });
-      });
-      await this.dataSource.query(
-        `UPDATE organization_operational_alerts SET "escalatedAt"=COALESCE("escalatedAt",now()),
-           "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
-           "updatedAt"=now()
-          WHERE id=$1 AND "tenantId"=$3 AND status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
-        [alert.id, alert.stage, alert.tenantId],
-      );
-    }
-  }
-
-  private async send(item: { id: string; tenantId: string; eventType: string; recipient: string; subject: string | null; payload: Record<string, unknown> }): Promise<boolean> {
-    if (!this.transporter) throw new Error('SMTP transport is unavailable');
-    const [tenant] = await this.dataSource.query('SELECT status FROM tenants WHERE id = $1', [item.tenantId]);
-    if (!tenant || tenant.status !== 'ACTIVE') {
-      await this.outbox.markDead(item.id, this.workerId, 'Tenant is not active; notification was not sent');
-      return false;
-    }
-    if (item.eventType !== 'tenant.invitation.created') throw new Error(`Unsupported notification event: ${item.eventType}`);
-    const invitationId = String(item.payload.invitationId ?? '');
-    const [invitation] = await this.dataSource.query(
-      `SELECT id FROM tenant_invitations
-        WHERE id = $1 AND "tenantId" = $2
-          AND "acceptedAt" IS NULL AND "revokedAt" IS NULL AND "expiresAt" > now()`,
-      [invitationId, item.tenantId],
-    );
-    if (!invitation) {
-      await this.outbox.markDead(item.id, this.workerId, 'Invitation is expired, revoked, or already accepted');
-      return false;
-    }
-    const tenantName = String(item.payload.tenantName ?? 'F-S');
-    const acceptPath = String(item.payload.acceptPath ?? '');
-    if (!acceptPath.startsWith('/invite?token=')) throw new Error('Invitation link is invalid');
-    const baseUrl = new URL(process.env.FSB_PUBLIC_APP_URL!);
-    const invitationUrl = new URL(acceptPath, baseUrl).toString();
-    const safeTenant = this.escapeHtml(tenantName);
-    const safeUrl = this.escapeHtml(invitationUrl);
-    const subject = (item.subject ?? `Invitation to join ${tenantName}`).replaceAll('\r', ' ').replaceAll('\n', ' ').slice(0, 160);
-    const text = `You have been invited to join ${tenantName}. Open this link to accept the invitation: ${invitationUrl}`;
-    const html = `<p>You have been invited to join <strong>${safeTenant}</strong>.</p><p><a href="${safeUrl}">Accept invitation</a></p><p>This link expires in seven days and can only be used once.</p>`;
-    await this.transporter.sendMail({
-      from: process.env.FSB_EMAIL_FROM, to: item.recipient, subject, text, html,
-      messageId: `<fsb-${item.id}@${baseUrl.hostname}>`,
-    });
-    return true;
-  }
-
-  private async processBatch() {
-    if (this.busy || !this.transporter) return;
-    this.busy = true;
-    try {
       const items = await this.outbox.claimBatch(this.workerId, 20);
       for (const item of items) {
         try {
