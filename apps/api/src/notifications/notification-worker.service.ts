@@ -55,55 +55,83 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     const candidates = await this.dataSource.query(
       `SELECT a.id,a."tenantId",a."organizationId",a.title,a.severity,a.status,
               a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",
-              u.email,
               CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE'
                    WHEN a."resolutionDueAt" <= now() THEN 'RESOLUTION' END AS stage
          FROM organization_operational_alerts a
          JOIN tenants t ON t.id=a."tenantId" AND t.status='ACTIVE'
-         JOIN users u ON u.id=a."assignedToUserId" AND u."isActive"=true AND u.email IS NOT NULL
-         JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
         WHERE a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
           AND ((a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now())
             OR a."resolutionDueAt" <= now())
-          AND NOT EXISTS (
-            SELECT 1 FROM notification_outbox n
-             WHERE n."tenantId"=a."tenantId"
-               AND n."dedupeKey"='alert-sla:'||a.id::text||':'||
-                 CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE' ELSE 'RESOLUTION' END
-          )
-        ORDER BY a."resolutionDueAt" ASC LIMIT 100`,
-    ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;assignedToUserId:string;responseDueAt:Date;resolutionDueAt:Date;email:string;stage:string}>;
-    for (const alert of candidates) {
+        ORDER BY a."resolutionDueAt" ASC NULLS LAST LIMIT 100`,
+    ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;status:string;assignedToUserId:string|null;responseDueAt:Date|null;resolutionDueAt:Date|null;stage:string}>;
+    for (const candidate of candidates) {
       await this.dataSource.transaction(async manager => {
-        const dedupeKey = `alert-sla:${alert.id}:${alert.stage}`;
-        await this.outbox.enqueue(manager, {
-          tenantId: alert.tenantId,
-          eventType: 'organization.alert.sla.breached',
-          recipient: alert.email,
-          subject: `Operational alert SLA breached: ${alert.title}`,
-          dedupeKey,
-          payload: {
-            alertId: alert.id, organizationId: alert.organizationId, title: alert.title,
-            severity: alert.severity, stage: alert.stage, userId: alert.assignedToUserId,
-            responseDueAt: new Date(alert.responseDueAt).toISOString(),
-            resolutionDueAt: new Date(alert.resolutionDueAt).toISOString(),
-          },
-        });
+        const [alert] = await manager.query(
+          `SELECT * FROM organization_operational_alerts
+            WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3
+              AND status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
+            FOR UPDATE`,
+          [candidate.id,candidate.tenantId,candidate.organizationId],
+        );
+        if (!alert) return;
+        const stage = alert."acknowledgedAt" == null && alert.responseDueAt && new Date(alert.responseDueAt) <= new Date()
+          ? 'RESPONSE'
+          : alert.resolutionDueAt && new Date(alert.resolutionDueAt) <= new Date() ? 'RESOLUTION' : null;
+        if (!stage) return;
+        const recipients = await manager.query(
+          `SELECT DISTINCT u.id AS "userId",u.email,'ASSIGNEE' AS audience
+             FROM users u
+             JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$1 AND tm."isActive"=true
+            WHERE u.id=$2 AND u."isActive"=true AND u.email IS NOT NULL
+              AND $3::uuid IS NOT NULL
+           UNION
+           SELECT DISTINCT u.id AS "userId",u.email,'MANAGER' AS audience
+             FROM user_roles ur
+             JOIN roles r ON r.id=ur."roleId" AND r."isActive"=true AND r.scope='ORGANIZATION'
+             JOIN role_permissions rp ON rp."roleId"=r.id
+             JOIN permissions p ON p.id=rp."permissionId" AND p.code='workflow.substitutions.manage'
+             JOIN users u ON u.id=ur."userId" AND u."isActive"=true AND u.email IS NOT NULL
+             JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$1 AND tm."isActive"=true
+            WHERE ur."organizationId"=$4 AND ur."isActive"=true`,
+          [alert.tenantId,alert.assignedToUserId,alert.assignedToUserId,alert.organizationId],
+        ) as Array<{userId:string;email:string;audience:'ASSIGNEE'|'MANAGER'}>;
+        for (const recipient of recipients) {
+          const dedupeKey = recipient.audience === 'ASSIGNEE'
+            ? `alert-sla:${alert.id}:${stage}`
+            : `alert-sla-manager:${alert.id}:${stage}:${recipient.userId}`;
+          await this.outbox.enqueue(manager, {
+            tenantId: alert.tenantId,
+            eventType: 'organization.alert.sla.breached',
+            recipient: recipient.email,
+            subject: recipient.audience === 'MANAGER'
+              ? `Escalated operational alert: ${alert.title}`
+              : `Operational alert SLA breached: ${alert.title}`,
+            dedupeKey,
+            payload: {
+              alertId: alert.id, organizationId: alert.organizationId, title: alert.title,
+              severity: alert.severity, stage, userId: recipient.userId, audience: recipient.audience,
+              responseDueAt: alert.responseDueAt ? new Date(alert.responseDueAt).toISOString() : null,
+              resolutionDueAt: alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toISOString() : null,
+            },
+          });
+        }
+        const eventDedupe = `alert-sla-escalation:${alert.id}:${stage}`;
         await manager.query(
           `INSERT INTO organization_operational_alert_events ("tenantId","organizationId","alertId","actorUserId","eventType","fromStatus","toStatus","note","dedupeKey")
-           VALUES ($1,$2,$3,NULL,$4,$5,$5,$6,$7) ON CONFLICT ("tenantId","dedupeKey") DO NOTHING`,
-          [alert.tenantId,alert.organizationId,alert.id,alert.stage === 'RESPONSE' ? 'SLA_RESPONSE_BREACH' : 'SLA_RESOLUTION_BREACH',alert.status,
-           alert.stage === 'RESPONSE' ? 'مهلت پاسخ هشدار نقض شد.' : 'مهلت حل هشدار نقض شد.',dedupeKey],
+           VALUES ($1,$2,$3,NULL,'SLA_ESCALATION',$4,$4,$5,$6)
+           ON CONFLICT ("tenantId","dedupeKey") DO NOTHING`,
+          [alert.tenantId,alert.organizationId,alert.id,alert.status,
+           stage === 'RESPONSE' ? 'هشدار به مسئولان سازمان ارجاع تشدیدی شد؛ مهلت پاسخ نقض شده است.' : 'هشدار به مسئولان سازمان ارجاع تشدیدی شد؛ مهلت حل نقض شده است.',eventDedupe],
+        );
+        await manager.query(
+          `UPDATE organization_operational_alerts
+              SET "escalatedAt"=COALESCE("escalatedAt",now()),
+                  "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
+                  "updatedAt"=now()
+            WHERE id=$1 AND "tenantId"=$3`,
+          [alert.id,stage,alert.tenantId],
         );
       });
-      await this.dataSource.query(
-        `UPDATE organization_operational_alerts
-            SET "escalatedAt"=COALESCE("escalatedAt",now()),
-                "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
-                "updatedAt"=now()
-          WHERE id=$1 AND "tenantId"=$3 AND status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
-        [alert.id,alert.stage,alert.tenantId],
-      );
     }
   }
 
@@ -117,27 +145,40 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     if (item.eventType === 'organization.alert.sla.breached') {
       const alertId = String(item.payload.alertId ?? '');
       const userId = String(item.payload.userId ?? '');
+      const audience = String(item.payload.audience ?? 'ASSIGNEE');
+      const organizationId = String(item.payload.organizationId ?? '');
       const [valid] = await this.dataSource.query(
-        `SELECT a.id FROM organization_operational_alerts a
-          JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
-          JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
-         WHERE a.id=$1 AND a."tenantId"=$2 AND a."assignedToUserId"=u.id
-           AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
-        [alertId,item.tenantId,userId,item.recipient],
+        audience === 'MANAGER'
+          ? `SELECT a.id FROM organization_operational_alerts a
+              JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
+              JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
+              JOIN user_roles ur ON ur."userId"=u.id AND ur."organizationId"=a."organizationId" AND ur."isActive"=true
+              JOIN roles r ON r.id=ur."roleId" AND r."isActive"=true AND r.scope='ORGANIZATION'
+              JOIN role_permissions rp ON rp."roleId"=r.id
+              JOIN permissions p ON p.id=rp."permissionId" AND p.code='workflow.substitutions.manage'
+             WHERE a.id=$1 AND a."tenantId"=$2 AND a."organizationId"=$5
+               AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`
+          : `SELECT a.id FROM organization_operational_alerts a
+              JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
+              JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
+             WHERE a.id=$1 AND a."tenantId"=$2 AND a."assignedToUserId"=u.id
+               AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
+        audience === 'MANAGER' ? [alertId,item.tenantId,userId,item.recipient,organizationId] : [alertId,item.tenantId,userId,item.recipient],
       );
       if (!valid) {
-        await this.outbox.markDead(item.id,this.workerId,'Alert is closed or assigned recipient is no longer an active tenant member');
+        await this.outbox.markDead(item.id,this.workerId,'Alert is closed or escalation recipient is no longer an active tenant organization manager');
         return false;
       }
       const title=String(item.payload.title ?? 'Operational alert');
       const stage=String(item.payload.stage ?? 'SLA');
-      const due=String(stage==='RESPONSE' ? item.payload.responseDueAt : item.payload.resolutionDueAt);
+      const due=String(stage==='RESPONSE' ? item.payload.responseDueAt ?? '' : item.payload.resolutionDueAt ?? '');
       const safeTitle=this.escapeHtml(title), safeDue=this.escapeHtml(due);
       const subject=(item.subject ?? 'Operational alert SLA breached').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      const audienceLabel = audience === 'MANAGER' ? 'management escalation' : 'assigned owner notification';
       await this.transporter.sendMail({
         from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
-        text:`The operational alert "${title}" has breached its ${stage.toLowerCase()} deadline. Deadline: ${due}`,
-        html:`<p>The operational alert <strong>${safeTitle}</strong> has breached its ${stage.toLowerCase()} deadline.</p><p>Deadline: ${safeDue}</p>`,
+        text:`The operational alert "${title}" has breached its ${stage.toLowerCase()} deadline (${audienceLabel}). Deadline: ${due}`,
+        html:`<p>The operational alert <strong>${safeTitle}</strong> has breached its ${stage.toLowerCase()} deadline (${audienceLabel}).</p><p>Deadline: ${safeDue}</p>`,
         messageId:`<fsb-${item.id}@${new URL(process.env.FSB_PUBLIC_APP_URL!).hostname}>`,
       });
       return true;
