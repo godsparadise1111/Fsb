@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { RequiresFeature } from '../auth/decorators/requires-feature.decorator';
 import { TenantDashboardService } from './tenant-dashboard.service';
 
 @Controller('tenant/dashboard')
