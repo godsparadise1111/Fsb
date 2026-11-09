@@ -249,6 +249,10 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
            JOIN users u ON u.id=tm."userId" AND u."isActive"=true AND lower(u.email)=lower($3)
           WHERE j.id=$1 AND j."tenantId"=$2 AND j.status='COMPLETED'
             AND j."organizationId" IS NOT DISTINCT FROM $4::uuid
+            AND (j."organizationId" IS NULL OR EXISTS (
+              SELECT 1 FROM organizations active_org
+               WHERE active_org.id=j."organizationId" AND active_org."tenantId"=j."tenantId" AND active_org."isActive"=true
+            ))
             AND (
               (j."isTenantWide"=true AND (
                 tm."isTenantAdmin"=true
@@ -268,6 +272,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
                   JOIN roles r ON r.id=ur."roleId" AND r.scope='ORGANIZATION' AND r."isActive"=true
                   JOIN role_permissions rp ON rp."roleId"=r.id
                   JOIN permissions p ON p.id=rp."permissionId" AND p.code='tenant.reports.read'
+                  JOIN organizations active_org ON active_org.id=ur."organizationId" AND active_org."tenantId"=ur."tenantId" AND active_org."isActive"=true
                  WHERE ur."tenantId"=j."tenantId" AND ur."userId"=j."ownerUserId"
                    AND ur."organizationId"=j."organizationId" AND ur."isActive"=true
               ))
