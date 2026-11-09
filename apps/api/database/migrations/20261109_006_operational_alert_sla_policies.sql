@@ -40,7 +40,7 @@ END; $$;
 CREATE TRIGGER "TR_operational_alert_sla_policy_validate"
  BEFORE INSERT OR UPDATE ON organization_operational_alert_sla_policies
  FOR EACH ROW EXECUTE FUNCTION fsb_validate_operational_alert_sla_policy();
-CREATE OR REPLACE FUNCTION fsb_set_operational_alert_sla_deadlines() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION fsb_set_operational_alert_sla_deadlines() RETURNS trigger LANGUAGE plpgsql AS $fsb$
 DECLARE p organization_operational_alert_sla_policies%ROWTYPE;
 DECLARE response_minutes integer;
 DECLARE resolution_hours integer;
@@ -60,5 +60,5 @@ BEGIN
  NEW."responseDueAt" := COALESCE(NEW."responseDueAt", NEW."firstDetectedAt" + make_interval(mins => response_minutes));
  NEW."resolutionDueAt" := COALESCE(NEW."resolutionDueAt", NEW."firstDetectedAt" + make_interval(hours => resolution_hours));
  RETURN NEW;
-END; $;
+END; $fsb$;
 COMMIT;
