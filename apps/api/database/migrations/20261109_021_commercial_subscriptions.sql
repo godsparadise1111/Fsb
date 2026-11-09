@@ -70,6 +70,7 @@ CREATE TABLE tenant_invoices (
   "dueAt" timestamptz,
   "paidAt" timestamptz,
   "voidedAt" timestamptz,
+  "renewedAt" timestamptz,
   "createdByUserId" uuid REFERENCES users(id) ON DELETE SET NULL,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "CK_tenant_invoices_cycle" CHECK ("billingCycle" IN ('MONTHLY','ANNUAL')),
@@ -82,17 +83,68 @@ CREATE INDEX "IDX_tenant_invoices_tenant_created" ON tenant_invoices("tenantId",
 
 CREATE OR REPLACE FUNCTION fsb_validate_invoice_subscription_tenant()
 RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE subscription_tenant uuid;
+DECLARE
+  subscription_tenant uuid;
+  subscription_plan varchar(24);
+  subscription_cycle varchar(12);
 BEGIN
-  SELECT "tenantId" INTO subscription_tenant FROM tenant_subscriptions WHERE id = NEW."subscriptionId";
+  SELECT "tenantId","planCode","billingCycle"
+    INTO subscription_tenant,subscription_plan,subscription_cycle
+    FROM tenant_subscriptions WHERE id=NEW."subscriptionId";
   IF subscription_tenant IS NULL OR subscription_tenant <> NEW."tenantId" THEN
     RAISE EXCEPTION 'invoice subscription must belong to the same tenant';
+  END IF;
+  IF TG_OP='INSERT' AND
+     (NEW."planCode" <> subscription_plan OR NEW."billingCycle" <> subscription_cycle) THEN
+    RAISE EXCEPTION 'invoice plan and billing cycle must snapshot the current subscription';
+  END IF;
+  IF TG_OP='UPDATE' THEN
+    IF NEW."tenantId" IS DISTINCT FROM OLD."tenantId"
+       OR NEW."subscriptionId" IS DISTINCT FROM OLD."subscriptionId"
+       OR NEW."planCode" IS DISTINCT FROM OLD."planCode"
+       OR NEW."billingCycle" IS DISTINCT FROM OLD."billingCycle"
+       OR NEW."invoiceNumber" IS DISTINCT FROM OLD."invoiceNumber"
+       OR NEW."currencyCode" IS DISTINCT FROM OLD."currencyCode"
+       OR NEW."subtotalMinor" IS DISTINCT FROM OLD."subtotalMinor"
+       OR NEW."taxMinor" IS DISTINCT FROM OLD."taxMinor"
+       OR NEW."totalMinor" IS DISTINCT FROM OLD."totalMinor"
+       OR NEW.description IS DISTINCT FROM OLD.description
+       OR NEW."issuedAt" IS DISTINCT FROM OLD."issuedAt"
+       OR NEW."dueAt" IS DISTINCT FROM OLD."dueAt"
+       OR NEW."createdByUserId" IS DISTINCT FROM OLD."createdByUserId"
+       OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt" THEN
+      RAISE EXCEPTION 'invoice identity and financial snapshot are immutable';
+    END IF;
+    IF OLD.status IN ('PAID','VOID') AND NEW.status <> OLD.status THEN
+      RAISE EXCEPTION 'paid or void invoices are terminal';
+    END IF;
+    IF OLD.status='ISSUED' AND NEW.status NOT IN ('ISSUED','PAID','VOID','OVERDUE') THEN
+      RAISE EXCEPTION 'invalid invoice status transition';
+    END IF;
+    IF OLD.status='OVERDUE' AND NEW.status NOT IN ('OVERDUE','PAID','VOID') THEN
+      RAISE EXCEPTION 'invalid overdue invoice status transition';
+    END IF;
+    IF OLD.status='DRAFT' AND NEW.status NOT IN ('DRAFT','ISSUED','VOID') THEN
+      RAISE EXCEPTION 'invalid draft invoice status transition';
+    END IF;
+    IF OLD."paidAt" IS NOT NULL AND NEW."paidAt" IS DISTINCT FROM OLD."paidAt" THEN
+      RAISE EXCEPTION 'invoice paid timestamp is immutable';
+    END IF;
+    IF OLD."voidedAt" IS NOT NULL AND NEW."voidedAt" IS DISTINCT FROM OLD."voidedAt" THEN
+      RAISE EXCEPTION 'invoice void timestamp is immutable';
+    END IF;
+    IF OLD."renewedAt" IS NOT NULL AND NEW."renewedAt" IS DISTINCT FROM OLD."renewedAt" THEN
+      RAISE EXCEPTION 'invoice renewal receipt is immutable';
+    END IF;
+    IF NEW."renewedAt" IS NOT NULL AND NEW.status <> 'PAID' THEN
+      RAISE EXCEPTION 'only paid invoices can carry a renewal receipt';
+    END IF;
   END IF;
   RETURN NEW;
 END;
 $$;
 CREATE TRIGGER trg_validate_invoice_subscription_tenant
-BEFORE INSERT OR UPDATE OF "tenantId","subscriptionId" ON tenant_invoices
+BEFORE INSERT OR UPDATE ON tenant_invoices
 FOR EACH ROW EXECUTE FUNCTION fsb_validate_invoice_subscription_tenant();
 
 INSERT INTO tenant_subscriptions (
