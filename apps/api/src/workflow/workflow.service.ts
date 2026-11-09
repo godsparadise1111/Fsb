@@ -220,11 +220,11 @@ export class WorkflowService {
       throw new BadRequestException('A return reason of at least 3 characters is required');
     }
     return this.dataSource.transaction(async manager => {
-      await this.lockActiveTaskScope(manager, taskId, tenantId);
+      const scopedOrganizationId = await this.lockActiveTaskScope(manager, taskId, tenantId);
+      await this.assertActiveWorkflowMember(manager, tenantId, userId, scopedOrganizationId);
       const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
-      if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
-      await this.assertActiveWorkflowMember(manager, tenantId, userId, task.processInstance.organizationId);
+      if (task.processInstance.organization?.tenantId !== tenantId || task.processInstance.organizationId !== scopedOrganizationId) throw new ForbiddenException('Task is outside the active tenant or organization scope');
       const notificationAssignments: Array<{ taskId: string; userIds: string[] }> = [];
       const claimed = await manager.query(
         `INSERT INTO workflow_action_idempotency (\"tenantId\",\"taskId\",\"userId\",\"idempotencyKey\",\"requestHash\")
