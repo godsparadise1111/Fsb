@@ -80,6 +80,16 @@ export class WorkflowRecoveryWorker implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private async recordIncident(manager: EntityManager, tenantId: string, processInstanceId: string, incidentType: string, details: Record<string, unknown>) {
+    const fingerprint = createHash('sha256').update(JSON.stringify(details)).digest('hex');
+    await manager.query(
+      `INSERT INTO workflow_recovery_incidents ("tenantId","processInstanceId","incidentType",fingerprint,details)
+       VALUES ($1,$2,$3,$4,$5::jsonb)
+       ON CONFLICT ("tenantId","processInstanceId","incidentType",fingerprint) DO NOTHING`,
+      [tenantId, processInstanceId, incidentType, fingerprint, JSON.stringify(details)],
+    );
+  }
+
   private async reconcileInstance(instanceId: string) {
     await this.dataSource.transaction(async manager => {
       const [snapshot] = await manager.query(
@@ -109,6 +119,7 @@ export class WorkflowRecoveryWorker implements OnModuleInit, OnModuleDestroy {
       const active = tasks.filter(task => ['OPEN','IN_PROGRESS'].includes(task.status));
 
       if (['COMPLETED','CANCELLED'].includes(instance.status) && active.length) {
+        await this.recordIncident(manager, instance.tenantId, instance.id, 'TERMINAL_PROCESS_HAS_ACTIVE_TASKS', { processStatus: instance.status, activeTaskIds: active.map(task => task.id) });
         for (const task of active) {
           await manager.query(
             `UPDATE workflow_tasks SET status='CANCELLED',"completedAt"=COALESCE("completedAt",now()),"updatedAt"=now()
@@ -131,6 +142,10 @@ export class WorkflowRecoveryWorker implements OnModuleInit, OnModuleDestroy {
       }
 
       if (instance.status === 'RUNNING' && active.length !== 1) {
+        const incidentDetails = {
+          ...incidentDetails,
+        };
+        await this.recordIncident(manager, instance.tenantId, instance.id, 'RUNNING_PROCESS_TASK_COUNT_MISMATCH', incidentDetails);
         const anchor = tasks[tasks.length - 1];
         if (!anchor) return;
         await this.recordReview(manager, instance.tenantId, anchor.id, 'RECOVERY_PROCESS_REQUIRES_REVIEW', {
