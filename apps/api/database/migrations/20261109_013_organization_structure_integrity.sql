@@ -22,6 +22,21 @@ BEGIN
     RAISE EXCEPTION 'Organization unit hierarchy contains cross-organization parent references; repair before migration 013';
   END IF;
   IF EXISTS (
+    WITH RECURSIVE unit_paths(start_id, id, "parentId", path, cycle) AS (
+      SELECT ou.id, ou.id, ou."parentId", ARRAY[ou.id], false
+        FROM organization_units ou
+      UNION ALL
+      SELECT walk.start_id, parent.id, parent."parentId",
+             walk.path || parent.id, parent.id = ANY(walk.path)
+        FROM unit_paths walk
+        INNER JOIN organization_units parent ON parent.id = walk."parentId"
+       WHERE walk.cycle = false
+    )
+    SELECT 1 FROM unit_paths WHERE cycle = true
+  ) THEN
+    RAISE EXCEPTION 'Organization unit hierarchy already contains a cycle; repair before migration 013';
+  END IF;
+  IF EXISTS (
     SELECT 1 FROM positions p
     LEFT JOIN organization_units ou ON ou.id = p."organizationUnitId"
     LEFT JOIN organizations o ON o.id = ou."organizationId"
