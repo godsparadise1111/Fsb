@@ -9,10 +9,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
-COPY --from=build /app/apps/web/package.json ./apps/web/package.json
-COPY --from=build /app/node_modules ./node_modules
+COPY package.json ./package.json
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web/package.json ./apps/web/package.json
+RUN npm install --omit=dev --no-audit --no-fund --workspace @fsb/api --include-workspace-root=false
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/database ./apps/api/database
 RUN mkdir -p /app/apps/api/var/private-files && chown -R node:node /app/apps/api/var
