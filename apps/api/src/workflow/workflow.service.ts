@@ -703,7 +703,7 @@ export class WorkflowService {
           action === 'RESOLVE' ? note!.trim() : null, action === 'ASSIGN' ? assignedToUserId : null],
       );
       await this.tenantAudit.record(manager, { tenantId, actorUserId, action: `organization.operational_alert.${action.toLowerCase()}`, resourceType: 'ORGANIZATION_OPERATIONAL_ALERT', resourceId: alertId, metadata: { organizationId, assignedToUserId: action === 'ASSIGN' ? assignedToUserId : undefined, note: action === 'RESOLVE' ? note!.trim() : undefined } });
-      const result = await manager.query(`SELECT id,"alertKey",type,severity,title,description,"resourceId",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","firstDetectedAt","lastDetectedAt" FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId]);
+      const result = await manager.query(`SELECT id,"alertKey",type,severity,title,description,"resourceId",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","firstDetectedAt","lastDetectedAt","responseDueAt","resolutionDueAt","escalatedAt","escalationLevel" FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId]);
       return result[0];
     });
   }
@@ -818,8 +818,10 @@ export class WorkflowService {
     );
     for (const row of rows) {
       await this.dataSource.query(
-        `INSERT INTO organization_operational_alerts ("tenantId","organizationId","alertKey",type,severity,title,description,"resourceId","dueAt","firstDetectedAt","lastDetectedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),now())
+        `INSERT INTO organization_operational_alerts ("tenantId","organizationId","alertKey",type,severity,title,description,"resourceId","dueAt","firstDetectedAt","lastDetectedAt","responseDueAt","resolutionDueAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),now(),
+           now() + CASE $5 WHEN 'CRITICAL' THEN interval '15 minutes' WHEN 'HIGH' THEN interval '1 hour' ELSE interval '4 hours' END,
+           now() + CASE $5 WHEN 'CRITICAL' THEN interval '4 hours' WHEN 'HIGH' THEN interval '8 hours' ELSE interval '24 hours' END)
          ON CONFLICT ("tenantId","organizationId","alertKey") DO UPDATE SET severity=EXCLUDED.severity,title=EXCLUDED.title,description=EXCLUDED.description,"dueAt"=EXCLUDED."dueAt","lastDetectedAt"=now(),status=CASE WHEN organization_operational_alerts.status='RESOLVED' AND organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN 'OPEN' ELSE organization_operational_alerts.status END,"resolvedAt"=CASE WHEN organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN NULL ELSE organization_operational_alerts."resolvedAt" END,"resolvedByUserId"=CASE WHEN organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN NULL ELSE organization_operational_alerts."resolvedByUserId" END,"resolutionNote"=CASE WHEN organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN NULL ELSE organization_operational_alerts."resolutionNote" END,"updatedAt"=now()`,
         [tenantId,organizationId,row.id,row.type,row.severity,row.title,row.description,row.resourceId,row.dueAt],
       );
@@ -830,7 +832,7 @@ export class WorkflowService {
       [tenantId,organizationId],
     );
     const persisted = await this.dataSource.query(
-      `SELECT id,severity,type,title,description,"resourceId","lastDetectedAt" AS "occurredAt","dueAt",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote"
+      `SELECT id,severity,type,title,description,"resourceId","lastDetectedAt" AS "occurredAt","dueAt",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","responseDueAt","resolutionDueAt","escalatedAt","escalationLevel"
          FROM organization_operational_alerts WHERE "tenantId"=$1 AND "organizationId"=$2 AND status NOT IN ('RESOLVED','IGNORED')
          ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,"lastDetectedAt" ASC NULLS LAST LIMIT 100`,
       [tenantId,organizationId],
@@ -854,6 +856,14 @@ export class WorkflowService {
         acknowledgedAt: row.acknowledgedAt ? new Date(row.acknowledgedAt).toISOString() : null,
         resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).toISOString() : null,
         resolutionNote: row.resolutionNote,
+        responseDueAt: row.responseDueAt ? new Date(row.responseDueAt).toISOString() : null,
+        resolutionDueAt: row.resolutionDueAt ? new Date(row.resolutionDueAt).toISOString() : null,
+        escalatedAt: row.escalatedAt ? new Date(row.escalatedAt).toISOString() : null,
+        escalationLevel: Number(row.escalationLevel ?? 0),
+        slaStatus: row.status === 'RESOLVED' || row.status === 'IGNORED' ? 'CLOSED'
+          : row.responseDueAt && new Date(row.responseDueAt) < new Date() && !row.acknowledgedAt ? 'RESPONSE_BREACHED'
+          : row.resolutionDueAt && new Date(row.resolutionDueAt) < new Date() ? 'RESOLUTION_BREACHED'
+          : row.responseDueAt && new Date(row.responseDueAt).getTime() - Date.now() < 60 * 60 * 1000 ? 'AT_RISK' : 'ON_TRACK',
       })),
     };
   }
