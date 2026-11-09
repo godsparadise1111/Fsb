@@ -74,7 +74,10 @@ export class IdentityService {
           order: { tenantId: 'ASC' },
         });
         for (const membership of adminMemberships) {
-          await manager.findOne(Tenant, { where: { id: membership.tenantId }, lock: { mode: 'pessimistic_write' } });
+          const tenant = await manager.findOne(Tenant, {
+            where: { id: membership.tenantId }, lock: { mode: 'pessimistic_write' },
+          });
+          if (!tenant || tenant.status !== 'ACTIVE') continue;
           const otherAdmins = await manager.getRepository(TenantMembership).createQueryBuilder('membership')
             .innerJoin('membership.user', 'adminUser', 'adminUser.isActive = true')
             .where('membership.tenantId = :tenantId AND membership.isActive = true AND membership.isTenantAdmin = true', { tenantId: membership.tenantId })
