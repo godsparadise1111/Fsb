@@ -150,7 +150,7 @@ Migration 015 وضعیت `CANCELLED` را برای درخواست تعویق ا�
 - Feature access is evaluated server-side by the global entitlement guard. User, active organization and process-definition limits are checked in the write transaction under tenant/subscription locks. File storage quota is enforced during attachment upload using a tenant/subscription lock and a sum of stored attachment sizes.
 - Migration 022 stores only a SHA-256 hash of a tenant-scoped API key, its visible prefix, limited scopes, expiry and revocation state. Key identity/scope cannot be edited and hard deletion is blocked.
 - The versioned public API currently exposes only read endpoints under `/api/v1`; scopes are `tenant.read` and `reports.read`. Both require an active API-access entitlement.
-- Migration 023 adds a one-time renewal receipt to paid invoices. A PAID invoice can extend a subscription only once; the receipt and period extension commit in the same transaction.
+- Migration 021 stores a one-time `renewedAt` receipt with each invoice; migration 023 adds the partial index used to find paid, unused renewal invoices. A PAID invoice can extend a subscription only once; the receipt and period extension commit in the same transaction.
 - Tenant closure cancels the subscription and revokes all active API credentials. Tenant suspension blocks API access through tenant-state validation; credentials are preserved for possible reactivation.
 - SSO, external connectors, webhooks, automatic payment collection and SaaS activation are intentionally not enabled. Do not set those feature flags true until their implementations and security acceptance are complete.
 
