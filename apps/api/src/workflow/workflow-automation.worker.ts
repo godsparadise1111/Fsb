@@ -104,6 +104,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
         await manager.query(`UPDATE task_assignees SET status='REASSIGNED', comment=$3, "actedAt"=now() WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])`, [candidate.taskId, displaced, reason]);
         if (!retained.length) {
           await manager.query(`UPDATE workflow_tasks SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now() WHERE id=$1 AND status IN ('OPEN','IN_PROGRESS')`, [candidate.taskId]);
+          await manager.query(`UPDATE process_instances SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now() WHERE id=(SELECT "processInstanceId" FROM workflow_tasks WHERE id=$1) AND status='RUNNING'`, [candidate.taskId]);
           await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","details") VALUES ($1,$2,'TASK_CANCELLED_NO_ELIGIBLE_ASSIGNEE',$3::jsonb)`, [candidate.tenantId, candidate.taskId, JSON.stringify({ displacedUserIds: displaced, reason })]);
         }
         await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId","details") SELECT $1,$2,'ASSIGNEE_RECONCILED',affected_user,jsonb_build_object('reason',$4::text,'replacementUserIds',$5::jsonb) FROM unnest($3::uuid[]) AS affected(affected_user)`, [candidate.tenantId, candidate.taskId, displaced, reason, JSON.stringify(retained)]);
