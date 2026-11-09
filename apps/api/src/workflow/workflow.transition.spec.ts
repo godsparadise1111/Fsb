@@ -72,6 +72,30 @@ test('position assignment resolves active users in the selected organization', a
   assert.deepEqual(result, [userId]);
 });
 
+test('direct user assignment resolves only active organization members with valid positions', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const result = await resolveAssignees(
+    assignmentManager({ resolved: [userId] }),
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    { assigneeUserIds: [userId] },
+  );
+  assert.deepEqual(result, [userId]);
+});
+
+test('direct user assignment is rejected when no active organization position resolves', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  await assert.rejects(
+    resolveAssignees(
+      assignmentManager({ resolved: [] }),
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      { assigneeUserIds: [userId] },
+    ),
+    BadRequestException,
+  );
+});
+
 test('unit assignment resolves its active position holders', async () => {
   const userIds = [
     '11111111-1111-4111-8111-111111111111',
