@@ -254,7 +254,9 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
         return false;
       }
       const baseUrl = new URL(process.env.FSB_PUBLIC_APP_URL!);
-      const reportUrl = new URL('/reports?jobId=' + encodeURIComponent(jobId),baseUrl).toString();
+      const organizationId = String(item.payload.organizationId ?? '');
+      const reportQuery = 'jobId=' + encodeURIComponent(jobId) + (organizationId ? '&organizationId=' + encodeURIComponent(organizationId) : '');
+      const reportUrl = new URL('/reports?' + reportQuery,baseUrl).toString();
       const safeUrl = this.escapeHtml(reportUrl);
       const sourceLabel = this.escapeHtml(String(item.payload.sourceLabel ?? 'گزارش'));
       const rowCount = Number(item.payload.rowCount ?? 0);
