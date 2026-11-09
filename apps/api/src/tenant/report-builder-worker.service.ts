@@ -48,7 +48,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
       for (const schedule of rows) {
         const scheduledFor = new Date(schedule.nextRunAt);
         const membership = await manager.query(
-          'SELECT u.email FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true',
+          'SELECT u.email FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true AND u.email IS NOT NULL',
           [schedule.tenantId, schedule.ownerUserId],
         );
         if (!membership.length) {
