@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { createHash } from 'node:crypto';
 
@@ -149,8 +149,8 @@ export class ReportBuilderService {
       if (depth > 12 || node === null || typeof node !== 'object') return;
       if (Array.isArray(node)) { for (const child of node.slice(0, 500)) collect(child, version, depth + 1); return; }
       const item = node as Record<string, unknown>;
-      const rawId = item.fieldId ?? item.id ?? item.key ?? item.name;
-      const rawType = String(item.fieldType ?? item.dataType ?? item.type ?? '').toLowerCase();
+      const rawId = item.fieldId ?? item.fieldKey ?? item.id ?? item.key ?? item.name;
+      const rawType = String(item.fieldType ?? item.dataType ?? item.controlType ?? item.widgetType ?? item.type ?? '').toLowerCase();
       const rawLabel = item.label ?? item.title ?? item.caption ?? item.name;
       const fieldId = typeof rawId === 'string' ? rawId.trim() : '';
       const label = typeof rawLabel === 'string' ? rawLabel.trim() : '';
@@ -405,7 +405,11 @@ export class ReportBuilderService {
 
   async createSchedule(tenantId: string, userId: string, input: { config: ReportSpec; frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'; weekday?: number; timeOfDay: string; timezone: string }, scope: ReportAccessScope, nextRunAt: Date) {
     if (!input || !['DAILY', 'WEEKLY', 'MONTHLY'].includes(input.frequency)) throw new BadRequestException('تناوب زمان‌بندی معتبر نیست');
+    const configuredKey = process.env.FSB_OUTBOX_ENCRYPTION_KEY;
+    const decodedKey = configuredKey ? (/^[a-f0-9]{64}$/i.test(configuredKey) ? Buffer.from(configuredKey,'hex') : Buffer.from(configuredKey,'base64')) : Buffer.alloc(0);
+    if (decodedKey.length !== 32) throw new ServiceUnavailableException('برای ارسال زمان‌بندی‌شده، کلید رمزگذاری Outbox با طول ۳۲ بایت باید تنظیم شود');
     if (!/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(input.timeOfDay)) throw new BadRequestException('ساعت باید با قالب HH:MM باشد');
+    if (typeof input.timezone !== 'string' || input.timezone.length > 80) throw new BadRequestException('منطقه زمانی معتبر نیست');
     try { new Intl.DateTimeFormat('en-US', { timeZone: input.timezone }).format(new Date()); } catch { throw new BadRequestException('منطقه زمانی معتبر نیست'); }
     if (input.frequency === 'WEEKLY' && (!Number.isInteger(input.weekday) || (input.weekday as number) < 0 || (input.weekday as number) > 6)) throw new BadRequestException('روز هفته برای زمان‌بندی هفتگی الزامی است');
     const source = await this.sourceFor(tenantId, input.config, scope.organizationIds);
