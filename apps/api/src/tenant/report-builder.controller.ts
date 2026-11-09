@@ -76,17 +76,17 @@ export class ReportBuilderController {
     if (!input || typeof input !== 'object') throw new BadRequestException('اطلاعات ویرایش گزارش نامعتبر است');
     const context = this.context(user);
     const organizationId = input.organizationId ?? input.config?.organizationId;
-    await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
+    const scope = await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
     const config = input.config ? { ...input.config, ...(organizationId ? { organizationId } : {}) } : undefined;
-    return this.reports.update(context.tenantId, context.userId, id, { ...input, config });
+    return this.reports.update(context.tenantId, context.userId, id, { ...input, config }, organizationId, scope.tenantWide);
   }
 
   @RequirePermissions('tenant.reports.read')
   @Delete('saved/:id')
   async remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('organizationId') organizationId?: string) {
     const context = this.context(user);
-    await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
-    return this.reports.remove(context.tenantId, context.userId, id);
+    const scope = await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
+    return this.reports.remove(context.tenantId, context.userId, id, organizationId, scope.tenantWide);
   }
 
   @RequirePermissions('tenant.reports.read')
@@ -143,8 +143,8 @@ export class ReportBuilderController {
   @Get('jobs/:id')
   async job(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('organizationId') organizationId?: string) {
     const context = this.context(user);
-    await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
-    return this.reports.getJob(context.tenantId, context.userId, id);
+    const scope = await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
+    return this.reports.getJob(context.tenantId, context.userId, id, scope);
   }
 
   @RequirePermissions('tenant.reports.read')
@@ -168,8 +168,8 @@ export class ReportBuilderController {
   @Get('schedules')
   async schedules(@CurrentUser() user: AuthenticatedUser, @Query('organizationId') organizationId?: string) {
     const context = this.context(user);
-    await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
-    return this.reports.listSchedules(context.tenantId, context.userId);
+    const scope = await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
+    return this.reports.listSchedules(context.tenantId, context.userId, organizationId, scope.tenantWide);
   }
 
   @RequirePermissions('tenant.reports.read')
@@ -177,8 +177,8 @@ export class ReportBuilderController {
   async setScheduleActive(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() input: { active: boolean; organizationId?: string }) {
     if (!input || typeof input !== 'object') throw new BadRequestException('اطلاعات زمان‌بندی نامعتبر است');
     const context = this.context(user);
-    await this.reports.resolveScope(context.tenantId, context.userId, input.organizationId);
+    const scope = await this.reports.resolveScope(context.tenantId, context.userId, input.organizationId);
     if (typeof input.active !== 'boolean') throw new BadRequestException('وضعیت زمان‌بندی نامعتبر است');
-    return this.reports.setScheduleActive(context.tenantId, context.userId, id, input.active);
+    return this.reports.setScheduleActive(context.tenantId, context.userId, id, input.active, input.organizationId, scope.tenantWide);
   }
 }
