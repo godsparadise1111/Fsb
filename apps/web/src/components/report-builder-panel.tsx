@@ -75,8 +75,11 @@ export default function ReportBuilderPanel() {
     const accessToken = localStorage.getItem('fsb.accessToken') || '';
     const activeTenant = localStorage.getItem('fsb.tenantId') || '';
     setToken(accessToken); setTenantId(activeTenant);
-    const requestedJob = new URLSearchParams(window.location.search).get('jobId');
+    const query = new URLSearchParams(window.location.search);
+    const requestedJob = query.get('jobId');
+    const requestedOrganization = query.get('organizationId');
     if(requestedJob) setJobId(requestedJob);
+    if(requestedOrganization) setOrganizationId(requestedOrganization);
   },[]);
 
   useEffect(()=>{
