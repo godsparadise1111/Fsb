@@ -274,7 +274,7 @@ UPDATE task_deferral_requests r
   JOIN organizations o ON o.id=pi."organizationId"
   JOIN tenants t ON t.id=wt."tenantId"
  WHERE r."taskId"=wt.id AND r.status='PENDING'
-   AND (wt.status NOT IN ('OPEN','IN_PROGRESS') OR o."isActive"=false OR t.status<>'ACTIVE'
+   AND (wt.status NOT IN ('OPEN','IN_PROGRESS') OR o."isActive"=false OR t.status='CLOSED'
      OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
                      WHERE tm."tenantId"=r."tenantId" AND tm."userId"=r."requesterUserId" AND tm."isActive"=true));
 SELECT set_config('fsb.lifecycle_cleanup', 'off', true);
