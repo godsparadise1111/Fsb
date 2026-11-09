@@ -97,7 +97,8 @@ export class WorkflowService {
       .leftJoin('task.assignees', 'assignment', 'assignment.userId = :userId AND assignment.status = :pending', { userId, pending: 'PENDING' })
       .leftJoinAndSelect('task.processInstance', 'instance')
       .leftJoinAndSelect('instance.processVersion', 'processVersion')
-      .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId })
+      .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId AND organization.isActive = true', { tenantId })
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
       .andWhere(`(assignment.id IS NOT NULL AND EXISTS (
@@ -119,6 +120,8 @@ export class WorkflowService {
           AND substitution."tenantId" = :tenantId AND substitution."substituteUserId" = :userId
           AND substitution."revokedAt" IS NULL
           AND substitution."startsAt" <= now() AND substitution."endsAt" > now()
+          AND EXISTS (SELECT 1 FROM tenant_memberships original_tm JOIN users original_user ON original_user.id=original_tm."userId" AND original_user."isActive"=true
+                       WHERE original_tm."tenantId"=substitution."tenantId" AND original_tm."userId"=substitution."originalUserId" AND original_tm."isActive"=true)
           AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users su ON su.id = tm."userId" AND su."isActive" = true
                        WHERE tm."tenantId" = substitution."tenantId" AND tm."userId" = :userId AND tm."isActive" = true)
           AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId"
@@ -133,6 +136,8 @@ export class WorkflowService {
         WHERE delegation."taskId" = task.id AND delegation."toUserId" = :userId
           AND delegation."tenantId" = :tenantId AND delegation."revokedAt" IS NULL
           AND delegation."startsAt" <= now() AND delegation."endsAt" > now()
+          AND EXISTS (SELECT 1 FROM tenant_memberships original_tm JOIN users original_user ON original_user.id=original_tm."userId" AND original_user."isActive"=true
+                       WHERE original_tm."tenantId"=delegation."tenantId" AND original_tm."userId"=delegation."fromUserId" AND original_tm."isActive"=true)
           AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users du ON du.id=tm."userId" AND du."isActive"=true
                        WHERE tm."tenantId"=delegation."tenantId" AND tm."userId"=:userId AND tm."isActive"=true)
           AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId"
@@ -154,6 +159,7 @@ export class WorkflowService {
       const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
+      await this.assertActiveWorkflowMember(manager, tenantId, userId, task.processInstance.organizationId);
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
       let assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
       if (assignment) {
@@ -177,6 +183,7 @@ export class WorkflowService {
           .where('substitution.organizationId = :organizationId AND substitution.tenantId = :tenantId', { organizationId: task.processInstance.organizationId, tenantId })
           .andWhere('substitution.substituteUserId = :userId AND substitution."revokedAt" IS NULL', { userId })
           .andWhere('substitution."startsAt" <= :now AND substitution."endsAt" > :now', { now: new Date() })
+          .andWhere(`EXISTS (SELECT 1 FROM tenant_memberships original_tm JOIN users original_user ON original_user.id=original_tm."userId" AND original_user."isActive"=true WHERE original_tm."tenantId"=substitution."tenantId" AND original_tm."userId"=substitution."originalUserId" AND original_tm."isActive"=true)`)
           .andWhere(`EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users su ON su.id = tm."userId" AND su."isActive" = true WHERE tm."tenantId" = substitution."tenantId" AND tm."userId" = :userId AND tm."isActive" = true)`, { userId })
           .andWhere(`EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId" JOIN organization_units ou ON ou.id = p."organizationUnitId" WHERE up."userId" = :userId AND ou."organizationId" = substitution."organizationId" AND up."isActive" = true AND p."isActive" = true AND ou."isActive" = true AND up."validFrom" <= now() AND (up."validUntil" IS NULL OR up."validUntil" >= now()))`, { userId })
           .setLock('pessimistic_write')
