@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, BadRequestExc
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CommercialService } from './commercial.service';
-import { CreateTenantInvoiceDto, TransitionInvoiceDto, UpdateTenantSubscriptionDto } from './dto/commercial.dto';
+import { CreateTenantInvoiceDto, RenewTenantSubscriptionDto, TransitionInvoiceDto, UpdateTenantSubscriptionDto } from './dto/commercial.dto';
 
 @Controller('platform/commercial')
 export class PlatformCommercialController {
@@ -56,5 +56,12 @@ export class TenantCommercialController {
   overview(@CurrentUser() user: AuthenticatedUser) {
     if (!user.tenantId) throw new BadRequestException('Tenant context is required');
     return this.commercial.getTenantOverview(user.tenantId);
+  }
+
+  @RequirePermissions('tenant.members.manage')
+  @Post('renew')
+  renew(@CurrentUser() user: AuthenticatedUser, @Body() dto: RenewTenantSubscriptionDto) {
+    if (!user.tenantId) throw new BadRequestException('Tenant context is required');
+    return this.commercial.renewSubscriptionFromPaidInvoice(user.tenantId, dto.invoiceId, user.sub);
   }
 }
