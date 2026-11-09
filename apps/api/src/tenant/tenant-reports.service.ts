@@ -288,10 +288,13 @@ export class TenantReportsService {
     for (const item of report.byOrganization) for (const [key,value] of Object.entries(item)) rows.push(['سازمان',key,value]);
     const cell = (value: unknown) => {
       let text = value == null ? '' : String(value);
-      if (/^[\\s]*[=+@-]/.test(text) || text.startsWith('\\t') || text.startsWith('\\r')) text = "'" + text;
+      const first = text.trimStart()[0];
+      if (first !== undefined && ['=','+','@','-'].includes(first)) text = "'" + text;
+      if (text.charCodeAt(0) === 9 || text.charCodeAt(0) === 13) text = "'" + text;
       return '"' + text.replace(/"/g,'""') + '"';
     };
-    return '\\uFEFF' + rows.map(row=>row.map(cell).join(',')).join('\\r\\n') + '\\r\\n';
+    const newline = String.fromCharCode(13,10);
+    return String.fromCharCode(0xFEFF) + rows.map(row=>row.map(cell).join(',')).join(newline) + newline;
   }
 
   async overviewCsv(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
