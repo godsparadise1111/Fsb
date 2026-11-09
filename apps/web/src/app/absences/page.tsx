@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 type Organization = { id: string; name: string; code: string };
 type User = { id: string; firstName: string; lastName: string; username: string; email: string };
 type Workload = { userId: string; openTaskCount: number; substitutionCoverageCount: number; delegatedTaskCount: number; prospectiveCoverageCount: number };
+type AlertSlaPolicy = { enabled: boolean; criticalResponseMinutes: number; highResponseMinutes: number; mediumResponseMinutes: number; lowResponseMinutes: number; criticalResolutionHours: number; highResolutionHours: number; mediumResolutionHours: number; lowResolutionHours: number };
 type Absence = {
   id: string; organizationId: string; userId: string; substituteUserId: string;
   startsAt: string; endsAt: string; reason: string; createdAt: string;
@@ -41,6 +42,11 @@ export default function AbsencesPage() {
   } | null>(null);
   const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
   const [policySaving, setPolicySaving] = useState(false);
+  const [alertSlaPolicy, setAlertSlaPolicy] = useState<AlertSlaPolicy>({
+    enabled: true, criticalResponseMinutes: 15, highResponseMinutes: 60, mediumResponseMinutes: 240, lowResponseMinutes: 1440,
+    criticalResolutionHours: 4, highResolutionHours: 8, mediumResolutionHours: 24, lowResolutionHours: 72,
+  });
+  const [alertSlaSaving, setAlertSlaSaving] = useState(false);
   const [workloadLoading, setWorkloadLoading] = useState(false);
   const [workloadAsOf, setWorkloadAsOf] = useState('');
   const [organizationId, setOrganizationId] = useState('');
@@ -93,14 +99,15 @@ export default function AbsencesPage() {
         setUsers([]); setItems([]); setTotal(0);
       }
       if (selectedOrg) {
-        const [people, result, workloadResult, operationsResult, alertsResult] = await Promise.all([
+        const [people, result, workloadResult, operationsResult, alertsResult, slaPolicyResult] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
           request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
           request(`/organizations/${selectedOrg}/workload`),
           request(`/organizations/${selectedOrg}/operations-overview`),
           request(`/organizations/${selectedOrg}/operational-alerts`),
+          request(`/organizations/${selectedOrg}/operational-alert-sla-policy`),
         ]);
-        setUsers(people); setOperations(operationsResult); setAlerts(alertsResult); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
+        setUsers(people); setOperations(operationsResult); setAlerts(alertsResult); setAlertSlaPolicy(slaPolicyResult); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
         setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       } else {
         setUsers([]); setOperations(null); setAlerts(null); setWorkload([]); setPolicy({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems([]); setCalendarItems([]); setTotal(0);
@@ -260,6 +267,21 @@ export default function AbsencesPage() {
     finally { setPolicySaving(false); }
   }
 
+  async function saveAlertSlaPolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!organizationId) return;
+    setAlertSlaSaving(true); setError(''); setNotice('');
+    try {
+      const result = await request(`/organizations/${organizationId}/operational-alert-sla-policy`, {
+        method: 'POST', body: JSON.stringify(alertSlaPolicy),
+      });
+      setAlertSlaPolicy(result);
+      setNotice('سیاست SLA هشدارهای سازمان ذخیره شد؛ مهلت هشدارهای باز نیز با سیاست جدید محاسبه شد.');
+      await loadData();
+    } catch (e) { setError(e instanceof Error ? e.message : 'ذخیره سیاست SLA ناموفق بود'); }
+    finally { setAlertSlaSaving(false); }
+  }
+
   async function addOperationalAlertNote(alertId: string) {
     const note = window.prompt('یادداشت پیگیری را وارد کنید:');
     if (!note || note.trim().length < 3) return;
@@ -405,6 +427,23 @@ export default function AbsencesPage() {
       </section>}
 
       {alerts && <section className="absence-panel">
+        <div className="absence-panel-heading"><div><h2>سیاست مهلت پاسخ‌گویی (SLA)</h2><p>مهلت‌ها از زمان اولین شناسایی هشدار محاسبه می‌شوند؛ تغییر سیاست، مهلت هشدارهای باز را نیز به‌روزرسانی می‌کند.</p></div>
+          <span className={alertSlaPolicy.enabled ? 'absence-pill active' : 'absence-pill upcoming'}>{alertSlaPolicy.enabled ? 'SLA فعال' : 'SLA غیرفعال'}</span>
+        </div>
+        <form className="absence-form" onSubmit={saveAlertSlaPolicy}>
+          <label className="absence-inline-check"><input type="checkbox" checked={alertSlaPolicy.enabled} onChange={e => setAlertSlaPolicy(v => ({ ...v, enabled: e.target.checked }))} /> فعال‌سازی محاسبه و اعلان SLA</label>
+          <div className="absence-sla-grid">
+            {([['بحرانی','critical'],['زیاد','high'],['متوسط','medium'],['کم','low']] as const).map(([label,key]) => <fieldset key={key} className="absence-sla-level">
+              <legend>{label}</legend>
+              <label>مهلت پاسخ (دقیقه)<input type="number" min="1" max="10080" required value={alertSlaPolicy[`${key}ResponseMinutes`]} onChange={e => setAlertSlaPolicy(v => ({ ...v, [`${key}ResponseMinutes`]: Number(e.target.value) }))} /></label>
+              <label>مهلت حل (ساعت)<input type="number" min="1" max="720" required value={alertSlaPolicy[`${key}ResolutionHours`]} onChange={e => setAlertSlaPolicy(v => ({ ...v, [`${key}ResolutionHours`]: Number(e.target.value) }))} /></label>
+            </fieldset>)}
+          </div>
+          <div className="absence-form-actions absence-full"><button className="absence-primary" disabled={alertSlaSaving || !organizationId}>{alertSlaSaving ? 'در حال ذخیره…' : 'ذخیره سیاست SLA'}</button></div>
+        </form>
+      </section>}
+
+      {alerts && <section className="absence-panel">
         <div className="absence-panel-heading">
           <div><h2>مرکز هشدارهای عملیاتی</h2><p>مواردی که نیازمند پیگیری مدیر یا مسئول گردش کار هستند.</p></div>
           <span className="absence-step">آخرین بررسی: {new Date(alerts.generatedAt).toLocaleString("fa-IR")}</span>
@@ -431,7 +470,6 @@ export default function AbsencesPage() {
               <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString('fa-IR') : '—'} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString('fa-IR') : '—'}</small>
             </div>
             <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد منبع: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
-            <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString("fa-IR") : "—"} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString("fa-IR") : "—"}</small>
             <div className="absence-alert-top">
               <span className="absence-step">وضعیت: {alert.status === 'OPEN' ? 'باز' : alert.status === 'ACKNOWLEDGED' ? 'مشاهده و تأییدشده' : alert.status === 'IN_PROGRESS' ? 'در حال پیگیری' : 'حل‌شده'}{alert.assignedToUserId ? ` · مسئول: ${personName(userMap.get(alert.assignedToUserId))}` : ''}</span>
               <div className="absence-actions">
