@@ -150,10 +150,11 @@
 - [x] اسکریپت Restore غیرمخرب Staging در دیتابیس جدید و زیرشاخه جداگانه فایل خصوصی؛ جایگزینی دیتابیس فعال خودکار انجام نمی‌شود
 - [x] Runbook استقرار، Migration، SMTP، آزمون پذیرش و بازیابی Staging
 - [x] CI برای Build همه workspaceها، تست واحد انتقال Workflow و اعتبارسنجی فایل Compose تولید
+- [x] اسکریپت تولید lockfile واحد monorepo، اعتبارسنجی npm ci و Dockerfileهای مشروط به lockfile؛ Preflight تولید نبود lockfile را رد می‌کند
 - [x] Migrationهای نسخه‌بندی‌شده با ledger و checksum؛ جلوگیری از synchronize در Production
 - [x] backup رمزگذاری‌شده دیتابیس و فایل خصوصی با age و checksum؛ اسکریپت بازیابی تأییدشده (بازیابی واقعی هنوز باید در Staging تمرین شود)
 - [ ] اجرای واقعی staging، آزمون بازیابی دوره‌ای، تعیین و اثبات RPO/RTO و بازیابی کامل در محیط ایزوله
-- [ ] تولید و commit کردن package-lock.json ریشه و تبدیل Docker buildها از npm install به npm ci
+- [ ] اجرای prepare-lockfile، بازبینی و commit کردن package-lock.json ریشه (Dockerfileها و Preflight آماده‌اند)
 - [ ] اجرای Build و تست Compose، Migrationهای 024/025، SMTP واقعی، PDF فارسی، XLSX و آزمون بار/امنیت در Staging
 - [x] اسکریپت smoke استقرار و چک‌لیست پذیرش staging شامل بررسی ledger/checksum، readiness، tenant isolation، RETURN/REWORK، worker و restore
 - [x] لاگ ساخت‌یافته درخواست با Request ID، readiness دیتابیس، متریک‌های پایه Prometheus با endpoint محافظت‌شده و rotation لاگ Docker
