@@ -199,8 +199,8 @@ export class ProcessService {
         if (reachable.size !== (configuredSteps ?? []).length) {
           throw new BadRequestException('Every process step must be reachable from the first step in the transition graph');
         }
-        if (!(transitions as Array<Record<string, unknown>>).some(edge => edge.toStepIndex === null)) {
-          throw new BadRequestException('The transition graph must define at least one terminal transition with toStepIndex=null');
+        if (!(transitions as Array<Record<string, unknown>>).some(edge => edge.action === 'APPROVED' && edge.toStepIndex === null)) {
+          throw new BadRequestException('The transition graph must define at least one terminal APPROVED transition with toStepIndex=null');
         }
         for (let index = 0; index < (configuredSteps ?? []).length; index++) {
           if (!keys.has(index + ':APPROVED')) {
