@@ -474,6 +474,13 @@ export class WorkflowService {
                JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
               WHERE s."tenantId"=$1 AND s."organizationId"=$2 AND s."substituteUserId"=$3
                 AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
+             UNION
+             SELECT wt.id
+               FROM task_delegations td
+               JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+               JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+              WHERE td."tenantId"=$1 AND td."toUserId"=$3 AND td."revokedAt" IS NULL
+                AND td."startsAt"<=$4 AND td."endsAt">$4
            ) SELECT COUNT(*)::int AS count FROM open_load`,
           [tenantId, dto.organizationId, dto.substituteUserId, startsAt],
         );
@@ -571,13 +578,13 @@ export class WorkflowService {
          WHERE u."isActive" = true AND up."validFrom" <= CURRENT_TIMESTAMP
            AND (up."validUntil" IS NULL OR up."validUntil" >= CURRENT_TIMESTAMP)
       ), task_load AS (
-        SELECT ta."userId", wt.id AS "taskId", false AS "isSubstitution"
+        SELECT ta."userId", wt.id AS "taskId", false AS "isSubstitution", false AS "isDelegated"
           FROM task_assignees ta
           JOIN workflow_tasks wt ON wt.id = ta."taskId" AND wt.status IN ('OPEN', 'IN_PROGRESS')
           JOIN process_instances pi ON pi.id = wt."processInstanceId" AND pi."organizationId" = $2
          WHERE ta.status = 'PENDING'
         UNION ALL
-        SELECT substitution."substituteUserId", wt.id, true
+        SELECT substitution."substituteUserId", wt.id, true, false
           FROM organization_substitutions substitution
           JOIN workflow_tasks wt ON wt.status IN ('OPEN', 'IN_PROGRESS')
           JOIN process_instances pi ON pi.id = wt."processInstanceId"
@@ -587,9 +594,17 @@ export class WorkflowService {
          WHERE substitution."tenantId" = $1 AND substitution."organizationId" = $2
            AND substitution."revokedAt" IS NULL
            AND substitution."startsAt" <= CURRENT_TIMESTAMP AND substitution."endsAt" > CURRENT_TIMESTAMP
+        UNION ALL
+        SELECT td."toUserId", wt.id, false, true
+          FROM task_delegations td
+          JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+          JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+         WHERE td."tenantId"=$1 AND td."revokedAt" IS NULL
+           AND td."startsAt"<=CURRENT_TIMESTAMP AND td."endsAt">CURRENT_TIMESTAMP
       ), aggregated AS (
         SELECT "userId", COUNT(DISTINCT "taskId") AS "openTaskCount",
-               COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution") AS "substitutionCoverageCount"
+               COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution") AS "substitutionCoverageCount",
+               COUNT(DISTINCT "taskId") FILTER (WHERE "isDelegated") AS "delegatedTaskCount"
           FROM task_load GROUP BY "userId"
       )
       SELECT people.id AS "userId", people."firstName", people."lastName", people.username,
@@ -611,6 +626,7 @@ export class WorkflowService {
         username: row.username,
         openTaskCount: Number(row.openTaskCount ?? 0),
         substitutionCoverageCount: Number(row.substitutionCoverageCount ?? 0),
+        delegatedTaskCount: Number(row.delegatedTaskCount ?? 0),
       })),
     };
   }
