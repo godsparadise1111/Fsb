@@ -33,7 +33,7 @@ export class CommercialService {
   listInvoices() {
     return this.dataSource.query(
       `SELECT i.id,i."tenantId",t.name AS "tenantName",t.code AS "tenantCode",
-              i."invoiceNumber",CASE WHEN i.status='ISSUED' AND i."dueAt" < now() THEN 'OVERDUE' ELSE i.status END AS status,i."currencyCode",i."subtotalMinor",i."taxMinor",i."totalMinor",
+              i."invoiceNumber",i."planCode",i."billingCycle",CASE WHEN i.status='ISSUED' AND i."dueAt" < now() THEN 'OVERDUE' ELSE i.status END AS status,i."currencyCode",i."subtotalMinor",i."taxMinor",i."totalMinor",
               i.description,i."issuedAt",i."dueAt",i."paidAt",i."renewedAt",i."createdAt"
          FROM tenant_invoices i
          JOIN tenants t ON t.id=i."tenantId"
@@ -56,7 +56,7 @@ export class CommercialService {
     );
     if (!tenant) throw new NotFoundException('Tenant not found');
     const invoices = await this.dataSource.query(
-      `SELECT id, "invoiceNumber", CASE WHEN status='ISSUED' AND "dueAt" < now() THEN 'OVERDUE' ELSE status END AS status, "currencyCode", "subtotalMinor", "taxMinor", "totalMinor",
+      `SELECT id, "invoiceNumber", "planCode", "billingCycle", CASE WHEN status='ISSUED' AND "dueAt" < now() THEN 'OVERDUE' ELSE status END AS status, "currencyCode", "subtotalMinor", "taxMinor", "totalMinor",
               description, "issuedAt", "dueAt", "paidAt", "renewedAt", "createdAt"
          FROM tenant_invoices WHERE "tenantId" = $1 ORDER BY "createdAt" DESC LIMIT 50`,
       [tenantId],
@@ -141,16 +141,16 @@ export class CommercialService {
       const [tenant] = await manager.query('SELECT id,status FROM tenants WHERE id=$1 FOR UPDATE', [input.tenantId]);
       if (!tenant || tenant.status === 'CLOSED') throw new BadRequestException('Closed or unknown tenants cannot receive invoices');
       const [subscription] = await manager.query(
-        'SELECT id FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE',
+        'SELECT id,"planCode","billingCycle" FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE',
         [input.tenantId],
       );
       if (!subscription) throw new BadRequestException('Tenant has no subscription; assign a plan first');
       const [invoice] = await manager.query(
         `INSERT INTO tenant_invoices
-          ("tenantId","subscriptionId","invoiceNumber",status,"currencyCode","subtotalMinor","taxMinor","totalMinor",description,"issuedAt","dueAt","createdByUserId")
-         VALUES ($1,$2,$3,'ISSUED',$4,$5,$6,$7,$8,now(),$9,$10)
+          ("tenantId","subscriptionId","planCode","billingCycle","invoiceNumber",status,"currencyCode","subtotalMinor","taxMinor","totalMinor",description,"issuedAt","dueAt","createdByUserId")
+         VALUES ($1,$2,$3,$4,$5,'ISSUED',$6,$7,$8,$9,$10,now(),$11,$12)
          RETURNING id,"invoiceNumber",status,"currencyCode","subtotalMinor","taxMinor","totalMinor","issuedAt","dueAt"`,
-        [input.tenantId, subscription.id, input.invoiceNumber, input.currencyCode,
+        [input.tenantId, subscription.id, subscription.planCode, subscription.billingCycle, input.invoiceNumber, input.currencyCode,
          input.subtotalMinor, input.taxMinor, input.subtotalMinor + input.taxMinor,
          input.description, input.dueAt ? new Date(input.dueAt) : null, input.actorUserId],
       );
@@ -168,19 +168,22 @@ export class CommercialService {
       const [tenant] = await manager.query('SELECT id,status FROM tenants WHERE id=$1 FOR UPDATE', [tenantId]);
       if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Only active tenants can renew subscriptions');
       const [subscription] = await manager.query(
-        `SELECT id,status,"billingCycle","currentPeriodStart","currentPeriodEnd"
+        `SELECT id,"planCode",status,"billingCycle","currentPeriodStart","currentPeriodEnd"
            FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE`,
         [tenantId],
       );
       if (!subscription) throw new NotFoundException('Tenant subscription not found');
       if (subscription.status === 'CANCELLED') throw new BadRequestException('Cancelled subscriptions cannot be renewed; assign a new subscription first');
       const [invoice] = await manager.query(
-        `SELECT id,status,"totalMinor","currencyCode","invoiceNumber","renewedAt"
+        `SELECT id,status,"planCode","billingCycle","totalMinor","currencyCode","invoiceNumber","renewedAt"
            FROM tenant_invoices WHERE id=$1 AND "tenantId"=$2 AND "subscriptionId"=$3 FOR UPDATE`,
         [invoiceId, tenantId, subscription.id],
       );
       if (!invoice) throw new NotFoundException('Invoice not found for this tenant subscription');
       if (invoice.status !== 'PAID') throw new BadRequestException('Subscription renewal requires a PAID invoice');
+      if (invoice.planCode !== subscription.planCode || invoice.billingCycle !== subscription.billingCycle) {
+        throw new BadRequestException('This invoice was issued for a different plan or billing cycle; issue a new invoice before renewal');
+      }
       if (invoice.renewedAt) throw new ConflictException('This paid invoice has already been applied to a subscription renewal');
       const [renewed] = await manager.query(
         `UPDATE tenant_subscriptions
