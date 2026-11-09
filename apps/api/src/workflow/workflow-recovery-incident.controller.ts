@@ -28,6 +28,10 @@ export class WorkflowRecoveryIncidentController {
   }
 
   @RequirePermissions('workflow.recovery.incidents.read')
+  @Get('replay-capabilities')
+  replayCapabilities() { return this.incidents.replayCapabilities(); }
+
+  @RequirePermissions('workflow.recovery.incidents.read')
   @Get(':id')
   detail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.incidents.detail(this.tenant(user), id);
