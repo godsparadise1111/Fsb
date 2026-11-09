@@ -45,6 +45,7 @@ export class ReportBuilderController {
   @RequirePermissions('tenant.reports.read')
   @Post('run')
   async run(@CurrentUser() user: AuthenticatedUser, @Body() spec: ReportSpec) {
+    if (!spec || typeof spec !== 'object') throw new BadRequestException('تعریف گزارش الزامی است');
     const context = this.context(user);
     const scope = await this.reports.resolveScope(context.tenantId, context.userId, spec.organizationId);
     return this.reports.execute(context.tenantId, spec, scope);
@@ -53,6 +54,7 @@ export class ReportBuilderController {
   @RequirePermissions('tenant.reports.read')
   @Post('saved')
   async save(@CurrentUser() user: AuthenticatedUser, @Body() input: { title: string; description?: string; isShared?: boolean; config: ReportSpec; organizationId?: string }) {
+    if (!input || typeof input !== 'object' || !input.config) throw new BadRequestException('تعریف گزارش برای ذخیره الزامی است');
     const context = this.context(user);
     const organizationId = input.organizationId ?? input.config?.organizationId;
     const scope = await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
@@ -71,6 +73,7 @@ export class ReportBuilderController {
   @RequirePermissions('tenant.reports.read')
   @Patch('saved/:id')
   async update(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() input: { title?: string; description?: string; isShared?: boolean; config?: ReportSpec; organizationId?: string }) {
+    if (!input || typeof input !== 'object') throw new BadRequestException('اطلاعات ویرایش گزارش نامعتبر است');
     const context = this.context(user);
     const organizationId = input.organizationId ?? input.config?.organizationId;
     await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
@@ -130,6 +133,7 @@ export class ReportBuilderController {
   @RequirePermissions('tenant.reports.read')
   @Post('jobs')
   async enqueue(@CurrentUser() user: AuthenticatedUser, @Body() spec: ReportSpec) {
+    if (!spec || typeof spec !== 'object') throw new BadRequestException('تعریف گزارش الزامی است');
     const context = this.context(user);
     const scope = await this.reports.resolveScope(context.tenantId, context.userId, spec.organizationId);
     return this.reports.createJob(context.tenantId, context.userId, spec, scope);
@@ -146,11 +150,17 @@ export class ReportBuilderController {
   @RequirePermissions('tenant.reports.read')
   @Post('schedules')
   async createSchedule(@CurrentUser() user: AuthenticatedUser, @Body() input: { config: ReportSpec; organizationId?: string; frequency: ReportScheduleFrequency; weekday?: number; timeOfDay: string; timezone: string }) {
+    if (!input || typeof input !== 'object' || !input.config) throw new BadRequestException('تعریف گزارش برای زمان‌بندی الزامی است');
+    if (!['DAILY','WEEKLY','MONTHLY'].includes(input.frequency)) throw new BadRequestException('تناوب زمان‌بندی معتبر نیست');
+    if (!/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(input.timeOfDay ?? '')) throw new BadRequestException('ساعت زمان‌بندی معتبر نیست');
+    if (input.frequency === 'WEEKLY' && (!Number.isInteger(input.weekday) || (input.weekday as number) < 0 || (input.weekday as number) > 6)) throw new BadRequestException('روز هفته برای زمان‌بندی هفتگی الزامی است');
     const context = this.context(user);
     const organizationId = input.organizationId ?? input.config?.organizationId;
     const scope = await this.reports.resolveScope(context.tenantId, context.userId, organizationId);
     const config = { ...input.config, ...(organizationId ? { organizationId } : {}) };
-    const next = nextReportScheduleAt(input.frequency, input.timeOfDay, input.timezone, input.weekday ?? null);
+    let next: Date;
+    try { next = nextReportScheduleAt(input.frequency, input.timeOfDay, input.timezone, input.weekday ?? null); }
+    catch { throw new BadRequestException('ساعت یا منطقه زمانی زمان‌بندی معتبر نیست'); }
     return this.reports.createSchedule(context.tenantId, context.userId, { ...input, config }, scope, next);
   }
 
@@ -165,6 +175,7 @@ export class ReportBuilderController {
   @RequirePermissions('tenant.reports.read')
   @Patch('schedules/:id/active')
   async setScheduleActive(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() input: { active: boolean; organizationId?: string }) {
+    if (!input || typeof input !== 'object') throw new BadRequestException('اطلاعات زمان‌بندی نامعتبر است');
     const context = this.context(user);
     await this.reports.resolveScope(context.tenantId, context.userId, input.organizationId);
     if (typeof input.active !== 'boolean') throw new BadRequestException('وضعیت زمان‌بندی نامعتبر است');
