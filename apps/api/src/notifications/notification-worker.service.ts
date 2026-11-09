@@ -55,15 +55,15 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
   private async enqueueOperationalAlertSlaEscalations() {
     const candidates = await this.dataSource.query(
       `SELECT a.id,a."tenantId",a."organizationId",a.title,a.severity,a.status,
-              a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",
-              CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE'
-                   WHEN a."resolutionDueAt" <= now() THEN 'RESOLUTION' END AS stage
+              a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",breach.stage
          FROM organization_operational_alerts a
          JOIN tenants t ON t.id=a."tenantId" AND t.status='ACTIVE'
-        WHERE a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
-          AND ((a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now())
-            OR a."resolutionDueAt" <= now())
-        ORDER BY a."resolutionDueAt" ASC NULLS LAST LIMIT 100`,
+         CROSS JOIN LATERAL (VALUES
+           ('RESPONSE'::text, a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now()),
+           ('RESOLUTION'::text, a."resolutionDueAt" <= now())
+         ) AS breach(stage,is_breached)
+        WHERE a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS') AND breach.is_breached
+        ORDER BY a."resolutionDueAt" ASC NULLS LAST, breach.stage LIMIT 100`,
     ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;status:string;assignedToUserId:string|null;responseDueAt:Date|null;resolutionDueAt:Date|null;stage:string}>;
     for (const candidate of candidates) {
       await this.dataSource.transaction(async manager => {
@@ -75,9 +75,12 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
           [candidate.id,candidate.tenantId,candidate.organizationId],
         );
         if (!alert) return;
-        const stage = alert."acknowledgedAt" == null && alert.responseDueAt && new Date(alert.responseDueAt) <= new Date()
-          ? 'RESPONSE'
-          : alert.resolutionDueAt && new Date(alert.resolutionDueAt) <= new Date() ? 'RESOLUTION' : null;
+        const now = new Date();
+        const stage = candidate.stage === 'RESPONSE'
+          ? alert."acknowledgedAt" == null && alert.responseDueAt && new Date(alert.responseDueAt) <= now ? 'RESPONSE' : null
+          : candidate.stage === 'RESOLUTION'
+            ? alert.resolutionDueAt && new Date(alert.resolutionDueAt) <= now ? 'RESOLUTION' : null
+            : null;
         if (!stage) return;
         const recipients = await manager.query(
           `SELECT DISTINCT u.id AS "userId",u.email,'ASSIGNEE' AS audience
