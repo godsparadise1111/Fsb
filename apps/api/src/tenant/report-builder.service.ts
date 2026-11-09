@@ -179,7 +179,10 @@ export class ReportBuilderService {
     const group = dimension ? ` GROUP BY ${dimension.expression} ORDER BY "value" DESC NULLS LAST` : '';
     const limit = spec.limit ?? 100;
     const sql = `SELECT ${select} FROM ${source.from} WHERE ${clauses.join(' AND ')}${group} LIMIT ${limit}`;
-    const rows = await this.dataSource.query(sql, params);
+    const rows = await this.dataSource.transaction(async manager => {
+      await manager.query("SET LOCAL statement_timeout = '10s'");
+      return manager.query(sql, params);
+    });
     return {
       source: spec.source, sourceLabel: source.label, groupBy: spec.groupBy ?? null,
       groupLabel: dimension?.label ?? null, aggregate: spec.aggregate,
