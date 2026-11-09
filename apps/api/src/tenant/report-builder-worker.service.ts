@@ -7,7 +7,7 @@ import { nextReportScheduleAt, ReportScheduleFrequency } from './report-schedule
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 
 type ReportJobRow = {
-  id: string; tenantId: string; ownerUserId: string; config: ReportSpec;
+  id: string; tenantId: string; ownerUserId: string; organizationId: string | null; config: ReportSpec;
   scopeOrganizationIds: string[] | string; isTenantWide: boolean; scheduleId: string | null;
   attempts: number;
 };
@@ -98,7 +98,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
         recipient: recipient.email,
         subject: 'گزارش زمان‌بندی‌شده آماده است',
         dedupeKey,
-        payload: { jobId: job.id, reportTitle: 'گزارش زمان‌بندی‌شده', sourceLabel: result.sourceLabel, rowCount: result.rowCount },
+        payload: { jobId: job.id, organizationId: job.organizationId, reportTitle: 'گزارش زمان‌بندی‌شده', sourceLabel: result.sourceLabel, rowCount: result.rowCount },
       });
     });
   }
