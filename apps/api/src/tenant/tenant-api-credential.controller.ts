@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { IsArray, IsIn, IsISO8601, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsArray, IsIn, IsISO8601, IsOptional, IsString, Length } from 'class-validator';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
@@ -16,7 +16,7 @@ class CreateApiCredentialDto {
 @Controller('tenant/api-credentials')
 @RequiresFeature('api_access')
 export class TenantApiCredentialController {
-  constructor(private readonly credentials: TenantApiCredentialService) {}
+  constructor(private readonly credentials: TenantApiCredentialService, private readonly reports: TenantReportsService) {}
 
   @RequirePermissions('tenant.api.manage')
   @Get()
