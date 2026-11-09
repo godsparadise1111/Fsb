@@ -5,9 +5,35 @@ export type EntityStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 export type ProcessDefinitionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type VersionStatus = 'DRAFT' | 'PUBLISHED' | 'RETIRED';
 export type ProcessInstanceStatus = 'RUNNING' | 'COMPLETED' | 'CANCELLED';
-export type WorkflowTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-export type TaskAction = 'APPROVED' | 'REJECTED';
-export type AssigneeActionStatus = 'PENDING' | TaskAction;
+export type WorkflowTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'RETURNED';
+export type TaskAction = 'APPROVED' | 'REJECTED' | 'RETURNED';
+export type AssigneeActionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'REASSIGNED' | 'RETURNED';
+export type WorkflowTransitionAction = TaskAction;
+export type ReassignmentTrigger = 'SLA' | 'INACTIVE_ASSIGNEE' | 'MANUAL';
+
+export interface WorkflowAssignmentTargets {
+  assigneeUserIds?: UUID[];
+  assigneePositionIds?: UUID[];
+  assigneeUnitIds?: UUID[];
+}
+
+export interface ProcessStepDefinition extends WorkflowAssignmentTargets {
+  title: string;
+  instructions?: string;
+  assignmentPolicy?: AssignmentPolicy;
+  dueInHours?: number;
+}
+
+export interface ProcessTransition {
+  fromStepIndex: number;
+  action: WorkflowTransitionAction;
+  toStepIndex: number | null;
+}
+
+export interface ProcessWorkflowSchema {
+  steps: ProcessStepDefinition[];
+  transitions?: ProcessTransition[];
+}
 
 export interface OrganizationSummary {
   id: UUID;
