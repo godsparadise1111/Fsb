@@ -1,0 +1,41 @@
+"use client";
+
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+
+const API=(process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001/api').replace(/\\/$/,'');
+type Organization={id:string;name:string};
+type Report={
+ tenant:{id:string;name:string};period:{from:string;to:string};summary:Record<string,number|null>;
+ responseCompliancePercent:number|null;resolutionCompliancePercent:number|null;
+ bySeverity:Array<Record<string,string|number|null>>;
+ byOrganization:Array<Record<string,string|number|null>>;
+ generatedAt:string;
+};
+const today=()=>new Date().toISOString().slice(0,10);
+const monthAgo=()=>new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+const labels:Record<string,string>={CRITICAL:'بحرانی',HIGH:'زیاد',MEDIUM:'متوسط',LOW:'کم'};
+
+export default function ReportsPage(){
+ const [token,setToken]=useState(''),[tenantId,setTenantId]=useState(''),[username,setUsername]=useState(''),[password,setPassword]=useState('');
+ const [loggedIn,setLoggedIn]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState('');
+ const [organizations,setOrganizations]=useState<Organization[]>([]),[organizationId,setOrganizationId]=useState('');
+ const [from,setFrom]=useState(monthAgo()),[to,setTo]=useState(today()),[report,setReport]=useState<Report|null>(null);
+ const request=useCallback(async(path:string)=>{const response=await fetch(API+path,{headers:{Authorization:`Bearer ${token}`,...(tenantId?{'X-Tenant-Id':tenantId}:{})}});const data=await response.json().catch(()=>null);if(!response.ok)throw new Error(data?.message||'دریافت گزارش ناموفق بود');return data;},[token,tenantId]);
+ useEffect(()=>{const t=localStorage.getItem('fsb.accessToken');const tenant=localStorage.getItem('fsb.tenantId')||'';setTenantId(tenant);if(t){setToken(t);setLoggedIn(true);}},[]);
+ useEffect(()=>{if(!loggedIn||!token)return;let alive=true;request('/organizations/accessible').then(items=>{if(alive)setOrganizations(items||[])}).catch(e=>{if(alive)setError(e.message)});return()=>{alive=false}},[loggedIn,token,request]);
+ const load=useCallback(async()=>{if(!token)return;setLoading(true);setError('');try{const q=new URLSearchParams({from,to});if(organizationId)q.set('organizationId',organizationId);const data=await request('/tenant/reports/operational-alert-sla?'+q.toString());setReport(data)}catch(e){setError(e instanceof Error?e.message:'خطا در گزارش')}finally{setLoading(false)}},[token,from,to,organizationId,request]);
+ useEffect(()=>{if(loggedIn&&token)void load()},[loggedIn,token,load]);
+ async function login(e:FormEvent){e.preventDefault();setLoading(true);setError('');try{const response=await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});const data=await response.json();if(!response.ok)throw new Error(data?.message||'ورود ناموفق بود');localStorage.setItem('fsb.accessToken',data.accessToken);if(tenantId.trim())localStorage.setItem('fsb.tenantId',tenantId.trim());setToken(data.accessToken);setLoggedIn(true);setPassword('')}catch(e){setError(e instanceof Error?e.message:'ورود ناموفق بود')}finally{setLoading(false)}}
+ const metric=(key:string)=>{const value=report?.summary?.[key];return value==null?'—':Number(value).toLocaleString('fa-IR',{maximumFractionDigits:2})};
+ const exportCsv=()=>{const params=new URLSearchParams({from,to});if(organizationId)params.set('organizationId',organizationId);window.open(API+'/tenant/reports/overview.csv?'+params.toString(),'_blank')};
+ if(!loggedIn)return <main style={{maxWidth:520,margin:'60px auto',padding:24,background:'#fff',borderRadius:16}}><h1>گزارش‌های مدیریتی</h1><p>برای مشاهده گزارش عملکرد SLA وارد شوید.</p><form onSubmit={login} style={{display:'grid',gap:12}}><input placeholder="نام کاربری" value={username} onChange={e=>setUsername(e.target.value)} required/><input placeholder="گذرواژه" type="password" value={password} onChange={e=>setPassword(e.target.value)} required/><input placeholder="شناسه مشتری (در صورت نیاز)" value={tenantId} onChange={e=>setTenantId(e.target.value)}/><button disabled={loading}>ورود</button></form>{error&&<p role="alert">{error}</p>}</main>;
+ return <main style={{maxWidth:1180,margin:'0 auto',padding:'28px 24px'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}><div><h1>گزارش عملکرد SLA هشدارها</h1><p>تحلیل زمان پاسخ، زمان حل و میزان پایبندی به تعهدات سازمانی</p></div><button onClick={exportCsv}>خروجی CSV گزارش عمومی</button></div>
+ <section style={{display:'flex',gap:12,flexWrap:'wrap',padding:16,background:'#fff',borderRadius:14,margin:'18px 0'}}><label>از تاریخ <input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>تا تاریخ <input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label><label>سازمان <select value={organizationId} onChange={e=>setOrganizationId(e.target.value)}><option value="">همه سازمان‌ها</option>{organizations.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label><button disabled={loading} onClick={()=>void load()}>{loading?'در حال دریافت…':'به‌روزرسانی'}</button></section>
+ {error&&<p role="alert" style={{color:'#a11'}}>{error}</p>}
+ {report&&<><p>مشتری: {report.tenant.name} · بازه: {new Date(report.period.from).toLocaleDateString('fa-IR')} تا {new Date(report.period.to).toLocaleDateString('fa-IR')}</p>
+ <section style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:12}}>{[['کل هشدارها',metric('totalAlerts')],['پاسخ ثبت‌شده',metric('responded')],['پاسخ نقض‌شده',metric('responseBreached')],['حل‌شده',metric('resolved')],['حل با تأخیر',metric('resolutionBreached')],['میانگین پاسخ (دقیقه)',metric('averageResponseMinutes')],['میانگین حل (ساعت)',metric('averageResolutionHours')],['میانه پاسخ (دقیقه)',metric('medianResponseMinutes')],['میانه حل (ساعت)',metric('medianResolutionHours')],['درصد انطباق پاسخ',report.responseCompliancePercent==null?'—':report.responseCompliancePercent.toLocaleString('fa-IR')+'٪'],['درصد انطباق حل',report.resolutionCompliancePercent==null?'—':report.resolutionCompliancePercent.toLocaleString('fa-IR')+'٪']].map(([label,value])=><article key={label} style={{background:'#fff',border:'1px solid #e4e8f0',borderRadius:12,padding:16}}><small>{label}</small><h2 style={{margin:'8px 0'}}>{value}</h2></article>)}</section>
+ <h2 style={{marginTop:28}}>عملکرد بر اساس شدت</h2><div style={{overflowX:'auto',background:'#fff',borderRadius:12}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:720}}><thead><tr>{['شدت','تعداد','پاسخ به‌موقع','نقض پاسخ','حل به‌موقع','نقض حل','میانگین پاسخ (دقیقه)','میانگین حل (ساعت)'].map(x=><th key={x} style={{padding:12,textAlign:'right',borderBottom:'1px solid #ddd'}}>{x}</th>)}</tr></thead><tbody>{report.bySeverity.map((r,i)=><tr key={i}>{['severity','total','responseMet','responseBreached','resolutionMet','resolutionBreached','averageResponseMinutes','averageResolutionHours'].map(k=><td key={k} style={{padding:12,borderBottom:'1px solid #eee'}}>{k==='severity'?labels[String(r[k])]||r[k]:r[k]==null?'—':Number(r[k]).toLocaleString('fa-IR')}</td>)}</tr>)}</tbody></table></div>
+ <h2 style={{marginTop:28}}>عملکرد بر اساس سازمان</h2><div style={{overflowX:'auto',background:'#fff',borderRadius:12}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:620}}><thead><tr>{['سازمان','کل','پاسخ به‌موقع','نقض پاسخ','حل به‌موقع','نقض حل'].map(x=><th key={x} style={{padding:12,textAlign:'right',borderBottom:'1px solid #ddd'}}>{x}</th>)}</tr></thead><tbody>{report.byOrganization.map((r,i)=><tr key={i}>{['organizationName','total','responseMet','responseBreached','resolutionMet','resolutionBreached'].map(k=><td key={k} style={{padding:12,borderBottom:'1px solid #eee'}}>{r[k]==null?'—':String(r[k])}</td>)}</tr>)}</tbody></table></div>
+ <small style={{display:'block',marginTop:16,color:'#667085'}}>گزارش بر اساس تاریخ شناسایی اولیه هشدارها گروه‌بندی شده است. زمان‌های پاسخ و حل فقط از رویدادهای ثبت‌شده محاسبه می‌شوند.</small></>}
+ </main>;
+}
