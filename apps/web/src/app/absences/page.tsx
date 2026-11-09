@@ -465,7 +465,7 @@ export default function AbsencesPage() {
             <p>{alert.description}</p>
             <div className="absence-alert-top">
               <span className={alert.slaStatus === 'RESPONSE_BREACHED' || alert.slaStatus === 'RESOLUTION_BREACHED' ? 'absence-pill expired' : alert.slaStatus === 'AT_RISK' ? 'absence-pill upcoming' : 'absence-pill active'}>
-                {alert.slaStatus === 'RESPONSE_BREACHED' ? 'نقض مهلت پاسخ' : alert.slaStatus === 'RESOLUTION_BREACHED' ? 'نقض مهلت حل' : alert.slaStatus === 'AT_RISK' ? 'نزدیک مهلت SLA' : 'در محدوده SLA'}
+                {alert.slaStatus === 'RESPONSE_BREACHED' ? 'نقض مهلت پاسخ' : alert.slaStatus === 'RESOLUTION_BREACHED' ? 'نقض مهلت حل' : alert.slaStatus === 'AT_RISK' ? 'نزدیک مهلت SLA' : alert.slaStatus === 'DISABLED' ? 'SLA غیرفعال' : 'در محدوده SLA'}
               </span>
               <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString('fa-IR') : '—'} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString('fa-IR') : '—'}</small>
             </div>
