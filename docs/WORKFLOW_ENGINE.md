@@ -80,6 +80,14 @@
 - `POST /api/process-instances`: شروع فرایند با تخصیص اولیه به کاربر، سمت یا واحد؛ اگر مقصد در بدنه ارسال نشود، تنظیم مرحله اول نسخه منتشرشده استفاده می‌شود.
 - `POST /api/tasks/:id/actions`: اقدام APPROVED/REJECTED/RETURNED با هدر اجباری `Idempotency-Key`.
 - `POST /api/tasks/:id/reassign`: ارجاع مجدد وظیفه فعال به کاربران، سمت‌ها یا واحدهای همان سازمان؛ نیازمند مجوز سازمانی `workflow.tasks.reassign` و دلیل ۳ تا ۱۰۰۰ کاراکتری است.
+
+نمونه بدنه برای ارجاع به یک سمت:
+
+```json
+{ "assigneePositionIds": ["22222222-2222-4222-8222-222222222222"], "reason": "تغییر مسئولیت واحد" }
+```
+
+در بدنه می‌توان به‌جای سمت، `assigneeUserIds` یا `assigneeUnitIds` فرستاد؛ ترکیب منابع نیز مجاز است.
 - `GET /api/tasks/:id/history` و `GET /api/tasks/:id/lifecycle`: تاریخچه اقدام و رویدادهای چرخه عمر.
 
 مهاجرت `20261109_026_workflow_task_reassignment_permission.sql` مجوز مستقل ارجاع مجدد را ثبت و مقدار trigger نوع MANUAL را به تاریخچه ارجاع اضافه می‌کند.
