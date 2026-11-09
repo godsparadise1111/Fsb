@@ -19,7 +19,7 @@ CREATE TABLE organization_operational_alerts (
  CONSTRAINT "CK_operational_alert_severity" CHECK (severity IN ('CRITICAL','HIGH','MEDIUM','LOW')),
  CONSTRAINT "CK_operational_alert_status" CHECK (status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS','RESOLVED','IGNORED')),
  CONSTRAINT "CK_operational_alert_ack_pair" CHECK (("acknowledgedByUserId" IS NULL)=("acknowledgedAt" IS NULL)),
- CONSTRAINT "CK_operational_alert_resolution_pair" CHECK (("resolvedAt" IS NULL)=("resolvedByUserId" IS NULL)),
+ CONSTRAINT "CK_operational_alert_resolution_pair" CHECK ("resolvedAt" IS NOT NULL OR "resolvedByUserId" IS NULL),
  CONSTRAINT "CK_operational_alert_resolution_note" CHECK (status <> 'RESOLVED' OR "resolutionNote" IS NOT NULL)
 );
 CREATE INDEX "IDX_operational_alert_org_status_severity" ON organization_operational_alerts ("tenantId","organizationId",status,severity,"lastDetectedAt" DESC);
