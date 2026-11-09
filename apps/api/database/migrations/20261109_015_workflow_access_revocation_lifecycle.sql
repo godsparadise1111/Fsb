@@ -36,10 +36,10 @@ CREATE INDEX "IDX_workflow_task_lifecycle_user"
   ON workflow_task_lifecycle_events ("tenantId", "affectedUserId", "createdAt")
   WHERE "affectedUserId" IS NOT NULL;
 
-CREATE OR REPLACE FUNCTION fsb_reject_workflow_task_lifecycle_mutation() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION fsb_reject_workflow_task_lifecycle_mutation() RETURNS trigger LANGUAGE plpgsql AS $function$
 BEGIN
   RAISE EXCEPTION 'Workflow task lifecycle events are append-only';
-END $;
+END $function$;
 CREATE TRIGGER "TR_workflow_task_lifecycle_append_only"
   BEFORE UPDATE OR DELETE ON workflow_task_lifecycle_events
   FOR EACH ROW EXECUTE FUNCTION fsb_reject_workflow_task_lifecycle_mutation();
