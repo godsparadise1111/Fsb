@@ -5,7 +5,7 @@ import { User } from '../../identity/entities/user.entity';
 @Entity('file_attachments')
 export class FileAttachment {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') submissionId: string;
   @ManyToOne(() => FormSubmission, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'submissionId' }) submission: FormSubmission;
