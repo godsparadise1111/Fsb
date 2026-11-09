@@ -24,6 +24,8 @@ import { TenantReportsService } from './tenant-reports.service';
 import { TenantReportsController } from './tenant-reports.controller';
 import { ReportBuilderController } from './report-builder.controller';
 import { ReportBuilderService } from './report-builder.service';
+import { ReportBuilderExportsService } from './report-builder-exports.service';
+import { ReportBuilderWorker } from './report-builder-worker.service';
 import { TenantDashboardService } from './tenant-dashboard.service';
 import { TenantDashboardController } from './tenant-dashboard.controller';
 import { PlatformWorkflowHealthController } from './platform-workflow-health.controller';
@@ -36,7 +38,7 @@ import { TenantApiCredentialController, VersionedTenantPublicApiController } fro
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant, TenantMembership, TenantInvitation, TenantAuditLog, NotificationOutbox, User]), NotificationsModule],
   controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController, ReportBuilderController, TenantDashboardController, PlatformWorkflowHealthController, PlatformCommercialController, TenantCommercialController, TenantApiCredentialController, VersionedTenantPublicApiController],
-  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, ReportBuilderService, TenantDashboardService, PlatformWorkflowHealthService, CommercialService, TenantApiCredentialService],
+  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, ReportBuilderService, ReportBuilderExportsService, ReportBuilderWorker, TenantDashboardService, PlatformWorkflowHealthService, CommercialService, TenantApiCredentialService],
   exports: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService],
 })
 export class TenantModule {}
