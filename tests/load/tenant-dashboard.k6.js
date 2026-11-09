@@ -18,7 +18,9 @@ export const options = {
 
 export default function () {
   if (!base || !token) throw new Error('Set BASE_URL and ACCESS_TOKEN to an isolated staging environment');
-  if (!/(localhost|127\\.0\\.0\\.1|staging|test)/i.test(base)) throw new Error('Refusing to load test a non-staging host');
+  const host = base.replace(/^https?:\\/\\//i, '').split('/')[0].split(':')[0].toLowerCase();
+  const isStaging = host === 'localhost' || host === '127.0.0.1' || host === 'staging' || host.startsWith('staging.') || host.includes('.staging.') || host.startsWith('test.') || host.endsWith('.test') || host.includes('.test.');
+  if (!isStaging) throw new Error('Refusing to load test a non-staging host');
   const response = http.get(`${base}/api/tenant/dashboard/me`, {
     headers: { Authorization: `Bearer ${token}` },
     tags: { endpoint: 'tenant_dashboard_read' },
