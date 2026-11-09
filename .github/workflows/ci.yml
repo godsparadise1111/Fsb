@@ -15,6 +15,8 @@ jobs:
         run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
       - run: npm run build
       - run: npm run test:workflow --workspace @fsb/api
+      - name: Validate operations shell scripts
+        run: for script in scripts/ops/*.sh; do sh -n "$script"; done
       - name: Validate production Compose configuration
         run: |
           cp .env.example .env

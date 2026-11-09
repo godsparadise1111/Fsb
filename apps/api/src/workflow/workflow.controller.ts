@@ -15,7 +15,7 @@ import { RequiresFeature } from '../auth/decorators/requires-feature.decorator';
 export class WorkflowController {
   constructor(private readonly workflow: WorkflowService) {}
   @RequirePermissions('workflow.start')
-  @Post('process-instances') start(@Body() dto: StartProcessDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.startProcess({ ...dto, startedByUserId: user.sub }); }
+  @Post('process-instances') start(@Body() dto: StartProcessDto, @CurrentUser() user: AuthenticatedUser) { return this.workflow.startProcess({ ...dto, startedByUserId: user.sub }, user.tenantId); }
   @RequirePermissions('workflow.history.read')
   @Get('process-instances/my')
   myProcesses(@CurrentUser() user: AuthenticatedUser) {

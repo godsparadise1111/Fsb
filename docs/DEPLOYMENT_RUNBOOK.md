@@ -47,7 +47,7 @@ git add package-lock.json
 git commit -m "build: add root npm workspace lockfile"
 ```
 
-اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند. Dockerfileها در صورت وجود lockfile از `npm ci` استفاده می‌کنند؛ در غیر این صورت فقط برای Buildهای موقت به `npm install` fallback می‌کنند. Preflight تولید بدون lockfile commitشده عمداً متوقف می‌شود.
+اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند. Dockerfileهای API و Web برای imageهای Production وجود lockfile را اجباری می‌کنند و فقط با `npm ci` نصب می‌کنند؛ Build بدون `package-lock.json` عمداً شکست می‌خورد. Preflight علاوه بر secrets، جداسازی پرچم Workerها و محدودبودن پورت API/Web به loopback را بررسی می‌کند.
 
 در Windows PowerShell نیز می‌توانید همین دو دستور npm را مستقیم از ریشه اجرا کنید: `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` و سپس `npm ci --no-audit --no-fund`.
 
@@ -73,11 +73,16 @@ DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-m
 - قبل و بعد از Migration، ledger/checksum، جدول‌ها، قیود FK و ایندکس‌ها را ثبت و بررسی کنید.
 - اسکریپت Backup زیر به `age` و کلید عمومی گیرنده نیاز دارد و هم DB و هم فایل‌های خصوصی را رمزگذاری می‌کند:
 
+ابتدا API و همه Workerها را متوقف کنید تا Snapshot دیتابیس و فایل‌های خصوصی با هم سازگار باشد؛ DB باید روشن بماند:
+
 ```sh
-AGE_RECIPIENT=age1... sh scripts/ops/backup-staging.sh
+docker compose --env-file .env -f compose.production.yaml stop api report-worker notification-worker workflow-automation-worker workflow-recovery-worker
+FSB_BACKUP_QUIESCE_CONFIRMED=YES AGE_RECIPIENT=age1... sh scripts/ops/backup-staging.sh
+# پس از موفقیت Backup سرویس‌ها را دوباره بالا بیاورید.
+docker compose --env-file .env -f compose.production.yaml up -d api report-worker notification-worker workflow-automation-worker workflow-recovery-worker
 ```
 
-فایل‌های رمزگذاری‌شده و checksum را به مقصدی خارج از میزبان Docker منتقل کنید. Backup روی همان دیسک تنها نسخه پشتیبان محسوب نمی‌شود.
+فایل‌های رمزگذاری‌شده و checksum را به مقصدی خارج از میزبان Docker منتقل کنید. اسکریپت Migration وجود sidecar با پسوند `.sha256` را اجباری می‌کند و checksum را پیش از هر تغییری بررسی می‌کند؛ sidecar به‌صورت relocatable نوشته می‌شود. Backup روی همان دیسک تنها نسخه پشتیبان محسوب نمی‌شود.
 
 ## 5. شروع و کنترل سرویس‌ها
 
@@ -90,6 +95,7 @@ docker compose --env-file .env -f compose.production.yaml up -d report-worker no
 docker compose --env-file .env -f compose.production.yaml up -d workflow-automation-worker workflow-recovery-worker
 docker compose --env-file .env -f compose.production.yaml ps
 docker compose --env-file .env -f compose.production.yaml logs --tail=200 api
+sh scripts/ops/deploy-smoke.sh
 ```
 
 Reverse proxy باید TLS را خاتمه دهد و فقط به پورت‌های loopback وب و API متصل شود. PostgreSQL را مستقیم روی اینترنت منتشر نکنید.
@@ -135,4 +141,5 @@ RPO/RTO تا زمان تمرین بازیابی واقعی و تصویب مال�
 - Migrationها اجرا نشده‌اند.
 - SMTP واقعی، خروجی PDF/XLSX و نمایش فونت فارسی روی image ساخته‌شده آزمایش نشده‌اند.
 - Build و تست Docker/Compose اجرا نشده‌اند.
-- Lockfile ریشه هنوز موجود نیست.
+- Lockfile ریشه هنوز موجود نیست؛ Dockerfileهای Production تا commit شدن آن Build را متوقف می‌کنند.
+- `scripts/ops/deploy-smoke.sh` پس از بالا آمدن سرویس‌ها API readiness، پاسخ HTTP وب، وضعیت هفت سرویس و ثبت Migrationهای 024/025/026 در ledger را کنترل می‌کند؛ اجرای آن روی Staging هنوز انجام نشده است.

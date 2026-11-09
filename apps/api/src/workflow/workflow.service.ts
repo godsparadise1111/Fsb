@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { ProcessVersion } from '../process/entities/process-version.entity';
 import { Organization } from '../organization/entities/organization.entity';
 import { User } from '../identity/entities/user.entity';
@@ -25,6 +25,9 @@ import { CreateOrganizationSubstitutionDto } from './dto/create-organization-sub
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
+import { isAssignmentPolicySatisfied } from './workflow-assignment-policy';
+import { resolveWorkflowTransitionTarget } from './workflow-transition';
+import { resolveWorkflowStepAssignees } from './workflow-assignees';
 
 @Injectable()
 export class WorkflowService {
@@ -86,91 +89,13 @@ export class WorkflowService {
     schema: Record<string, unknown>, fromStepIndex: number, action: 'APPROVED' | 'REJECTED' | 'RETURNED',
     fallbackTarget: number | null, requireExplicit = false,
   ): number | null {
-    const transitions = schema?.transitions;
-    if (transitions === undefined) return fallbackTarget;
-    if (!Array.isArray(transitions)) throw new ConflictException('Published process transition graph is invalid');
-    const matches = transitions.filter((edge: any) =>
-      edge && edge.fromStepIndex === fromStepIndex && edge.action === action,
-    );
-    if (!matches.length) {
-      if (requireExplicit) throw new BadRequestException(`No ${action} transition is configured for step ${fromStepIndex + 1}`);
-      return fallbackTarget;
-    }
-    if (matches.length !== 1) throw new ConflictException('Process transition graph contains ambiguous rules');
-    const target = matches[0].toStepIndex;
-    if (target === null) return null;
-    if (!Number.isInteger(target) || target < 0) throw new ConflictException('Process transition target is invalid');
-    return target as number;
+    return resolveWorkflowTransitionTarget(schema, fromStepIndex, action, fallbackTarget, requireExplicit);
   }
 
-  private async resolveStepAssignees(
+  private resolveStepAssignees(
     manager: EntityManager, organizationId: string, tenantId: string, config: Record<string, unknown>,
   ): Promise<string[]> {
-    const readIds = (field: string): string[] => {
-      const value = config[field];
-      if (value === undefined) return [];
-      if (!Array.isArray(value) || value.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
-        throw new BadRequestException(`Invalid ${field} in published process step`);
-      }
-      return [...new Set(value as string[])];
-    };
-    const userIds = readIds('assigneeUserIds');
-    const positionIds = readIds('assigneePositionIds');
-    const unitIds = readIds('assigneeUnitIds');
-    if (userIds.length + positionIds.length + unitIds.length === 0) {
-      throw new BadRequestException('A workflow step must target users, positions or organizational units');
-    }
-    if (userIds.length + positionIds.length + unitIds.length > 50) {
-      throw new BadRequestException('A workflow step cannot contain more than 50 assignment targets');
-    }
-    if (positionIds.length) {
-      const [valid] = await manager.query(
-        `SELECT count(*)::int AS count FROM positions p
-          JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
-         WHERE p.id=ANY($2::uuid[]) AND p."isActive"=true`,
-        [organizationId, positionIds],
-      );
-      if (Number(valid?.count ?? 0) !== positionIds.length) {
-        throw new BadRequestException('Every assigned position must be active and belong to the process organization');
-      }
-    }
-    if (unitIds.length) {
-      const [valid] = await manager.query(
-        'SELECT count(*)::int AS count FROM organization_units WHERE id=ANY($2::uuid[]) AND "organizationId"=$1 AND "isActive"=true',
-        [organizationId, unitIds],
-      );
-      if (Number(valid?.count ?? 0) !== unitIds.length) {
-        throw new BadRequestException('Every assigned unit must be active and belong to the process organization');
-      }
-    }
-    const resolved = await manager.query(
-      `SELECT DISTINCT up."userId"
-         FROM user_positions up
-         JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
-         JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
-         JOIN tenant_memberships tm ON tm."tenantId"=$2 AND tm."userId"=up."userId" AND tm."isActive"=true
-         JOIN users u ON u.id=up."userId" AND u."isActive"=true
-         JOIN organizations org ON org.id=ou."organizationId" AND org."tenantId"=$2 AND org."isActive"=true
-         JOIN tenants t ON t.id=org."tenantId" AND t.status='ACTIVE'
-        WHERE up."isActive"=true AND up."validFrom"<=now()
-          AND (up."validUntil" IS NULL OR up."validUntil">=now())
-          AND (
-            up."userId"=ANY($3::uuid[])
-            OR p.id=ANY($4::uuid[])
-            OR ou.id=ANY($5::uuid[])
-          )
-        ORDER BY up."userId" LIMIT 51`,
-      [organizationId, tenantId, userIds, positionIds, unitIds],
-    ) as Array<{ userId: string }>;
-    const resolvedIds = resolved.map(row => row.userId);
-    if (!resolvedIds.length || resolvedIds.length > 50) {
-      throw new BadRequestException('Assignment targets must resolve to between 1 and 50 active users in this organization');
-    }
-    const resolvedSet = new Set(resolvedIds);
-    if (userIds.some(id => !resolvedSet.has(id))) {
-      throw new BadRequestException('Every directly assigned user must have an active tenant membership and position in the process organization');
-    }
-    return resolvedIds;
+    return resolveWorkflowStepAssignees(manager, organizationId, tenantId, config);
   }
 
   private async createTaskForStep(manager: EntityManager, instance: ProcessInstance, stepIndex: number, tenantId: string) {
@@ -297,12 +222,21 @@ export class WorkflowService {
     }
   }
 
-  async startProcess(dto: StartProcessDto & { startedByUserId: string }) {
+  async startProcess(dto: StartProcessDto & { startedByUserId: string }, tenantId: string | null | undefined) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
+      const organizationScope = await manager.query(
+        `SELECT o.id FROM organizations o JOIN tenants t ON t.id=o.\"tenantId\"
+          WHERE o.id=$1 AND o.\"tenantId\"=$2 AND o.\"isActive\"=true AND t.status='ACTIVE'
+          FOR SHARE OF o,t`,
+        [dto.organizationId, tenantId],
+      );
+      if (!organizationScope.length) throw new NotFoundException('Active organization not found in the current tenant');
       const version = await manager.findOne(ProcessVersion, { where: { id: dto.processVersionId, status: 'PUBLISHED' }, relations: { definition: true } });
       if (!version) throw new NotFoundException('Published process version not found');
       if (version.definition.organizationId !== dto.organizationId) throw new BadRequestException('Process version does not belong to the selected organization');
-      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, tenantId, isActive: true }, relations: { tenant: true } });
       if (!organization) throw new NotFoundException('Active organization not found');
       if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
       const configuredSteps = Array.isArray(version.schema?.steps) ? version.schema.steps as Array<Record<string, unknown>> : [];
@@ -313,7 +247,7 @@ export class WorkflowService {
       const schemaHasTargets = ['assigneeUserIds', 'assigneePositionIds', 'assigneeUnitIds']
         .some(field => Array.isArray(firstStep[field]) && (firstStep[field] as unknown[]).length > 0);
       const schemaUserIds = schemaHasTargets
-        ? await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, firstStep)
+        ? await this.resolveStepAssignees(manager, dto.organizationId, organization.tenant.id, firstStep)
         : [];
       let uniqueIds = schemaUserIds;
       if (hasRequestTargets) {
@@ -322,7 +256,7 @@ export class WorkflowService {
           assigneePositionIds: dto.initialAssigneePositionIds ?? [],
           assigneeUnitIds: dto.initialAssigneeUnitIds ?? [],
         };
-        const requestedUserIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, requestTargets);
+        const requestedUserIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenant.id, requestTargets);
         if (schemaHasTargets && (
           requestedUserIds.length !== schemaUserIds.length ||
           requestedUserIds.some(userId => !schemaUserIds.includes(userId))
@@ -350,7 +284,7 @@ export class WorkflowService {
            JOIN users u ON u.id=up."userId" AND u."isActive"=true
           WHERE up."userId"=$3 AND up."isActive"=true AND up."validFrom"<=now()
             AND (up."validUntil" IS NULL OR up."validUntil">=now()) LIMIT 1`,
-        [dto.organizationId, organization.tenantId, dto.startedByUserId],
+        [dto.organizationId, organization.tenant.id, dto.startedByUserId],
       );
       if (!starterPosition.length) throw new BadRequestException('The process starter must have an active tenant membership and position in the selected organization');
       const firstDueAt = this.deadlineFromHours(configuredSteps[0]?.dueInHours);
@@ -368,9 +302,9 @@ export class WorkflowService {
         status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
-      await this.enqueueTaskAssignmentNotifications(manager, organization.tenantId, task.id, uniqueIds);
+      await this.enqueueTaskAssignmentNotifications(manager, organization.tenant.id, task.id, uniqueIds);
       await this.tenantAudit.record(manager, {
-        tenantId: organization.tenantId, actorUserId: dto.startedByUserId,
+        tenantId: organization.tenant.id, actorUserId: dto.startedByUserId,
         action: 'workflow.process.started', resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
         metadata: { organizationId: dto.organizationId, processVersionId: version.id, initialTaskId: task.id, assigneeCount: uniqueIds.length, assignmentPolicy: task.assignmentPolicy },
       });
@@ -510,7 +444,7 @@ export class WorkflowService {
       }
       if (!assignment) {
         const delegations = await manager.find(TaskDelegation, {
-          where: { taskId, tenantId, toUserId: userId, revokedAt: null },
+          where: { taskId, tenantId, toUserId: userId, revokedAt: IsNull() },
           lock: { mode: 'pessimistic_write' },
         });
         const active = delegations.filter(item => item.startsAt <= new Date() && item.endsAt > new Date());
@@ -557,10 +491,7 @@ export class WorkflowService {
       });
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
-      const activeAssignments = all.filter(item => item.status !== 'REASSIGNED');
-      const completed = task.assignmentPolicy === 'ANY_ASSIGNEE'
-        ? activeAssignments.some(item => item.status === 'APPROVED')
-        : activeAssignments.length > 0 && activeAssignments.every(item => item.status === 'APPROVED');
+      const completed = isAssignmentPolicySatisfied(task.assignmentPolicy, all);
       if (dto.action === 'RETURNED') {
         const instance = await manager.findOne(ProcessInstance, {
           where: { id: task.processInstanceId }, relations: { processVersion: true },
@@ -660,7 +591,7 @@ export class WorkflowService {
         }
         task.status = 'COMPLETED';
         task.completedAt = new Date();
-        const instance = await manager.findOne({ where: { id: task.processInstanceId }, relations: { processVersion: true } });
+        const instance = await manager.findOne(ProcessInstance, { where: { id: task.processInstanceId }, relations: { processVersion: true } });
         if (!instance) throw new NotFoundException('Process instance not found');
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
@@ -685,7 +616,7 @@ export class WorkflowService {
       } else {
         task.status = 'IN_PROGRESS';
       }
-      const remainingDelegations = await manager.find(TaskDelegation, { where: { taskId, tenantId, revokedAt: null } });
+      const remainingDelegations = await manager.find(TaskDelegation, { where: { taskId, tenantId, revokedAt: IsNull() } });
       for (const delegation of remainingDelegations) {
         if (task.status === 'COMPLETED' || task.status === 'CANCELLED' || task.status === 'RETURNED' || delegation.fromUserId === userId) {
           delegation.revokedAt = new Date();
@@ -822,7 +753,7 @@ export class WorkflowService {
       });
       if (!ownAssignment) throw new ForbiddenException('Only the original pending assignee may delegate their assignment');
       const existing = await manager.findOne(TaskDelegation, {
-        where: { taskId, fromUserId: actorUserId, revokedAt: null },
+        where: { taskId, fromUserId: actorUserId, revokedAt: IsNull() },
         lock: { mode: 'pessimistic_write' },
       });
       if (existing && existing.endsAt > now) throw new ConflictException('An active delegation already exists for this assignment');

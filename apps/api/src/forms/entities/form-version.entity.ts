@@ -5,7 +5,7 @@ import { FormDefinition } from './form-definition.entity';
 @Unique('UQ_form_version_number', ['definitionId', 'versionNumber'])
 export class FormVersion {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') definitionId: string;
   @ManyToOne(() => FormDefinition, definition => definition.versions, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'definitionId' }) definition: FormDefinition;

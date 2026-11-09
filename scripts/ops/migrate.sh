@@ -6,8 +6,12 @@ export LC_ALL=C
 : "${DATABASE_URL:?Set DATABASE_URL for the target Staging database}"
 : "${FSB_MIGRATION_BACKUP_FILE:?Set FSB_MIGRATION_BACKUP_FILE to a verified pre-migration backup}"
 [ -s "$FSB_MIGRATION_BACKUP_FILE" ] || { echo "ERROR: pre-migration backup is missing or empty." >&2; exit 1; }
+[ -s "$FSB_MIGRATION_BACKUP_FILE.sha256" ] || { echo "ERROR: pre-migration backup checksum sidecar is missing." >&2; exit 1; }
 command -v psql >/dev/null 2>&1 || { echo "ERROR: psql is required." >&2; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "ERROR: sha256sum is required." >&2; exit 1; }
+backup_dir="$(dirname "$FSB_MIGRATION_BACKUP_FILE")"
+backup_name="$(basename "$FSB_MIGRATION_BACKUP_FILE")"
+(cd "$backup_dir" && sha256sum -c "$backup_name.sha256")
 
 migration_dir="apps/api/database/migrations"
 [ -d "$migration_dir" ] || { echo "ERROR: migration directory not found: $migration_dir" >&2; exit 1; }

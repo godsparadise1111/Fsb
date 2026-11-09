@@ -1,11 +1,12 @@
 import { ConflictException, Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Organization } from '../organization/entities/organization.entity';
 import { ProcessDefinition } from './entities/process-definition.entity';
 import { ProcessVersion } from './entities/process-version.entity';
 import { CreateProcessDto } from './dto/create-process.dto';
 import { CreateProcessVersionDto } from './dto/create-process-version.dto';
+import { TenantAuditService } from '../tenant/tenant-audit.service';
 
 @Injectable()
 export class ProcessService {
@@ -14,14 +15,29 @@ export class ProcessService {
     @InjectRepository(ProcessDefinition) private readonly definitions: Repository<ProcessDefinition>,
     @InjectRepository(ProcessVersion) private readonly versions: Repository<ProcessVersion>,
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
+    private readonly audit: TenantAuditService,
   ) {}
-  async createDefinition(dto: CreateProcessDto) {
+
+  private async lockActiveDefinitionScope(manager: EntityManager, definitionId: string, tenantId: string) {
+    const rows = await manager.query(
+      `SELECT pd.id FROM process_definitions pd
+         JOIN organizations o ON o.id=pd."organizationId" AND o."tenantId"=$2 AND o."isActive"=true
+         JOIN tenants t ON t.id=o."tenantId" AND t.status='ACTIVE'
+        WHERE pd.id=$1
+        FOR SHARE OF pd,o,t`,
+      [definitionId, tenantId],
+    );
+    if (!rows.length) throw new NotFoundException('Process definition not found in the active tenant');
+  }
+
+  async createDefinition(dto: CreateProcessDto, tenantId: string | null | undefined, actorUserId: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       const [organization] = await manager.query(
         `SELECT o.id,o."tenantId",t.status AS "tenantStatus"
            FROM organizations o JOIN tenants t ON t.id=o."tenantId"
-          WHERE o.id=$1 AND o."isActive"=true FOR UPDATE OF t`,
-        [dto.organizationId],
+          WHERE o.id=$1 AND o."tenantId"=$2 AND o."isActive"=true FOR SHARE OF o,t`,
+        [dto.organizationId, tenantId],
       );
       if (!organization) throw new NotFoundException('Active organization not found');
       if (organization.tenantStatus !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
@@ -49,37 +65,59 @@ export class ProcessService {
       if (await definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) {
         throw new ConflictException('Process code already exists in this organization');
       }
-      return definitions.save(definitions.create({ ...dto, status: 'DRAFT' }));
+      const created = await definitions.save(definitions.create({ ...dto, status: 'DRAFT' }));
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_definition.created', resourceType: 'PROCESS_DEFINITION', resourceId: created.id, metadata: { organizationId: dto.organizationId, code: dto.code } });
+      return created;
     });
   }
-  listDefinitions(organizationId?: string, tenantId?: string | null) {
+  listDefinitions(organizationId: string | undefined, tenantId: string | null | undefined) {
+    if (!tenantId) return Promise.resolve([]);
     const query = this.definitions.createQueryBuilder('definition')
       .innerJoinAndSelect('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
       .orderBy('definition.name', 'ASC');
+    query.andWhere('organization.tenantId = :tenantId AND organization.isActive = true', { tenantId });
     if (organizationId) query.andWhere('definition.organizationId = :organizationId', { organizationId });
-    else if (tenantId) query.andWhere('organization.tenantId = :tenantId', { tenantId });
     return query.getMany();
   }
-  async createVersion(definitionId: string, dto: CreateProcessVersionDto) {
+  async createVersion(definitionId: string, dto: CreateProcessVersionDto, tenantId: string | null | undefined, actorUserId: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveDefinitionScope(manager, definitionId, tenantId);
       const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
-      if (!definition) throw new NotFoundException('Process definition not found');
+      if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be changed');
       const latest = await manager.findOne(ProcessVersion, { where: { definitionId }, order: { versionNumber: 'DESC' } });
-      return manager.save(ProcessVersion, manager.create(ProcessVersion, {
+      const created = await manager.save(ProcessVersion, manager.create(ProcessVersion, {
         definitionId, versionNumber: (latest?.versionNumber ?? 0) + 1, status: 'DRAFT',
         schema: dto.schema, changeNote: dto.changeNote ?? null,
       }));
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_version.created', resourceType: 'PROCESS_VERSION', resourceId: created.id, metadata: { definitionId, versionNumber: created.versionNumber, changeNote: created.changeNote } });
+      return created;
     });
   }
-  async listVersions(definitionId: string) {
-    if (!await this.definitions.exist({ where: { id: definitionId } })) throw new NotFoundException('Process definition not found');
-    return this.versions.find({ where: { definitionId }, order: { versionNumber: 'DESC' } });
+  async listVersions(definitionId: string, tenantId: string | null | undefined) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const rows = await this.versions.createQueryBuilder('version')
+      .innerJoin('version.definition', 'definition')
+      .innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
+      .where('version.definitionId = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+      .orderBy('version.versionNumber', 'DESC').getMany();
+    if (!rows.length && !await this.definitions.createQueryBuilder('definition')
+      .innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
+      .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId }).getExists()) {
+      throw new NotFoundException('Process definition not found');
+    }
+    return rows;
   }
-  async publishVersion(definitionId: string, versionId: string) {
+  async publishVersion(definitionId: string, versionId: string, tenantId: string | null | undefined, actorUserId: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveDefinitionScope(manager, definitionId, tenantId);
       const definition = await manager.findOne(ProcessDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
-      if (!definition) throw new NotFoundException('Process definition not found');
+      if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived process cannot be published');
       const version = await manager.findOne(ProcessVersion, { where: { id: versionId, definitionId }, lock: { mode: 'pessimistic_write' } });
       if (!version) throw new NotFoundException('Process version not found');
@@ -311,13 +349,21 @@ export class ProcessService {
       await manager.save(version);
       definition.status = 'PUBLISHED';
       await manager.save(definition);
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_version.published', resourceType: 'PROCESS_VERSION', resourceId: version.id, metadata: { definitionId, versionNumber: version.versionNumber } });
       return version;
     });
   }
-  async archiveDefinition(id: string) {
-    const definition = await this.definitions.findOneBy({ id });
-    if (!definition) throw new NotFoundException('Process definition not found');
-    definition.status = 'ARCHIVED';
-    return this.definitions.save(definition);
+  async archiveDefinition(id: string, tenantId: string | null | undefined, actorUserId: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      await this.lockActiveDefinitionScope(manager, id, tenantId);
+      const definition = await manager.findOne(ProcessDefinition, { where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!definition || definition.tenantId !== tenantId) throw new NotFoundException('Process definition not found');
+      if (definition.status === 'ARCHIVED') return definition;
+      definition.status = 'ARCHIVED';
+      const archived = await manager.save(definition);
+      await this.audit.record(manager, { tenantId, actorUserId, action: 'workflow.process_definition.archived', resourceType: 'PROCESS_DEFINITION', resourceId: definition.id, metadata: { organizationId: definition.organizationId, code: definition.code } });
+      return archived;
+    });
   }
 }

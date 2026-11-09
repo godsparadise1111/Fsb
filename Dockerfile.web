@@ -3,7 +3,7 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY . .
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi && npm run build --workspace @fsb/web
+RUN test -s package-lock.json && npm ci --no-audit --no-fund && npm run build --workspace @fsb/web
 
 FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production
