@@ -176,7 +176,7 @@ export class ReportBuilderService {
       const rawLabel = item.label ?? item.title ?? item.caption ?? item.name;
       const fieldId = typeof rawId === 'string' ? rawId.trim() : '';
       const label = typeof rawLabel === 'string' ? rawLabel.trim() : '';
-      const excluded = /password|secret|file|attachment|signature|hidden|image|camera|document/.test(rawType) || item.sensitive === true || item.isSensitive === true || item.isHidden === true;
+      const excluded = /password|secret|file|attachment|signature|hidden|image|camera|document|email|phone|mobile|national.?id|identity/.test(rawType) || /e-?mail|phone|mobile|موبایل|تلفن|شماره تماس|کد ملی|شناسه ملی|آدرس/.test(label) || item.sensitive === true || item.isSensitive === true || item.isHidden === true;
       const type: Field['type'] | null = /number|numeric|decimal|integer|currency|amount|rating/.test(rawType) ? 'number'
         : /date|time/.test(rawType) ? 'date'
         : /text|string|email|phone|select|radio|checkbox|boolean|lookup|dropdown|switch|combobox|autocomplete|url/.test(rawType) ? 'text' : null;
