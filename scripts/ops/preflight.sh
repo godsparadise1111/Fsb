@@ -83,8 +83,10 @@ else {
   try { decoded = Buffer.from(key, 'base64'); } catch { decoded = Buffer.alloc(0); }
 }
 if (decoded.length !== 32) fail('FSB_OUTBOX_ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex chars or base64).');
-required('FSB_SMTP_HOST');
-required('FSB_EMAIL_FROM');
+const smtpHost = required('FSB_SMTP_HOST');
+if (/example\\.com|localhost|127\\.0\\.0\\.1/i.test(smtpHost)) fail('FSB_SMTP_HOST must point to the real SMTP provider, not an example or local host.');
+const emailFrom = required('FSB_EMAIL_FROM');
+if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(emailFrom) || /example\\.com/i.test(emailFrom)) fail('FSB_EMAIL_FROM must be a valid non-example sender address.');
 if (Boolean(values.FSB_SMTP_USER) !== Boolean(values.FSB_SMTP_PASS)) fail('Configure both SMTP username and password, or neither.');
 const port = Number(values.FSB_SMTP_PORT || 587);
 if (!Number.isInteger(port) || port < 1 || port > 65535) fail('FSB_SMTP_PORT is invalid.');
