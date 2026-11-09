@@ -10,6 +10,7 @@ import { TenantMembership } from './entities/tenant-membership.entity';
 import { User } from '../identity/entities/user.entity';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 import { TenantAuditService } from './tenant-audit.service';
+import { assertTenantUserCapacity } from './tenant-commercial-limits';
 
 @Injectable()
 export class TenantInvitationService {
@@ -52,6 +53,7 @@ export class TenantInvitationService {
         .andWhere('invitation.acceptedAt IS NULL AND invitation.revokedAt IS NULL AND invitation.expiresAt > :now', { now: new Date() })
         .getOne();
       if (pending) throw new ConflictException('A valid invitation already exists for this email');
+      await assertTenantUserCapacity(manager, tenantId, 'RESERVE_NEW_SEAT');
 
       const token = randomBytes(32).toString('base64url');
       const repository = manager.getRepository(TenantInvitation);
@@ -109,17 +111,25 @@ export class TenantInvitationService {
     const tokenHash = this.hashToken(token);
     return this.dataSource.transaction(async manager => {
       const repository = manager.getRepository(TenantInvitation);
+      const [candidate] = await manager.query(
+        'SELECT "tenantId" FROM tenant_invitations WHERE "tokenHash"=$1',
+        [tokenHash],
+      );
+      if (!candidate) throw new NotFoundException('Invitation is invalid or no longer available');
+      const tenant = await manager.findOne(Tenant, {
+        where: { id: candidate.tenantId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('The invited tenant is not active');
       const invitation = await repository.createQueryBuilder('invitation')
         .addSelect('invitation.tokenHash')
         .where('invitation.tokenHash = :tokenHash', { tokenHash })
         .setLock('pessimistic_write')
         .getOne();
-      if (!invitation) throw new NotFoundException('Invitation is invalid or no longer available');
+      if (!invitation || invitation.tenantId !== tenant.id) throw new NotFoundException('Invitation is invalid or no longer available');
       if (invitation.acceptedAt || invitation.revokedAt) throw new BadRequestException('Invitation has already been used or revoked');
       if (invitation.expiresAt.getTime() <= Date.now()) throw new BadRequestException('Invitation has expired');
+      await assertTenantUserCapacity(manager, tenant.id, 'CONSUME_INVITATION');
 
-      const tenant = await manager.findOne(Tenant, { where: { id: invitation.tenantId }, lock: { mode: 'pessimistic_write' } });
-      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('The invited tenant is not active');
       const userRepository = manager.getRepository(User);
       const existingEmail = await userRepository.createQueryBuilder('user')
         .where('LOWER(user.email) = :email', { email: invitation.email }).getOne();
@@ -155,24 +165,31 @@ export class TenantInvitationService {
     const tokenHash = this.hashToken(token);
     return this.dataSource.transaction(async manager => {
       const repository = manager.getRepository(TenantInvitation);
+      const [candidate] = await manager.query(
+        'SELECT "tenantId" FROM tenant_invitations WHERE "tokenHash"=$1',
+        [tokenHash],
+      );
+      if (!candidate) throw new NotFoundException('Invitation is invalid or no longer available');
+      const tenant = await manager.findOne(Tenant, {
+        where: { id: candidate.tenantId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('The invited tenant is not active');
       const invitation = await repository.createQueryBuilder('invitation')
         .addSelect('invitation.tokenHash')
         .where('invitation.tokenHash = :tokenHash', { tokenHash })
         .setLock('pessimistic_write')
         .getOne();
-      if (!invitation) throw new NotFoundException('Invitation is invalid or no longer available');
+      if (!invitation || invitation.tenantId !== tenant.id) throw new NotFoundException('Invitation is invalid or no longer available');
       if (invitation.acceptedAt || invitation.revokedAt) throw new BadRequestException('Invitation has already been used or revoked');
       if (invitation.expiresAt.getTime() <= Date.now()) throw new BadRequestException('Invitation has expired');
 
-      const tenant = await manager.findOne(Tenant, { where: { id: invitation.tenantId }, lock: { mode: 'pessimistic_write' } });
-      if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('The invited tenant is not active');
       const user = await manager.getRepository(User).findOneBy({ id: userId, isActive: true });
       if (!user) throw new NotFoundException('Active user not found');
       if (user.email.trim().toLowerCase() !== invitation.email) throw new BadRequestException('The invitation email does not match the authenticated account');
-
       const memberships = manager.getRepository(TenantMembership);
       let membership = await memberships.findOne({ where: { tenantId: invitation.tenantId, userId }, lock: { mode: 'pessimistic_write' } });
       if (membership?.isActive) throw new ConflictException('User is already an active member of this tenant');
+      await assertTenantUserCapacity(manager, tenant.id, 'CONSUME_INVITATION');
       if (membership) {
         membership.isActive = true;
         membership.isTenantAdmin = invitation.isTenantAdmin;
