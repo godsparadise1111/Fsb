@@ -33,6 +33,7 @@ export default function AbsencesPage() {
   const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState('ALL');
   const [showForm, setShowForm] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [form, setForm] = useState({
     userId: '', substituteUserId: '',
     startsAt: localDateTime(new Date(Date.now() + 60000)),
@@ -57,16 +58,18 @@ export default function AbsencesPage() {
     if (!token) return;
     setLoading(true); setError('');
     try {
-      const [orgs, people] = await Promise.all([request('/organizations'), request('/users')]);
+      const orgs = await request('/organizations/accessible');
       setOrganizations(orgs);
-      setUsers(people);
       const selectedOrg = organizationId && orgs.some((org: Organization) => org.id === organizationId)
         ? organizationId : orgs[0]?.id || '';
-      setOrganizationId(selectedOrg);
+      if (selectedOrg !== organizationId) setOrganizationId(selectedOrg);
       if (selectedOrg) {
-        const result = await request(`/organizations/${selectedOrg}/absences?limit=100&offset=0`);
-        setItems(result.items || []); setTotal(result.total || 0);
-      } else { setItems([]); setTotal(0); }
+        const [people, result] = await Promise.all([
+          request(`/organizations/${selectedOrg}/users`),
+          request(`/organizations/${selectedOrg}/absences?limit=100&offset=0`),
+        ]);
+        setUsers(people); setItems(result.items || []); setTotal(result.total || 0);
+      } else { setUsers([]); setItems([]); setTotal(0); }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'دریافت اطلاعات ناموفق بود');
     } finally { setLoading(false); }
@@ -82,6 +85,27 @@ export default function AbsencesPage() {
   useEffect(() => { if (loggedIn && token) void loadData(); }, [loggedIn, token, loadData]);
 
   const userMap = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
+  const conflicts = useMemo(() => {
+    const start = new Date(form.startsAt).getTime(), end = new Date(form.endsAt).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+    return items.filter(item => {
+      if (item.cancelledAt) return false;
+      const overlaps = start < new Date(item.endsAt).getTime() && end > new Date(item.startsAt).getTime();
+      return overlaps && (item.userId === form.userId || item.substituteUserId === form.substituteUserId ||
+        item.userId === form.substituteUserId || item.substituteUserId === form.userId);
+    });
+  }, [items, form]);
+  const calendarCells = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const offset = (first.getDay() + 1) % 7;
+    const count = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+    return [...Array(offset).fill(null), ...Array.from({ length: count }, (_, index) => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1))];
+  }, [calendarMonth]);
+  const calendarLabel = calendarMonth.toLocaleDateString('fa-IR', { month: 'long', year: 'numeric' });
+  const dayItems = (day: Date) => items.filter(item => !item.cancelledAt &&
+    new Date(item.startsAt).getTime() < new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime() &&
+    new Date(item.endsAt).getTime() > new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime());
+
   const visibleItems = useMemo(() => items.filter(item => {
     if (filter === 'CANCELLED') return Boolean(item.cancelledAt);
     if (item.cancelledAt) return false;
@@ -189,7 +213,8 @@ export default function AbsencesPage() {
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
           <div className="absence-form-note absence-full">هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
-          <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || !organizationId || form.userId === form.substituteUserId}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
+          {conflicts.length > 0 && <div className="absence-conflict absence-full"><strong>تداخل زمانی شناسایی شد</strong><span>این بازه با {conflicts.length.toLocaleString('fa-IR')} سابقهٔ فعال تداخل دارد. اگر فرد غایب از قبل جانشینی هم‌پوشان داشته باشد، ثبت توسط سرور رد می‌شود؛ حضور جانشین در چند جانشینی هم‌زمان نیز نیازمند بررسی مدیریتی است.</span></div>}
+          <div className="absence-form-actions absence-full"><button type="button" className="absence-secondary" onClick={() => setShowForm(false)}>انصراف</button><button className="absence-primary" disabled={saving || !organizationId || form.userId === form.substituteUserId || conflicts.some(item => item.userId === form.userId)}>{saving ? 'در حال ثبت…' : 'ثبت غیبت و جانشین'}</button></div>
         </form>
       </section>}
 
@@ -198,6 +223,20 @@ export default function AbsencesPage() {
         <article><span>در حال اجرا</span><strong>{items.filter(item => !item.cancelledAt && new Date(item.startsAt).getTime() <= Date.now() && new Date(item.endsAt).getTime() > Date.now()).length.toLocaleString('fa-IR')}</strong></article>
         <article><span>برنامه‌ریزی‌شده</span><strong>{items.filter(item => !item.cancelledAt && new Date(item.startsAt).getTime() > Date.now()).length.toLocaleString('fa-IR')}</strong></article>
         <article><span>لغوشده</span><strong>{items.filter(item => Boolean(item.cancelledAt)).length.toLocaleString('fa-IR')}</strong></article>
+      </section>
+
+      <section className="absence-panel absence-calendar-panel">
+        <div className="absence-panel-heading"><div><h2>تقویم غیبت و جانشینی</h2><p>نمای روزانهٔ غیبت‌های ثبت‌شده در سازمان انتخاب‌شده</p></div>
+          <div className="absence-calendar-nav"><button className="absence-secondary" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>ماه قبل</button><strong>{calendarLabel}</strong><button className="absence-secondary" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>ماه بعد</button></div>
+        </div>
+        <div className="absence-calendar-grid">
+          {['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'].map(day => <div className="absence-calendar-weekday" key={day}>{day}</div>)}
+          {calendarCells.map((day, index) => day ? <div className={day.getMonth() === calendarMonth.getMonth() ? 'absence-calendar-day' : 'absence-calendar-day outside'} key={day.toISOString()}>
+            <span className="absence-calendar-number">{day.getDate().toLocaleString('fa-IR')}</span>
+            {dayItems(day).slice(0, 2).map(item => <span className="absence-calendar-event" key={item.id} title={`${personName(userMap.get(item.userId))} ← ${personName(userMap.get(item.substituteUserId))}`}>{personName(userMap.get(item.userId))}</span>)}
+            {dayItems(day).length > 2 && <small>+{(dayItems(day).length - 2).toLocaleString('fa-IR')} مورد دیگر</small>}
+          </div> : <div className="absence-calendar-day empty" key={`blank-${index}`} />)}
+        </div>
       </section>
 
       <section className="absence-panel">
