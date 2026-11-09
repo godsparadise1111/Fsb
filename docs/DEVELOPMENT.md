@@ -226,3 +226,27 @@
 - Dockerfile.api و Dockerfile.web imageهای برنامه را می‌سازند. .env.onprem.example الگوی پیکربندی تولید است.
 - scripts/install-onprem.sh نصب اولیه، scripts/migrate-onprem.sh اعمال ترتیبی SQL با ledger و checksum، scripts/backup-onprem.sh backup رمزگذاری‌شده دیتابیس و فایل خصوصی با age، scripts/restore-onprem.sh بازیابی تأییدشده و scripts/upgrade-onprem.sh ارتقای backup-first را انجام می‌دهند.
 - راهنمای عملیاتی در docs/ON_PREM_DEPLOYMENT.md است. این اسکریپت‌ها هنوز روی میزبان واقعی اجرا نشده‌اند؛ آزمون restore، CORS محدود، TLS proxy، metrics و تمرین staging پیش‌شرط تولید هستند.
+
+
+## بازگشت واقعی در موتور گردش‌کار (RETURN/REWORK)
+
+- اقدام POST /api/tasks/:id/actions اکنون علاوه بر APPROVED/REJECTED، مقدار RETURNED و فیلد returnToStepIndex را می‌پذیرد.
+- بازگشت فقط به اندیس کوچک‌تر از مرحله جاری در همان نسخه منتشرشده فرایند مجاز است؛ دلیل بازگشت الزامی است.
+- مقصد باید در همان سازمان دارای کاربران فعال، عضویت فعال Tenant و انتساب پست معتبر باشد.
+- وظیفه جاری با وضعیت RETURNED بسته می‌شود؛ انتساب‌های معلق دیگر آن وظیفه REASSIGNED می‌شوند و یک وظیفه جدید برای مرحله مقصد ساخته می‌شود. currentStepIndex به مقصد برمی‌گردد.
+- workflow_action_logs.returnToStepIndex و Tenant Audit مقصد، مرحله مبدأ، کاربر و شناسه وظیفه جدید را ثبت می‌کنند. migration 20261109_009_workflow_return_rework.sql این تغییرات را اعمال می‌کند.
+- گزارش process-bottlenecks اکنون تعداد وظایف دارای RETURNED و returnRatePercent را مستقل از REJECTED و rejectionRatePercent ارائه می‌دهد. این نرخ بر مبنای وظایف دارای حداقل یک بازگشت تقسیم بر کل وظایف همان مرحله است.
+
+## داشبوردهای نقش‌محور
+
+- GET /api/tenant/dashboard برای مدیر مشتری، شاخص‌های کل Tenant را نمایش می‌دهد.
+- GET /api/tenant/dashboard/organization?organizationId=... برای مدیر دارای مجوز workflow.substitutions.manage شاخص‌های همان سازمان را ارائه می‌کند؛ صفحه /organization-dashboard سازمان‌های قابل دسترس را فهرست می‌کند.
+- GET /api/tenant/dashboard/me برای عضو عادی، فقط شمارش وظایف قابل اقدام شخصی، مهلت‌ها، تکمیل‌ها، فرایندهای آغازشده و بازگشت‌های ثبت‌شده خودش را ارائه می‌کند. مسیر در PermissionsGuard فقط با tenantId و userId استخراج‌شده از JWT محدود است.
+- صفحه /dashboard در صورت نداشتن دسترسی داشبورد کل مشتری به نمای شخصی سقوط می‌کند. همه نماها داده را در بازه ۳۰ ثانیه تازه می‌کنند.
+
+## پذیرش استقرار Staging
+
+- scripts/smoke-onprem.sh سلامت PostgreSQL، ثبت baseline در migration ledger، endpoint سلامت API و پاسخ وب را بررسی می‌کند.
+- docs/STAGING_ACCEPTANCE.md سناریوهای آزمون دو Tenant، بازگشت فرایند، نقش‌ها، worker و بازیابی backup را مشخص می‌کند.
+- docker-compose.onprem.yml healthcheck برای API و وب دارد.
+- اجرای واقعی staging، restore، آزمون integration و ثبت RPO/RTO هنوز انجام نشده است؛ این موارد باید در محیط staging تحت کنترل اپراتور اجرا شوند.
