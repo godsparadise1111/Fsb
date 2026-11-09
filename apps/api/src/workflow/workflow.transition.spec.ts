@@ -1,8 +1,8 @@
-import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { resolveWorkflowTransitionTarget } from './workflow-transition';
+import { resolveWorkflowStepAssignees } from './workflow-assignees';
 import { isAssignmentPolicySatisfied } from './workflow-assignment-policy';
 
 const resolve = resolveWorkflowTransitionTarget;
@@ -45,9 +45,7 @@ test('ambiguous transition graphs fail closed', () => {
   assert.throws(() => resolve(schema, 1, 'APPROVED', null, true), ConflictException);
 });
 
-const resolveAssignees = (service as any).resolveStepAssignees.bind(service) as (
-  manager: any, organizationId: string, tenantId: string, config: Record<string, unknown>,
-) => Promise<string[]>;
+const resolveAssignees = resolveWorkflowStepAssignees;
 
 function assignmentManager(options: { positionCount?: number; unitCount?: number; resolved?: string[] }) {
   return {
