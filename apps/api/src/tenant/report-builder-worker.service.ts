@@ -102,11 +102,8 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processJob(job: ReportJobRow) {
-    const scope: ReportAccessScope = {
-      tenantWide: job.isTenantWide === true,
-      organizationIds: Array.isArray(job.scopeOrganizationIds) ? job.scopeOrganizationIds : JSON.parse(String(job.scopeOrganizationIds || '[]')),
-    };
     try {
+      const scope: ReportAccessScope = await this.reports.resolveScope(job.tenantId, job.ownerUserId, job.organizationId ?? undefined);
       const result = await this.reports.execute(job.tenantId, job.config, scope);
       await this.dataSource.transaction(async manager => {
         const updated = await manager.query(
