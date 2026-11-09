@@ -57,6 +57,12 @@ export class WorkflowController {
     return this.workflow.createOrganizationAbsence(user.sub, dto, user.tenantId);
   }
   @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/workload')
+  organizationWorkload(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.getOrganizationWorkload(organizationId, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/absences')
   absences(
     @Param('organizationId') organizationId: string,
