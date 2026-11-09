@@ -20,6 +20,13 @@ export class TenantService {
       const tenant = await repository.save(repository.create({
         ...dto, plan: dto.plan ?? 'CORE', status: 'PENDING', settings: {},
       }));
+      await manager.query(
+        `INSERT INTO tenant_subscriptions
+          ("tenantId","planCode",status,"billingCycle","startsAt","currentPeriodStart","createdByUserId")
+         VALUES ($1,$2,'TRIALING','MONTHLY',now(),now(),$3)
+         ON CONFLICT ("tenantId") DO NOTHING`,
+        [tenant.id, tenant.plan, actorUserId],
+      );
       await this.audit.record(manager, { tenantId: tenant.id, actorUserId, action: 'TENANT_CREATED', resourceType: 'TENANT', resourceId: tenant.id, metadata: { plan: tenant.plan, status: tenant.status } });
       return tenant;
     });
@@ -85,6 +92,16 @@ export class TenantService {
       if (previousStatus === status && !(status === 'ACTIVE' && activeAdminCount === 0)) return tenant;
       tenant.status = status;
       if (status === 'ACTIVE' && !tenant.activatedAt) tenant.activatedAt = new Date();
+      if (status === 'ACTIVE') {
+        await manager.query(
+          `UPDATE tenant_subscriptions
+              SET "currentPeriodStart"=CASE WHEN status='TRIALING' AND "trialEndsAt" IS NULL THEN now() ELSE "currentPeriodStart" END,
+                  "trialEndsAt"=CASE WHEN status='TRIALING' AND "trialEndsAt" IS NULL THEN now() + interval '14 days' ELSE "trialEndsAt" END,
+                  "updatedAt"=now()
+            WHERE "tenantId"=$1`,
+          [tenant.id],
+        );
+      }
       if (status === 'SUSPENDED') tenant.suspendedAt = new Date();
       if (status === 'ACTIVE') tenant.suspendedAt = null;
       const saved = await manager.save(tenant);
