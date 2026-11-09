@@ -6,7 +6,7 @@ import { Position } from '../../organization/entities/position.entity';
 @Unique('UQ_user_position_active_assignment', ['userId', 'positionId', 'validFrom'])
 export class UserPosition {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') userId: string;
   @ManyToOne(() => User, user => user.positions, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'userId' }) user: User;
