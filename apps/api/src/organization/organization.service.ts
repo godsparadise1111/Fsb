@@ -1,8 +1,7 @@
-import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserRole } from '../identity/entities/user-role.entity';
-import { ForbiddenException } from '@nestjs/common';
 import { Organization } from './entities/organization.entity';
 import { OrganizationUnit } from './entities/organization-unit.entity';
 import { Position } from './entities/position.entity';
