@@ -256,12 +256,12 @@ export class TenantReportsService {
                 FILTER (WHERE s.status='COMPLETED' AND s."completedAt" IS NOT NULL)::numeric,2) AS "averageCycleHours",
               round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (s."completedAt"-s."createdAt"))/3600)
                 FILTER (WHERE s.status='COMPLETED' AND s."completedAt" IS NOT NULL))::numeric,2) AS "medianCycleHours",
-              round(avg(EXTRACT(EPOCH FROM (s."firstActionAt"-s."createdAt"))/3600)
-                FILTER (WHERE s."firstActionAt" IS NOT NULL)::numeric,2) AS "averageWaitToFirstActionHours",
+              round((avg(EXTRACT(EPOCH FROM (s."firstActionAt"-s."createdAt"))/3600)
+                FILTER (WHERE s."firstActionAt" IS NOT NULL))::numeric,2) AS "averageWaitToFirstActionHours",
               round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (s."firstActionAt"-s."createdAt"))/3600)
                 FILTER (WHERE s."firstActionAt" IS NOT NULL))::numeric,2) AS "medianWaitToFirstActionHours",
-              round(avg(EXTRACT(EPOCH FROM (s."waitEnd"-s."createdAt"))/3600)
-                FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS'))::numeric,2) AS "averageCurrentWaitingHours",
+              round((avg(EXTRACT(EPOCH FROM (s."waitEnd"-s."createdAt"))/3600)
+                FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS')))::numeric,2) AS "averageCurrentWaitingHours",
               count(*) FILTER (WHERE COALESCE(a."rejectedActions",0)>0)::int AS "tasksWithRejection",
               count(*) FILTER (WHERE s.status IN ('OPEN','IN_PROGRESS') AND s."dueAt" IS NOT NULL
                 AND s."dueAt"<now())::int AS "lateOpenTasks"
