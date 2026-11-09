@@ -355,6 +355,10 @@ export class WorkflowService {
     manager: EntityManager, tenantId: string, organizationId: string, substituteUserId: string,
     at: Date, sourceUserId?: string, policy?: { configured: boolean; enforceLimit: boolean; maxOpenTasksPerSubstitute: number },
   ) {
+    // Serialize policy changes and all capacity checks for this organization.
+    // The policy is read only after acquiring this lock, so a concurrent policy
+    // activation cannot race past a request that observed the old disabled policy.
+    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantId + ':' + organizationId + ':workload-policy']);
     const effectivePolicy = policy ?? await this.readOrganizationWorkloadPolicy(organizationId, tenantId, manager);
     if (!effectivePolicy.configured || !effectivePolicy.enforceLimit) return { checked: false, currentLoad: null };
     await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantId + ':' + organizationId + ':' + substituteUserId]);
@@ -557,6 +561,7 @@ export class WorkflowService {
     return this.dataSource.transaction(async manager => {
       const organization = await manager.findOne(Organization, { where: { id: organizationId, tenantId, isActive: true } });
       if (!organization) throw new NotFoundException('Organization not found');
+      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantId + ':' + organizationId + ':workload-policy']);
       await manager.query(
         `INSERT INTO organization_workload_policies
           ("tenantId","organizationId","maxOpenTasksPerSubstitute","warningThresholdPercent","enforceLimit","updatedByUserId","updatedAt")
