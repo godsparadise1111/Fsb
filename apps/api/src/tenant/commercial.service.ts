@@ -30,6 +30,17 @@ export class CommercialService {
     );
   }
 
+  listInvoices() {
+    return this.dataSource.query(
+      `SELECT i.id,i."tenantId",t.name AS "tenantName",t.code AS "tenantCode",
+              i."invoiceNumber",i.status,i."currencyCode",i."subtotalMinor",i."taxMinor",i."totalMinor",
+              i.description,i."issuedAt",i."dueAt",i."paidAt",i."renewedAt",i."createdAt"
+         FROM tenant_invoices i
+         JOIN tenants t ON t.id=i."tenantId"
+        ORDER BY i."createdAt" DESC LIMIT 250`,
+    );
+  }
+
   async getTenantOverview(tenantId: string) {
     const [tenant] = await this.dataSource.query(
       `SELECT t.id, t.name, t.code, t.status AS "tenantStatus", t.plan AS "legacyPlan",
