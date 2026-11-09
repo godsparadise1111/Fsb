@@ -73,6 +73,12 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/operational-alerts')
+  organizationOperationalAlerts(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listOrganizationOperationalAlerts(organizationId, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/operations-overview')
   organizationOperationsOverview(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.getOrganizationOperationsOverview(organizationId, user.tenantId);
