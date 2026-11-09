@@ -94,6 +94,18 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/operational-alerts/:alertId/notes')
+  addOperationalAlertNote(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @Body() body: { note: string }, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.addOperationalAlertNote(organizationId, alertId, user.sub, user.tenantId, body.note);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/operational-alerts/:alertId/history')
+  operationalAlertHistory(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listOperationalAlertHistory(organizationId, alertId, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/operational-alerts')
   organizationOperationalAlerts(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listOrganizationOperationalAlerts(organizationId, user.tenantId);
