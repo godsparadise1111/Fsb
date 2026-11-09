@@ -120,6 +120,7 @@ export class IdentityService {
   async listUserPositions(userId: string, tenantId?: string | null) {
     if (!await this.users.exist({ where: { id: userId } })) throw new NotFoundException('User not found');
     const query = this.memberships.createQueryBuilder('membership')
+      .innerJoin('membership.user', 'user')
       .innerJoinAndSelect('membership.position', 'position')
       .innerJoinAndSelect('position.unit', 'unit')
       .where('membership.userId = :userId AND membership.isActive = true', { userId });
