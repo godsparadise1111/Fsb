@@ -118,6 +118,9 @@ export class WorkflowService {
 
   async act(taskId: string, userId: string, dto: ActTaskDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required for workflow actions');
+    if (dto.action === 'RETURNED' && (typeof dto.comment !== 'string' || dto.comment.trim().length < 3)) {
+      throw new BadRequestException('A return reason of at least 3 characters is required');
+    }
     return this.dataSource.transaction(async manager => {
       const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
