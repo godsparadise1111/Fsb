@@ -61,3 +61,29 @@ SELECT "incidentId","eventKey",count(*)
   FROM workflow_recovery_incident_events
  GROUP BY "incidentId","eventKey"
 HAVING count(*)>1;
+
+
+-- Platform health reconciliation: one row per active/suspended Tenant.
+-- Compare these values with /api/platform/workflow-health.
+SELECT t.id AS "tenantId", t.name, t.status,
+       (SELECT count(*)::int FROM process_instances pi
+         WHERE pi."tenantId"=t.id AND pi.status='RUNNING') AS "runningProcesses",
+       (SELECT count(*)::int FROM workflow_tasks wt
+         JOIN process_instances pi ON pi.id=wt."processInstanceId"
+        WHERE pi."tenantId"=t.id AND pi.status='RUNNING' AND wt.status IN ('OPEN','IN_PROGRESS')) AS "activeTasks",
+       (SELECT count(*)::int FROM workflow_recovery_incidents ri
+        WHERE ri."tenantId"=t.id AND ri.status IN ('OPEN','ACKNOWLEDGED')) AS "activeRecoveryIncidents",
+       (SELECT count(*)::int FROM workflow_recovery_incident_events e
+         JOIN workflow_recovery_incidents ri ON ri.id=e."incidentId" AND ri."tenantId"=e."tenantId"
+        WHERE ri."tenantId"=t.id AND e."eventType"='WORKER_SCAN'
+          AND e."createdAt">=now()-interval '15 minutes') AS "workerScans15m"
+  FROM tenants t
+ WHERE t.status IN ('ACTIVE','SUSPENDED')
+ ORDER BY t.name;
+
+-- No event may be visible through an incident belonging to another Tenant.
+SELECT e.id, e."tenantId" AS "eventTenantId", ri."tenantId" AS "incidentTenantId"
+  FROM workflow_recovery_incident_events e
+  JOIN workflow_recovery_incidents ri ON ri.id=e."incidentId"
+ WHERE e."tenantId" <> ri."tenantId";
+
