@@ -180,7 +180,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const baseUrl=new URL(process.env.FSB_PUBLIC_APP_URL!);
       const taskUrl=new URL('/',baseUrl).toString();
       const safeUrl=this.escapeHtml(taskUrl);
-      const subject=(item.subject ?? `New workflow task: ${title}`).replace(/[\\r\\n]/g,' ').slice(0,160);
+      const subject=(item.subject ?? `New workflow task: ${title}`).replace(/[\r\n]/g,' ').slice(0,160);
       await this.transporter.sendMail({
         from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
         text:`A workflow task has been assigned to you: "${title}". Open: ${taskUrl}`,
