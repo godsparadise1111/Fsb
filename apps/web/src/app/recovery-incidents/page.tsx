@@ -10,6 +10,7 @@ type Incident = {
   processTitle: string; processStatus: string; organizationId: string; organizationName: string;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM'; eventCount: number;
 };
+type ReplayCapability = { id: string; incidentTypes: string[]; systemOnly: boolean; idempotent: boolean; requiresIdempotencyKey: boolean };
 type Event = { id: string; eventType: string; actorUserId: string | null; eventKey: string; metadata: Record<string, unknown>; createdAt: string };
 type Detail = { incident: Incident; events: Event[]; lifecycle: Array<{ id: string; taskId: string; eventType: string; details: Record<string, unknown>; createdAt: string }> };
 const faDate = (value?: string | null) => value ? new Date(value).toLocaleString('fa-IR') : '—';
@@ -25,6 +26,7 @@ export default function RecoveryIncidentsPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [items, setItems] = useState<Incident[]>([]);
+  const [replayHandlers, setReplayHandlers] = useState<ReplayCapability[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [organizationId, setOrganizationId] = useState('');
   const [processInstanceId, setProcessInstanceId] = useState('');
@@ -92,6 +94,8 @@ export default function RecoveryIncidentsPage() {
 
   useEffect(() => { if (loggedIn && token) void load(); }, [loggedIn, token, load]);
 
+  useEffect(() => { if (!loggedIn || !token) return; void request('/workflow/recovery-incidents/replay-capabilities').then((rows: ReplayCapability[]) => setReplayHandlers(rows || [])).catch(() => setReplayHandlers([])); }, [loggedIn, token, request]);
+
   async function login(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
     try {
@@ -130,6 +134,7 @@ export default function RecoveryIncidentsPage() {
     <header className="absence-header"><a className="absence-brand" href="/">F-S <span>سامانه مدیریت فرایند</span></a><div className="absence-header-actions"><a className="absence-back" href="/">بازگشت به خانه</a><button className="absence-logout" onClick={() => { localStorage.removeItem('fsb.accessToken'); setToken(''); setLoggedIn(false); }}>خروج</button></div></header>
     <section className="absence-intro"><div><div className="absence-kicker">WORKFLOW / RECOVERY OPERATIONS</div><h1>رخدادهای بازیابی گردش‌کار</h1><p>تشخیص خطا، بررسی تلاش‌های Worker، مشاهده اصلاحات و ثبت تأیید نهایی</p></div><button className="absence-primary" disabled={busy} onClick={() => void load()}>بروزرسانی فهرست</button></section>
     {error && <div className="absence-alert error" role="alert">{error}</div>}{notice && <div className="absence-alert success" role="status">{notice}</div>}
+    <section className="absence-panel"><div className="absence-panel-heading"><div><h2>Registry امن Replay</h2><p>فقط Handlerهای سیستمی با تضمین Idempotency و کلید یکتا امکان ثبت در این فهرست را دارند.</p></div><span className="absence-step">{replayHandlers.length.toLocaleString('fa-IR')} Handler</span></div>{replayHandlers.length ? <div className="absence-table-wrap"><table className="absence-table"><thead><tr><th>شناسه Handler</th><th>انواع رخداد</th><th>Idempotent</th><th>کلید Idempotency</th></tr></thead><tbody>{replayHandlers.map(handler=><tr key={handler.id}><td>{handler.id}</td><td>{handler.incidentTypes.join('، ')}</td><td>{handler.idempotent?'بله':'خیر'}</td><td>{handler.requiresIdempotencyKey?'الزامی':'—'}</td></tr>)}</tbody></table></div> : <p className="absence-form-note">هیچ Handler تأییدشده‌ای ثبت نشده است؛ بنابراین Replay اجرایی برای تمام انواع رخدادها بسته است. این وضعیت پیش‌فرض امن سامانه است.</p>}</section>
     <section className="absence-panel">
       <div className="absence-panel-heading"><div><h2>فیلتر رخدادها</h2><p>فهرست به‌صورت پیش‌فرض رخدادهای باز و در حال رسیدگی را نشان می‌دهد.</p></div><span className="absence-step">{items.length.toLocaleString('fa-IR')} رخداد</span></div>
       <div className="absence-toolbar" style={{ flexWrap: 'wrap' }}>
