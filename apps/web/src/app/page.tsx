@@ -22,7 +22,7 @@ const highlights = [
 
 export default function Home() {
   return (
-    <main dir="rtl" className="fsb-home">
+    <main dir="rtl" id="top" className="fsb-home">
       <header className="fsb-home-header">
         <a href="/" className="fsb-home-brand" aria-label="صفحه اصلی F-S">
           <span className="fsb-home-mark">F</span>
@@ -80,7 +80,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="fsb-home-footer"><a href="/" className="fsb-footer-brand">F-S <span>·</span> سامانه مدیریت فرایندهای سازمانی</a><span>نسخه توسعه · ۲۰۲۶</span><a href="#top" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>بازگشت به بالا ↑</a></footer>
+      <footer className="fsb-home-footer"><a href="/" className="fsb-footer-brand">F-S <span>·</span> سامانه مدیریت فرایندهای سازمانی</a><span>نسخه توسعه · ۲۰۲۶</span><a href="#top">بازگشت به بالا ↑</a></footer>
     </main>
   );
 }
