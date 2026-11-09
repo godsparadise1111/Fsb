@@ -39,12 +39,17 @@ export class OrganizationService {
     });
   }
   listOrganizations(tenantId?: string | null) { return this.organizations.find({ where: tenantId ? { tenantId, isActive: true } : { isActive: true }, order: { name: 'ASC' } }); }
-  async listAccessibleOrganizations(userId: string, tenantId?: string | null, isTenantAdmin = false) {
-    if (isTenantAdmin) {
-      if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-      return this.listOrganizations(tenantId);
-    }
+  async listAccessibleOrganizations(userId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const [membership] = await this.organizations.manager.query(
+      `SELECT tm.\"isTenantAdmin\" FROM tenant_memberships tm
+         JOIN tenants t ON t.id=tm.\"tenantId\" AND t.status='ACTIVE'
+         JOIN users u ON u.id=tm.\"userId\" AND u.\"isActive\"=true
+        WHERE tm.\"tenantId\"=$1 AND tm.\"userId\"=$2 AND tm.\"isActive\"=true LIMIT 1`,
+      [tenantId, userId],
+    );
+    if (!membership) throw new ForbiddenException('An active membership in the selected tenant is required');
+    if (membership.isTenantAdmin === true) return this.listOrganizations(tenantId);
     const grants = await this.userRoles.find({
       where: { userId, isActive: true },
       relations: { role: { permissions: true }, organization: true },
