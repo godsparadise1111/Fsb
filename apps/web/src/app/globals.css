@@ -481,3 +481,8 @@ html[data-theme="dark"] .absence-logout, html[data-theme="dark"] .absence-button
 
 .fsb-theme-menu button { background:transparent !important; color:var(--fsb-text) !important; border:0 !important; }
 .fsb-theme-menu button:hover, .fsb-theme-menu button.selected { background:var(--fsb-primary-soft) !important; color:var(--fsb-primary) !important; }
+
+/* Keep the outside-click layer below the theme menu and trigger */
+.fsb-theme-dismiss { z-index:0; }
+.fsb-theme-trigger, .fsb-theme-menu { position:relative; z-index:1; }
+.fsb-theme-menu { position:absolute; }
