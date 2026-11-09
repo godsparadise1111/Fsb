@@ -87,7 +87,7 @@ export class TenantDashboardService {
          count(*) FILTER (WHERE "dueAt">now() AND "dueAt"<now()+interval '7 days')::int AS "dueNext7Days",
          (SELECT count(*)::int FROM workflow_tasks wt
            WHERE wt."tenantId"=$1 AND wt.status='COMPLETED' AND wt."completedAt">=now()-interval '30 days'
-             AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta."taskId"=wt.id AND ta."userId"=$2 AND ta.status='APPROVED')) AS "completedLast30Days",
+             AND EXISTS (SELECT 1 FROM workflow_action_logs wal WHERE wal."taskId"=wt.id AND wal."userId"=$2 AND wal.action='APPROVED')) AS "completedLast30Days",
          (SELECT count(DISTINCT pi.id)::int FROM process_instances pi
            WHERE pi."tenantId"=$1 AND pi."startedByUserId"=$2 AND pi."startedAt">=now()-interval '30 days') AS "startedLast30Days",
          (SELECT count(*)::int FROM workflow_action_logs wal
@@ -106,7 +106,7 @@ export class TenantDashboardService {
     const [metrics] = await this.dataSource.query(
       `SELECT
         count(DISTINCT pi.id) FILTER (WHERE pi.status='RUNNING')::int AS "runningProcesses",
-        count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
+        count(DISTINCT wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
         count(DISTINCT wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt"<now())::int AS "overdueTasks",
         count(DISTINCT wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND NOT EXISTS
           (SELECT 1 FROM task_assignees ta WHERE ta."taskId"=wt.id AND ta.status='PENDING'))::int AS "unassignedTasks",
