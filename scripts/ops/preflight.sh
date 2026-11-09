@@ -13,6 +13,9 @@ set -a
 set +a
 
 [ "${NODE_ENV:-production}" = "production" ] || { echo "ERROR: NODE_ENV must be production." >&2; exit 1; }
+[ "${POSTGRES_PASSWORD:-}" != "change_me_locally" ] || { echo "ERROR: replace the example PostgreSQL password." >&2; exit 1; }
+[ "${JWT_SECRET:-}" != "replace_with_a_long_random_secret_at_least_32_chars" ] || { echo "ERROR: replace the example JWT secret." >&2; exit 1; }
+[ "${BOOTSTRAP_TOKEN:-}" != "replace_with_a_separate_one_time_secret" ] || { echo "ERROR: replace the example bootstrap token." >&2; exit 1; }
 [ "${DB_SYNCHRONIZE:-false}" != "true" ] || { echo "ERROR: DB_SYNCHRONIZE=true is forbidden." >&2; exit 1; }
 [ -n "${JWT_SECRET:-}" ] && [ "${#JWT_SECRET}" -ge 32 ] || { echo "ERROR: JWT_SECRET must contain at least 32 characters." >&2; exit 1; }
 [ -n "${BOOTSTRAP_TOKEN:-}" ] && [ "${#BOOTSTRAP_TOKEN}" -ge 32 ] || { echo "ERROR: BOOTSTRAP_TOKEN must contain at least 32 characters." >&2; exit 1; }
