@@ -221,6 +221,9 @@ BEGIN
        AND "revokedAt" IS NULL;
 
     PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
+    UPDATE organization_substitutions SET "revokedAt"=now(), "revokedByUserId"=NULL
+     WHERE "tenantId"=OLD."tenantId" AND "revokedAt" IS NULL
+       AND ("originalUserId"=OLD."userId" OR "substituteUserId"=OLD."userId");
     UPDATE task_deferral_requests r
        SET status = 'CANCELLED', "reviewerUserId" = NULL, "reviewedAt" = now(),
            "reviewerComment" = 'Automatically cancelled because requester membership was revoked'
@@ -275,6 +278,8 @@ BEGIN
      WHERE td."taskId"=wt.id AND pi."organizationId"=NEW.id AND td."revokedAt" IS NULL;
 
     PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
+    UPDATE organization_substitutions SET "revokedAt"=now(), "revokedByUserId"=NULL
+     WHERE "tenantId"=NEW."tenantId" AND "organizationId"=NEW.id AND "revokedAt" IS NULL;
     UPDATE task_deferral_requests r SET status='CANCELLED', "reviewerUserId"=NULL,
       "reviewedAt"=now(), "reviewerComment"='Automatically cancelled because the organization was deactivated'
       FROM workflow_tasks wt
@@ -313,6 +318,8 @@ BEGIN
      WHERE "tenantId"=NEW.id AND "revokedAt" IS NULL;
 
     PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
+    UPDATE organization_substitutions SET "revokedAt"=now(), "revokedByUserId"=NULL
+     WHERE "tenantId"=NEW.id AND "revokedAt" IS NULL;
     UPDATE task_deferral_requests SET status='CANCELLED', "reviewerUserId"=NULL,
       "reviewedAt"=now(), "reviewerComment"='Automatically cancelled because the tenant was closed'
      WHERE "tenantId"=NEW.id AND status='PENDING';
@@ -381,6 +388,15 @@ UPDATE task_delegations d
                      WHERE tm."tenantId"=d."tenantId" AND tm."userId"=d."toUserId" AND tm."isActive"=true));
 
 SELECT set_config('fsb.lifecycle_cleanup', 'on', true);
+UPDATE organization_substitutions s SET "revokedAt"=now(), "revokedByUserId"=NULL
+ WHERE s."revokedAt" IS NULL AND (
+   EXISTS (SELECT 1 FROM organizations o JOIN tenants t ON t.id=o."tenantId"
+            WHERE o.id=s."organizationId" AND (o."isActive"=false OR t.status='CLOSED'))
+   OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+                   WHERE tm."tenantId"=s."tenantId" AND tm."userId"=s."originalUserId" AND tm."isActive"=true)
+   OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+                   WHERE tm."tenantId"=s."tenantId" AND tm."userId"=s."substituteUserId" AND tm."isActive"=true)
+ );
 UPDATE task_deferral_requests r
    SET status='CANCELLED', "reviewerUserId"=NULL, "reviewedAt"=now(),
        "reviewerComment"='Automatically cancelled during workflow lifecycle migration'
