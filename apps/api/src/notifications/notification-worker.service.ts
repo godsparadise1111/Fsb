@@ -172,14 +172,14 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
               JOIN permissions p ON p.id=rp."permissionId" AND p.code='workflow.substitutions.manage'
              WHERE a.id=$1 AND a."tenantId"=$2 AND a."organizationId"=$5
                AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
-               AND (($6='RESPONSE' AND a."responseDueAt" <= now()) OR ($6='RESOLUTION' AND a."resolutionDueAt" <= now()))`
+               AND (($6='RESPONSE' AND a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now()) OR ($6='RESOLUTION' AND a."resolutionDueAt" <= now()))`
           : `SELECT a.id FROM organization_operational_alerts a
               JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
               JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
               JOIN organizations o ON o.id=a."organizationId" AND o."tenantId"=a."tenantId" AND o."isActive"=true
              WHERE a.id=$1 AND a."tenantId"=$2 AND a."assignedToUserId"=u.id
                AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
-               AND (($5='RESPONSE' AND a."responseDueAt" <= now()) OR ($5='RESOLUTION' AND a."resolutionDueAt" <= now()))`,
+               AND (($5='RESPONSE' AND a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now()) OR ($5='RESOLUTION' AND a."resolutionDueAt" <= now()))`,
         audience === 'MANAGER' ? [alertId,item.tenantId,userId,item.recipient,organizationId,stage] : [alertId,item.tenantId,userId,item.recipient,stage],
       );
       if (!valid) {
