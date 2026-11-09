@@ -72,7 +72,7 @@ BEGIN
     IF EXISTS (
       WITH RECURSIVE ancestors(id, "parentId") AS (
         SELECT id, "parentId" FROM organization_units WHERE id = NEW."parentId"
-        UNION ALL
+        UNION
         SELECT parent.id, parent."parentId"
           FROM organization_units parent
           INNER JOIN ancestors a ON parent.id = a."parentId"
