@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, ParseUUIDPipe } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
 import { IdentityService } from './identity.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -18,6 +18,8 @@ export class IdentityController {
   @Post('users') createUser(@Body() dto: CreateUserDto) { return this.identity.createUser(dto); }
   @RequirePermissions('users.read')
   @Get('users') listUsers(@CurrentUser() user: AuthenticatedUser) { return this.identity.listUsers(user.tenantId); }
+  @RequirePermissions('organization.read')
+  @Get('organizations/:organizationId/users') listOrganizationUsers(@Param('organizationId', new ParseUUIDPipe()) organizationId: string, @CurrentUser() user: AuthenticatedUser) { return this.identity.listOrganizationUsers(organizationId, user.tenantId); }
   @RequirePermissions('users.manage')
   @Patch('users/:id/active') setUserActive(@Param('id') id: string, @Body() dto: SetActiveDto) { return this.identity.setUserActive(id, dto.isActive); }
   @RequirePermissions('assignments.manage')
