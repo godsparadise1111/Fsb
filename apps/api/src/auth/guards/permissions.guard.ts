@@ -19,6 +19,10 @@ export class PermissionsGuard implements CanActivate {
   private async resolveOrganizationId(request: any): Promise<string | null> {
     const direct = request.params?.organizationId ?? request.body?.organizationId ??
       request.query?.organizationId ?? null;
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (direct && (typeof direct !== 'string' || !uuidPattern.test(direct))) {
+      throw new ForbiddenException('Invalid organization scope');
+    }
 
     const candidates = [
       request.params?.id,
@@ -31,7 +35,7 @@ export class PermissionsGuard implements CanActivate {
       request.body?.organizationUnitId,
       request.body?.positionId,
       request.body?.parentId,
-    ].filter((value): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+    ].filter((value): value is string => typeof value === 'string' && uuidPattern.test(value));
     if (!candidates.length) return direct;
 
     // Resolve resource ownership from the database, never from a caller-supplied tenantId.
@@ -63,11 +67,17 @@ export class PermissionsGuard implements CanActivate {
         WHERE p.id = ANY($1::uuid[])`,
       [candidates],
     );
-    const found = rows.find((row: { resourceId: string }) => candidates.includes(row.resourceId));
-    if (!found?.organizationId) return null;
+    const matched = rows.filter((row: { resourceId: string; organizationId: string | null }) =>
+      candidates.includes(row.resourceId) && Boolean(row.organizationId));
+    const owners = new Set(matched.map((row: { organizationId: string }) => row.organizationId));
+    if (owners.size > 1) throw new ForbiddenException('Requested resources belong to different organizations');
+    if (!matched.length) return direct;
+    const resolvedOrganizationId = matched[0].organizationId as string;
     // A caller-supplied organizationId is only a consistency assertion, never the source of truth.
-    if (direct && direct !== found.organizationId) throw new ForbiddenException('Requested organization does not own this resource');
-    return found.organizationId;
+    if (direct && direct !== resolvedOrganizationId) {
+      throw new ForbiddenException('Requested organization does not own this resource');
+    }
+    return resolvedOrganizationId;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
