@@ -85,6 +85,7 @@ export class WorkflowService {
     return this.tasks.createQueryBuilder('task')
       .leftJoin('task.assignees', 'assignment', 'assignment.userId = :userId AND assignment.status = :pending', { userId, pending: 'PENDING' })
       .leftJoinAndSelect('task.processInstance', 'instance')
+      .leftJoinAndSelect('instance.processVersion', 'processVersion')
       .innerJoin('instance.organization', 'organization', 'organization.tenantId = :tenantId', { tenantId })
       .leftJoinAndSelect('task.assignees', 'assignees')
       .where('task.status IN (:...statuses)', { statuses: ['OPEN', 'IN_PROGRESS'] })
