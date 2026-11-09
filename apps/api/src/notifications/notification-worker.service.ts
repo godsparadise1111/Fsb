@@ -265,7 +265,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
         return '"' + text.replace(/"/g,'""') + '"';
       };
       const reportRows = [[result.groupLabel ?? 'گروه',result.measureLabel ?? 'تعداد'], ...(Array.isArray(result.rows) ? result.rows.map((row: any) => [row.dimension ?? 'همه',row.value]) : [])];
-      const reportCsv = '\\uFEFF' + reportRows.map((row: unknown[]) => row.map(csvCell).join(',')).join('\\r\\n');
+      const reportCsv = '\uFEFF' + reportRows.map((row: unknown[]) => row.map(csvCell).join(',')).join('\r\n');
 
       const subject = (item.subject ?? 'گزارش زمان‌بندی‌شده آماده است').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
       await this.transporter.sendMail({
