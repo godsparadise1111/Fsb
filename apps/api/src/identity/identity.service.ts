@@ -11,6 +11,7 @@ import { Position } from '../organization/entities/position.entity';
 import { Organization } from '../organization/entities/organization.entity';
 import { TenantMembership } from '../tenant/entities/tenant-membership.entity';
 import { Tenant } from '../tenant/entities/tenant.entity';
+import { assertTenantUserCapacity } from '../tenant/tenant-commercial-limits';
 import { CreateUserDto } from './dto/create-user.dto';
 import { AssignPositionDto } from './dto/assign-position.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -37,30 +38,7 @@ export class IdentityService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!tenant || tenant.status !== 'ACTIVE') throw new ForbiddenException('The active tenant was not found');
-      const [commercial] = await manager.query(
-        `SELECT p.limits, s.status, s."currentPeriodEnd", s."trialEndsAt"
-           FROM tenant_subscriptions s
-           JOIN commercial_plans p ON p.code=s."planCode"
-          WHERE s."tenantId"=$1
-          FOR UPDATE OF s`,
-        [tenantId],
-      );
-      const now = Date.now();
-      if (!commercial || !['ACTIVE','TRIALING'].includes(commercial.status) ||
-          (commercial.currentPeriodEnd && new Date(commercial.currentPeriodEnd).getTime() <= now) ||
-          (commercial.status === 'TRIALING' && commercial.trialEndsAt && new Date(commercial.trialEndsAt).getTime() <= now)) {
-        throw new ForbiddenException('Tenant subscription is not eligible for creating additional users');
-      }
-      const maxUsers = Number(commercial.limits?.maxUsers ?? 0);
-      const [{ count: activeMembers }] = await manager.query(
-        `SELECT count(*)::int AS count FROM tenant_memberships tm
-          JOIN users u ON u.id=tm."userId" AND u."isActive"=true
-         WHERE tm."tenantId"=$1 AND tm."isActive"=true`,
-        [tenantId],
-      );
-      if (!Number.isInteger(maxUsers) || maxUsers < 1 || Number(activeMembers) >= maxUsers) {
-        throw new BadRequestException('The active subscription user limit has been reached');
-      }
+      await assertTenantUserCapacity(manager, tenantId, 'RESERVE_NEW_SEAT');
       const normalizedEmail = dto.email.trim().toLowerCase();
       const existing = await manager.getRepository(User).createQueryBuilder('user')
         .where('LOWER(user.email) = :email OR user.username = :username', {
