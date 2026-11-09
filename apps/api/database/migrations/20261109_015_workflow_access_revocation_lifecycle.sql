@@ -8,7 +8,7 @@ ALTER TABLE organization_substitutions
   ADD CONSTRAINT "CK_org_substitution_revoke_pair"
   CHECK (("revokedAt" IS NULL AND "revokedByUserId" IS NULL) OR "revokedAt" IS NOT NULL);
 
-CREATE OR REPLACE FUNCTION fsb_validate_org_substitution() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION fsb_validate_org_substitution() RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
   organization_tenant uuid;
 BEGIN
@@ -79,7 +79,7 @@ BEGIN
        AND tstzrange(s."startsAt", s."endsAt", '[)') && tstzrange(NEW."startsAt", NEW."endsAt", '[)')
   ) THEN RAISE EXCEPTION 'Overlapping active substitutions for the same original user are not allowed'; END IF;
   RETURN NEW;
-END $;
+END $function$;
 
 ALTER TABLE task_deferral_requests
   DROP CONSTRAINT IF EXISTS "CK_task_deferral_requests_status";
