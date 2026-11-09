@@ -185,5 +185,9 @@ export class WorkflowController {
     return this.workflow.listTaskReassignments(id, user.sub, user.tenantId);
   }
   @RequirePermissions('workflow.history.read')
+  @Get('tasks/:id/lifecycle') lifecycle(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.listTaskLifecycleEvents(id, user.sub, user.tenantId);
+  }
+  @RequirePermissions('workflow.history.read')
   @Get('tasks/:id/history') history(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.workflow.taskHistory(id, user.sub, user.tenantId); }
 }
