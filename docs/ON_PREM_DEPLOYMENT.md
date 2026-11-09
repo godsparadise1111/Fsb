@@ -6,6 +6,8 @@
 - Linux با Docker Engine و Docker Compose v2
 - ابزار age برای رمزگذاری backup و کلید خصوصی بازیابی‌شده خارج از سرور
 - دامنه و TLS termination در reverse proxy مورد اعتماد
+- `CORS_ORIGINS` شامل originهای دقیق UI؛ wildcard ممنوع است
+- `FSB_METRICS_TOKEN` تصادفی با حداقل ۳۲ کاراکتر برای endpoint متریک
 - SMTP قابل دسترس برای worker اعلان‌ها
 - فضای پایدار برای volumeهای PostgreSQL و فایل خصوصی
 
@@ -19,7 +21,7 @@
 نصب‌کننده PostgreSQL را آماده می‌کند، ابتدا migration پایه 20261107_000_core_schema_baseline.sql را برای ساخت جداول هسته اعمال می‌کند، سپس migrationهای Tenant و قابلیت‌ها را به ترتیب نام فایل اعمال و checksum آنها را در fsb_schema_migrations ثبت می‌کند، و در پایان API، وب و worker را بالا می‌آورد. این مسیر برای پایگاه‌داده تازه است؛ انتقال پایگاه‌داده قدیمی دارای داده باید با نگاشت Tenant و baseline ledger جداگانه و تحت runbook مهاجرت انجام شود. DB_SYNCHRONIZE=false اجباری است. هیچ migration در زمان startup برنامه اجرا نمی‌شود.
 
 ## شبکه و TLS
-PostgreSQL فقط در شبکه داخلی Compose قرار دارد و پورت آن منتشر نمی‌شود. API و وب به‌صورت پیش‌فرض فقط روی loopback میزبان bind می‌شوند؛ reverse proxy میزبان باید TLS، محدودیت اندازه درخواست، هدرهای امنیتی و rate limiting را اعمال کند. اگر reverse proxy در کانتینر دیگری است، bind آدرس API/وب را آگاهانه تغییر دهید. CORS فعلی API عمومی است و پیش از استقرار اینترنتی باید به originهای مجاز محدود شود.
+PostgreSQL فقط در شبکه داخلی Compose قرار دارد و پورت آن منتشر نمی‌شود. API و وب به‌صورت پیش‌فرض فقط روی loopback میزبان bind می‌شوند؛ reverse proxy میزبان باید TLS، محدودیت اندازه درخواست، هدرهای امنیتی و rate limiting را اعمال کند. اگر reverse proxy در کانتینر دیگری است، bind آدرس API/وب را آگاهانه تغییر دهید. CORS در Production فقط به originهای صریح `CORS_ORIGINS` محدود است و wildcard پذیرفته نمی‌شود.
 
 ## ارتقا
 دستور bash scripts/upgrade-onprem.sh ابتدا از دیتابیس و فایل‌های خصوصی backup رمزگذاری‌شده می‌گیرد، سپس imageها را می‌سازد، migrationهای جدید را با checksum اعمال می‌کند و سرویس‌ها را به‌روز می‌کند. ارتقای نسخه با migration ناسازگار باید release note و برنامه rollback اختصاصی داشته باشد؛ rollback خودکار schema انجام نمی‌شود.
@@ -35,5 +37,6 @@ PostgreSQL فقط در شبکه داخلی Compose قرار دارد و پورت
 ## محدودیت‌ها
 - worker با profile به نام workers اجرا می‌شود و SMTP و کلید رمزگذاری Outbox لازم دارد.
 - volumeهای postgres_data و private_files باید در سیاست backup میزبان لحاظ شوند.
-- metrics، tracing، محدودیت منابع، rotation لاگ و آزمون restore کامل هنوز نیازمند تکمیل است.
+- readiness دیتابیس، access log ساخت‌یافته با request ID، متریک‌های پایه Prometheus و rotation لاگ Docker پیاده‌سازی شده‌اند؛ tracing توزیع‌شده، مانیتورینگ منابع میزبان/دیتابیس، هشدار بیرونی و آزمون restore کامل هنوز نیازمند تکمیل‌اند.
+- endpoint متریک `GET /api/health/metrics` با `Authorization: Bearer FSB_METRICS_TOKEN` محافظت می‌شود؛ متریک‌ها در حافظه process هستند و باید توسط Prometheus بیرونی scrape شوند.
 - اسکریپت‌ها Bash/Linux هستند؛ Windows production host هدف این بسته نیست.
