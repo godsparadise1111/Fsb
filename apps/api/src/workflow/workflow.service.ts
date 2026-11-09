@@ -669,6 +669,38 @@ export class WorkflowService {
     };
   }
 
+  async updateOperationalAlert(organizationId: string, alertId: string, actorUserId: string, tenantId: string | null | undefined, action: 'ACKNOWLEDGE' | 'ASSIGN' | 'RESOLVE' | 'REOPEN', assignedToUserId?: string | null, note?: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    if (action === 'ASSIGN') {
+      if (!assignedToUserId) throw new BadRequestException('A follow-up owner is required');
+      const eligible = await this.dataSource.query(`SELECT 1 FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$1 AND tm."isActive"=true WHERE u.id=$2 AND u."isActive"=true LIMIT 1`, [tenantId, assignedToUserId]);
+      if (!eligible.length) throw new BadRequestException('Follow-up owner must be an active member of this tenant');
+    }
+    if (action === 'RESOLVE' && (!note || note.trim().length < 3)) throw new BadRequestException('Resolution note must contain at least 3 characters');
+    return this.dataSource.transaction(async manager => {
+      const rows = await manager.query(`SELECT * FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3 FOR UPDATE`, [alertId,tenantId,organizationId]);
+      if (!rows.length) throw new NotFoundException('Operational alert not found');
+      const current = rows[0], now = new Date();
+      if (action === 'ACKNOWLEDGE') {
+        if (['RESOLVED','IGNORED'].includes(current.status)) throw new ConflictException('Closed alerts cannot be acknowledged');
+        await manager.query(`UPDATE organization_operational_alerts SET status='ACKNOWLEDGED',"acknowledgedByUserId"=$4,"acknowledgedAt"=$5,"updatedAt"=$5 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,actorUserId,now]);
+      } else if (action === 'ASSIGN') {
+        if (['RESOLVED','IGNORED'].includes(current.status)) throw new ConflictException('Closed alerts cannot be assigned');
+        await manager.query(`UPDATE organization_operational_alerts SET "assignedToUserId"=$4,status=CASE WHEN status='OPEN' THEN 'IN_PROGRESS' ELSE status END,"updatedAt"=$5 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,assignedToUserId,now]);
+      } else if (action === 'RESOLVE') {
+        if (['RESOLVED','IGNORED'].includes(current.status)) throw new ConflictException('Alert is already closed');
+        await manager.query(`UPDATE organization_operational_alerts SET status='RESOLVED',"resolvedByUserId"=$4,"resolvedAt"=$5,"resolutionNote"=$6,"updatedAt"=$5 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,actorUserId,now,note!.trim()]);
+      } else {
+        await manager.query(`UPDATE organization_operational_alerts SET status='OPEN',"acknowledgedByUserId"=NULL,"acknowledgedAt"=NULL,"resolvedByUserId"=NULL,"resolvedAt"=NULL,"resolutionNote"=NULL,"updatedAt"=$4 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,now]);
+      }
+      await this.tenantAudit.record(manager, { tenantId, actorUserId, action: `organization.operational_alert.${action.toLowerCase()}`, resourceType: 'ORGANIZATION_OPERATIONAL_ALERT', resourceId: alertId, metadata: { organizationId, assignedToUserId: action === 'ASSIGN' ? assignedToUserId : undefined, note: action === 'RESOLVE' ? note!.trim() : undefined } });
+      const result = await manager.query(`SELECT id,"alertKey",type,severity,title,description,"resourceId",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","firstDetectedAt","lastDetectedAt" FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId]);
+      return result[0];
+    });
+  }
+
   async listOrganizationOperationalAlerts(organizationId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
@@ -729,21 +761,44 @@ export class WorkflowService {
         LIMIT 100`,
       [tenantId, organizationId],
     );
-    const counts = rows.reduce((result: Record<string, number>, row: any) => {
+    for (const row of rows) {
+      await this.dataSource.query(
+        `INSERT INTO organization_operational_alerts ("tenantId","organizationId","alertKey",type,severity,title,description,"resourceId","dueAt","firstDetectedAt","lastDetectedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),now())
+         ON CONFLICT ("tenantId","organizationId","alertKey") DO UPDATE SET severity=EXCLUDED.severity,title=EXCLUDED.title,description=EXCLUDED.description,"dueAt"=EXCLUDED."dueAt","lastDetectedAt"=now(),"updatedAt"=now()`,
+        [tenantId,organizationId,row.id,row.type,row.severity,row.title,row.description,row.resourceId,row.dueAt],
+      );
+    }
+    await this.dataSource.query(
+      `UPDATE organization_operational_alerts SET status='RESOLVED',"resolvedAt"=now(),"resolutionNote"='شرط هشدار دیگر در بررسی‌های اخیر مشاهده نشد.',"updatedAt"=now()
+        WHERE "tenantId"=$1 AND "organizationId"=$2 AND status NOT IN ('RESOLVED','IGNORED') AND "lastDetectedAt" < now()-interval '2 minutes'`,
+      [tenantId,organizationId],
+    );
+    const persisted = await this.dataSource.query(
+      `SELECT id,severity,type,title,description,"resourceId","lastDetectedAt" AS "occurredAt","dueAt",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote"
+         FROM organization_operational_alerts WHERE "tenantId"=$1 AND "organizationId"=$2 AND status NOT IN ('RESOLVED','IGNORED')
+         ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,"lastDetectedAt" ASC NULLS LAST LIMIT 100`,
+      [tenantId,organizationId],
+    );
+    const counts = persisted.reduce((result: Record<string, number>, row: any) => {
       result[row.severity] = (result[row.severity] || 0) + 1;
       return result;
     }, {});
     return {
       organizationId,
       generatedAt: new Date().toISOString(),
-      total: rows.length,
-      truncated: rows.length === 100,
+      total: persisted.length,
+      truncated: persisted.length === 100,
       counts: { critical: counts.CRITICAL || 0, high: counts.HIGH || 0, medium: counts.MEDIUM || 0 },
-      items: rows.map((row: any) => ({
+      items: persisted.map((row: any) => ({
         id: row.id, severity: row.severity, type: row.type, title: row.title,
         description: row.description, resourceId: row.resourceId,
         occurredAt: row.occurredAt ? new Date(row.occurredAt).toISOString() : null,
         dueAt: row.dueAt ? new Date(row.dueAt).toISOString() : null,
+        status: row.status, assignedToUserId: row.assignedToUserId,
+        acknowledgedAt: row.acknowledgedAt ? new Date(row.acknowledgedAt).toISOString() : null,
+        resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).toISOString() : null,
+        resolutionNote: row.resolutionNote,
       })),
     };
   }
