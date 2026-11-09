@@ -46,8 +46,8 @@ Dockerfileها فعلاً برای نصب از `npm install` استفاده می
 - هیچ Migration را روی Production برای اولین بار اجرا نکنید.
 - ابتدا یک Staging هم‌نسخه با Production بسازید و Backup دیتابیس و volume فایل خصوصی تهیه کنید.
 - ابتدا تمام Migrationهای پایه و دامنه را با runner/ledger رسمی همان نسخه اعمال کنید؛ فایل‌های Migration را با اجرای دستی خارج از ledger دوباره اجرا نکنید.
-- Migrationهای گزارش‌ساز `20261109_024_tenant_saved_reports.sql` و `20261109_025_report_jobs_cache_schedules.sql` پس از وجود Tenant، عضویت، نقش/مجوز و جدول‌های پایه لازم اجرا می‌شوند.
-- اسکریپت `scripts/ops/migrate.sh` تمام فایل‌های SQL را به ترتیب نام اجرا می‌کند؛ Migrationهای 024 و 025 نیز در همین ledger/checksum ثبت می‌شوند. هر Migration و ثبت checksum آن در یک تراکنش با قفل advisory انجام می‌شود:
+- Migrationهای گزارش‌ساز `20261109_024_tenant_saved_reports.sql` و `20261109_025_report_jobs_cache_schedules.sql` و مجوز ارجاع مجدد گردش کار در `20261109_026_workflow_task_reassignment_permission.sql` پس از وجود جدول‌های پایه لازم اجرا می‌شوند.
+- اسکریپت `scripts/ops/migrate.sh` تمام فایل‌های SQL را به ترتیب نام اجرا می‌کند؛ Migrationهای 024، 025 و 026 نیز در همین ledger/checksum ثبت می‌شوند. هر Migration و ثبت checksum آن در یک تراکنش با قفل advisory انجام می‌شود:
 
 ```sh
 DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-migration.dump' sh scripts/ops/migrate.sh
