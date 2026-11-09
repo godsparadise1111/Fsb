@@ -43,7 +43,7 @@ export class WorkflowController {
   @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/substitutions')
   substitutions(@Param('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.workflow.listOrganizationSubstitutions(organizationId, user.tenantId, limit, offset);
+    return this.workflow.listOrganizationSubstitutions(organizationId, user.tenantId, user.sub, limit, offset);
   }
   @RequirePermissions('workflow.substitutions.manage')
   @Delete('organizations/:organizationId/substitutions/:substitutionId')
