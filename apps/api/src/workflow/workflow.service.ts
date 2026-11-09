@@ -508,8 +508,8 @@ export class WorkflowService {
            AND substitution."revokedAt" IS NULL
            AND substitution."startsAt" <= CURRENT_TIMESTAMP AND substitution."endsAt" > CURRENT_TIMESTAMP
       ), aggregated AS (
-        SELECT "userId", COUNT(DISTINCT "taskId")::int AS "openTaskCount",
-               COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution")::int AS "substitutionCoverageCount"
+        SELECT "userId", COUNT(DISTINCT "taskId") AS "openTaskCount",
+               COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution") AS "substitutionCoverageCount"
           FROM task_load GROUP BY "userId"
       )
       SELECT people.id AS "userId", people."firstName", people."lastName", people.username,
