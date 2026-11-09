@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { hostname } from 'node:os';
+import { createHash } from 'node:crypto';
 import * as nodemailer from 'nodemailer';
 import { DataSource } from 'typeorm';
 import { NotificationOutboxService } from './notification-outbox.service';
@@ -96,9 +97,9 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
           [alert.tenantId,alert.assignedToUserId,alert.assignedToUserId,alert.organizationId],
         ) as Array<{userId:string;email:string;audience:'ASSIGNEE'|'MANAGER'}>;
         for (const recipient of recipients) {
-          const dedupeKey = recipient.audience === 'ASSIGNEE'
-            ? `alert-sla:${alert.id}:${stage}:${recipient.userId}`
-            : `alert-sla-manager:${alert.id}:${stage}:${recipient.userId}`;
+          const dedupeKey = createHash('sha256')
+            .update(`alert-sla:${alert.tenantId}:${alert.id}:${stage}:${recipient.audience}:${recipient.userId}`)
+            .digest('hex');
           await this.outbox.enqueue(manager, {
             tenantId: alert.tenantId,
             eventType: 'organization.alert.sla.breached',
