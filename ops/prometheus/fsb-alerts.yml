@@ -26,15 +26,20 @@ groups:
           summary: F-S API server error rate is above 5 percent
           description: More than five percent of completed API requests are returning 5xx responses.
 
-      - alert: FsbApiSlowRequests
-        expr: max_over_time(fsb_http_request_duration_ms_max{job="fsb-api"}[5m]) > 5000
+      - alert: FsbApiHighAverageLatency
+        expr: |
+          (
+            sum(rate(fsb_http_request_duration_ms_sum{job="fsb-api"}[5m]))
+            /
+            clamp_min(sum(rate(fsb_http_requests_total{job="fsb-api"}[5m])), 0.001)
+          ) > 1500
         for: 5m
         labels:
           severity: warning
           service: fsb
         annotations:
-          summary: F-S API has slow requests
-          description: At least one route has observed a request duration above five seconds.
+          summary: F-S API average request latency is above 1.5 seconds
+          description: Average completed request duration over five minutes is elevated; use route-level metrics to investigate.
 
       - alert: FsbApiProcessRestarted
         expr: changes(fsb_process_uptime_seconds{job="fsb-api"}[10m]) > 0
