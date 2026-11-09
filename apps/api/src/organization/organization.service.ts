@@ -50,6 +50,15 @@ export class OrganizationService {
     );
     if (!membership) throw new ForbiddenException('An active membership in the selected tenant is required');
     if (membership.isTenantAdmin === true) return this.listOrganizations(tenantId);
+    const [platformGrant] = await this.organizations.manager.query(
+      `SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id=ur.\"roleId\" AND r.scope='PLATFORM' AND r.\"isActive\"=true
+         JOIN role_permissions rp ON rp.\"roleId\"=r.id
+         JOIN permissions p ON p.id=rp.\"permissionId\" AND p.code IN ('organization.read','*')
+        WHERE ur.\"userId\"=$1 AND ur.\"isActive\"=true LIMIT 1`,
+      [userId],
+    );
+    if (platformGrant) return this.listOrganizations(tenantId);
     const grants = await this.userRoles.find({
       where: { userId, isActive: true },
       relations: { role: { permissions: true }, organization: true },
