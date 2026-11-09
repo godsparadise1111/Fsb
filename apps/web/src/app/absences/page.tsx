@@ -244,7 +244,7 @@ export default function AbsencesPage() {
       </section>}
 
       <section className="absence-summary">
-        <article><span>کل سوابق</span><strong>{total.toLocaleString('fa-IR')}</strong></article>
+        <article><span>کل سوابق</span><strong>{summary.total.toLocaleString('fa-IR')}</strong></article>
         <article><span>در حال اجرا</span><strong>{summary.active.toLocaleString('fa-IR')}</strong></article>
         <article><span>برنامه‌ریزی‌شده</span><strong>{summary.upcoming.toLocaleString('fa-IR')}</strong></article>
         <article><span>لغوشده</span><strong>{summary.cancelled.toLocaleString('fa-IR')}</strong></article>
@@ -266,7 +266,7 @@ export default function AbsencesPage() {
 
       <section className="absence-panel">
         <div className="absence-panel-heading"><div><h2>دفتر ثبت غیبت‌ها</h2><p>سوابق غیبت و جانشینی در محدودهٔ سازمان انتخاب‌شده</p></div>
-          <div className="absence-toolbar"><select aria-label="سازمان" value={organizationId} onChange={e => setOrganizationId(e.target.value)}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select><button className="absence-secondary" onClick={() => void loadData()}>به‌روزرسانی</button></div>
+          <div className="absence-toolbar"><select aria-label="سازمان" value={organizationId} onChange={e => { setOrganizationId(e.target.value); setPageOffset(0); }}><option value="">انتخاب سازمان</option>{organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select><button className="absence-secondary" onClick={() => void loadData()}>به‌روزرسانی</button></div>
         </div>
         <div className="absence-filters">
           {[['ALL','همه'],['ACTIVE','در حال اجرا'],['UPCOMING','آینده'],['EXPIRED','پایان‌یافته'],['CANCELLED','لغوشده']].map(([key,label]) => <button key={key} className={filter === key ? 'selected' : ''} onClick={() => { setFilter(key); setPageOffset(0); }}>{label}</button>)}
