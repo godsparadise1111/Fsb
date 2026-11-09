@@ -9,7 +9,7 @@ export class TaskDeferralRequest {
   @Column({ type: 'timestamptz', nullable: true }) originalDueAt: Date | null;
   @Column({ type: 'timestamptz' }) proposedDueAt: Date;
   @Column({ type: 'varchar', length: 1000 }) reason: string;
-  @Column({ type: 'varchar', length: 20, default: 'PENDING' }) status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  @Column({ type: 'varchar', length: 20, default: 'PENDING' }) status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   @Column('uuid', { nullable: true }) reviewerUserId: string | null;
   @Column({ type: 'timestamptz', nullable: true }) reviewedAt: Date | null;
   @Column({ type: 'varchar', length: 1000, nullable: true }) reviewerComment: string | null;
