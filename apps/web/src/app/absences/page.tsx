@@ -37,7 +37,7 @@ export default function AbsencesPage() {
     total: number;
     truncated: boolean;
     counts: { critical: number; high: number; medium: number };
-    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null; status: string; assignedToUserId: string | null; acknowledgedAt: string | null; resolvedAt: string | null; resolutionNote: string | null; responseDueAt: string | null; resolutionDueAt: string | null; slaStatus: string }>;
+    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null; status: string; assignedToUserId: string | null; acknowledgedAt: string | null; resolvedAt: string | null; resolutionNote: string | null; responseDueAt: string | null; resolutionDueAt: string | null; escalatedAt: string | null; escalationLevel: number; slaStatus: string }>;
     generatedAt: string;
   } | null>(null);
   const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
@@ -469,6 +469,7 @@ export default function AbsencesPage() {
               </span>
               <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString('fa-IR') : '—'} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString('fa-IR') : '—'}</small>
             </div>
+            {alert.escalationLevel > 0 && <small className="absence-pill expired">سطح تشدید: {alert.escalationLevel.toLocaleString("fa-IR")} {alert.escalatedAt ? ` · ${new Date(alert.escalatedAt).toLocaleString("fa-IR")}` : ""}</small>}
             <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد منبع: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
             <div className="absence-alert-top">
               <span className="absence-step">وضعیت: {alert.status === 'OPEN' ? 'باز' : alert.status === 'ACKNOWLEDGED' ? 'مشاهده و تأییدشده' : alert.status === 'IN_PROGRESS' ? 'در حال پیگیری' : 'حل‌شده'}{alert.assignedToUserId ? ` · مسئول: ${personName(userMap.get(alert.assignedToUserId))}` : ''}</span>
