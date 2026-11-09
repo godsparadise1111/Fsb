@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Dynamic, tenant-scoped saved reports. No user SQL or executable query text is stored.
 CREATE TABLE IF NOT EXISTS tenant_saved_reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -22,3 +24,5 @@ CREATE INDEX IF NOT EXISTS ix_tenant_saved_reports_shared_updated
 
 COMMENT ON TABLE tenant_saved_reports IS
   'Tenant-scoped saved report specifications. Query execution is compiled from an allowlisted metadata registry.';
+
+COMMIT;
