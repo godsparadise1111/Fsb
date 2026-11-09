@@ -4,6 +4,7 @@ umask 077
 
 [ -f .env ] || { echo "ERROR: .env is missing." >&2; exit 1; }
 [ -n "${AGE_RECIPIENT:-}" ] || { echo "ERROR: set AGE_RECIPIENT to the backup recipient public key." >&2; exit 1; }
+[ "${FSB_BACKUP_QUIESCE_CONFIRMED:-}" = "YES" ] || { echo "ERROR: stop API and all workers, then set FSB_BACKUP_QUIESCE_CONFIRMED=YES before backup." >&2; exit 1; }
 command -v age >/dev/null 2>&1 || { echo "ERROR: age is required on the host." >&2; exit 1; }
 
 compose="docker compose --env-file .env -f compose.production.yaml"
