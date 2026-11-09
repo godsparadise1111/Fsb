@@ -11,7 +11,9 @@
     "worker:notifications": "node dist/notifications/worker.main.js",
     "worker:notifications:dev": "tsx src/notifications/worker.main.ts",
     "worker:automation": "node dist/notifications/worker.main.js",
-    "worker:automation:dev": "tsx src/notifications/worker.main.ts"
+    "worker:automation:dev": "tsx src/notifications/worker.main.ts",
+    "worker:reports": "node dist/tenant/report-worker.main.js",
+    "worker:reports:dev": "tsx src/tenant/report-worker.main.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
