@@ -34,7 +34,16 @@ export class TenantService {
   }
 
   async list() {
-    return this.tenants.find({ order: { createdAt: 'DESC' } });
+    const tenants = await this.tenants.find({ order: { createdAt: 'DESC' } });
+    const counts = await this.dataSource.query(
+      `SELECT tm."tenantId",count(*)::int AS count
+         FROM tenant_memberships tm
+         JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+        WHERE tm."isActive"=true AND tm."isTenantAdmin"=true
+        GROUP BY tm."tenantId"`,
+    );
+    const activeAdmins = new Map<string, number>(counts.map((row: { tenantId: string; count: number }) => [row.tenantId, Number(row.count)]));
+    return tenants.map(tenant => ({ ...tenant, activeAdminCount: activeAdmins.get(tenant.id) ?? 0 }));
   }
 
   async listActivationCandidates(search?: string) {
