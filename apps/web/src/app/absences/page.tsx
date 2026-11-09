@@ -63,7 +63,7 @@ export default function AbsencesPage() {
 
   const loadData = useCallback(async () => {
     if (!token) return;
-    setLoading(true); setCalendarLoading(true); setCalendarTruncated(false); setError('');
+    setLoading(true); setError('');
     try {
       const orgs = await request('/organizations/accessible');
       setOrganizations(orgs);
@@ -71,36 +71,48 @@ export default function AbsencesPage() {
         ? organizationId : orgs[0]?.id || '';
       if (selectedOrg !== organizationId) {
         setOrganizationId(selectedOrg); setPageOffset(0);
-        setUsers([]); setItems([]); setCalendarItems([]); setTotal(0); setCalendarTruncated(false);
+        setUsers([]); setItems([]); setTotal(0);
       }
       if (selectedOrg) {
-        const from = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).toISOString();
-        const to = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1).toISOString();
         const [people, result] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
           request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
         ]);
         setUsers(people); setItems(result.items || []); setTotal(result.total || 0);
         setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
-
-        const monthRows: Absence[] = [];
-        let monthOffset = 0;
-        let monthTotal = 0;
-        do {
-          const monthResult = await request(`/organizations/${selectedOrg}/absences?limit=100&offset=${monthOffset}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=ALL`);
-          monthRows.push(...(monthResult.items || []));
-          monthTotal = Number(monthResult.total || 0);
-          monthOffset += 100;
-        } while (monthOffset < monthTotal && monthOffset < 10000);
-        setCalendarItems(monthRows); setCalendarTruncated(monthOffset < monthTotal);
       } else {
         setUsers([]); setItems([]); setCalendarItems([]); setTotal(0);
         setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'دریافت اطلاعات ناموفق بود');
-    } finally { setLoading(false); setCalendarLoading(false); }
-  }, [token, request, organizationId, pageOffset, filter, calendarMonth]);
+    } finally { setLoading(false); }
+  }, [token, request, organizationId, pageOffset, filter]);
+
+  const loadCalendar = useCallback(async () => {
+    if (!token || !organizationId) {
+      setCalendarItems([]); setCalendarTruncated(false); return;
+    }
+    setCalendarLoading(true); setCalendarTruncated(false);
+    try {
+      const from = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).toISOString();
+      const to = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1).toISOString();
+      const monthRows: Absence[] = [];
+      let monthOffset = 0;
+      let monthTotal = 0;
+      do {
+        const monthResult = await request(`/organizations/${organizationId}/absences?limit=100&offset=${monthOffset}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=ALL`);
+        monthRows.push(...(monthResult.items || []));
+        monthTotal = Number(monthResult.total || 0);
+        monthOffset += 100;
+      } while (monthOffset < monthTotal && monthOffset < 10000);
+      setCalendarItems(monthRows);
+      setCalendarTruncated(monthOffset < monthTotal);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'دریافت تقویم ناموفق بود');
+      setCalendarItems([]);
+    } finally { setCalendarLoading(false); }
+  }, [token, organizationId, calendarMonth, request]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem('fsb.accessToken');
@@ -110,6 +122,7 @@ export default function AbsencesPage() {
   }, []);
 
   useEffect(() => { if (loggedIn && token) void loadData(); }, [loggedIn, token, loadData]);
+  useEffect(() => { if (loggedIn && token) void loadCalendar(); }, [loggedIn, token, loadCalendar]);
 
   const userMap = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
   useEffect(() => {
@@ -171,7 +184,7 @@ export default function AbsencesPage() {
     if (filter === 'UPCOMING') return start > now;
     if (filter === 'EXPIRED') return end <= now;
     return true;
-  }), [items]);
+  }), [items, filter]);
 
   async function login(event: FormEvent) {
     event.preventDefault(); setError(''); setLoading(true);
