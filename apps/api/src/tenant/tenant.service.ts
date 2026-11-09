@@ -42,6 +42,17 @@ export class TenantService {
     initialAdminUserId?: string,
   ) {
     return this.dataSource.transaction(async manager => {
+      // Lock the proposed administrator before the tenant row, matching the
+      // user -> tenant lock order used by account deactivation.
+      const initialAdminUser = initialAdminUserId
+        ? await manager.findOne(User, {
+            where: { id: initialAdminUserId, isActive: true },
+            lock: { mode: 'pessimistic_write' },
+          })
+        : null;
+      if (initialAdminUserId && !initialAdminUser) {
+        throw new NotFoundException('Active initial tenant administrator user not found');
+      }
       const tenant = await manager.findOne(Tenant, { where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!tenant) throw new NotFoundException('Tenant not found');
       if (tenant.status === 'CLOSED' && status !== 'CLOSED') {
@@ -79,10 +90,7 @@ export class TenantService {
       const saved = await manager.save(tenant);
 
       if (status === 'ACTIVE' && activeAdminCount === 0 && initialAdminUserId) {
-        const user = await manager.findOne(User, {
-          where: { id: initialAdminUserId, isActive: true },
-          lock: { mode: 'pessimistic_write' },
-        });
+        const user = initialAdminUser;
         if (!user) throw new NotFoundException('Active initial tenant administrator user not found');
         const memberships = manager.getRepository(TenantMembership);
         let membership = await memberships.findOne({
