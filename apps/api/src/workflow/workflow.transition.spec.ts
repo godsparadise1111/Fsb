@@ -46,3 +46,60 @@ test('ambiguous transition graphs fail closed', () => {
   ] };
   assert.throws(() => resolve(schema, 1, 'APPROVED', null, true), ConflictException);
 });
+
+const resolveAssignees = (service as any).resolveStepAssignees.bind(service) as (
+  manager: any, organizationId: string, tenantId: string, config: Record<string, unknown>,
+) => Promise<string[]>;
+
+function assignmentManager(options: { positionCount?: number; unitCount?: number; resolved?: string[] }) {
+  return {
+    query: async (sql: string) => {
+      if (sql.includes('FROM positions p')) return [{ count: options.positionCount ?? 0 }];
+      if (sql.includes('FROM organization_units WHERE')) return [{ count: options.unitCount ?? 0 }];
+      if (sql.includes('SELECT DISTINCT up."userId"')) {
+        return (options.resolved ?? []).map(userId => ({ userId }));
+      }
+      throw new Error('Unexpected assignment query: ' + sql.slice(0, 80));
+    },
+  };
+}
+
+test('position assignment resolves active users in the selected organization', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const positionId = '22222222-2222-4222-8222-222222222222';
+  const result = await resolveAssignees(
+    assignmentManager({ positionCount: 1, resolved: [userId] }),
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    { assigneePositionIds: [positionId] },
+  );
+  assert.deepEqual(result, [userId]);
+});
+
+test('unit assignment resolves its active position holders', async () => {
+  const userIds = [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+  ];
+  const unitId = '33333333-3333-4333-8333-333333333333';
+  const result = await resolveAssignees(
+    assignmentManager({ unitCount: 1, resolved: userIds }),
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    { assigneeUnitIds: [unitId] },
+  );
+  assert.deepEqual(result, userIds);
+});
+
+test('inactive or cross-organization position assignment is rejected', async () => {
+  const positionId = '22222222-2222-4222-8222-222222222222';
+  await assert.rejects(
+    resolveAssignees(
+      assignmentManager({ positionCount: 0, resolved: [] }),
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      { assigneePositionIds: [positionId] },
+    ),
+    BadRequestException,
+  );
+});
