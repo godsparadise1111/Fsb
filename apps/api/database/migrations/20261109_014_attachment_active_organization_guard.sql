@@ -13,7 +13,9 @@ BEGIN
     INNER JOIN form_versions fv ON fv.id = fs."formVersionId"
     INNER JOIN form_definitions fd ON fd.id = fv."definitionId"
     INNER JOIN organizations o ON o.id = fd."organizationId"
-   WHERE fs.id = NEW."submissionId";
+    INNER JOIN tenants t ON t.id = o."tenantId" AND t.status = 'ACTIVE'
+   WHERE fs.id = NEW."submissionId"
+   FOR SHARE OF o, t;
 
   IF submission_tenant_id IS NULL
      OR organization_tenant_id IS DISTINCT FROM submission_tenant_id THEN
@@ -36,6 +38,7 @@ BEGIN
      WHERE tm."tenantId" = NEW."tenantId"
        AND tm."userId" = NEW."uploadedByUserId"
        AND tm."isActive" = true
+     FOR SHARE OF tm, u
   ) THEN
     RAISE EXCEPTION 'File uploader must be an active user and member of the active tenant'
       USING ERRCODE = '23514';
