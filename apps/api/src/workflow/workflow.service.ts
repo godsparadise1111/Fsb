@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { ProcessVersion } from '../process/entities/process-version.entity';
 import { Organization } from '../organization/entities/organization.entity';
 import { User } from '../identity/entities/user.entity';
@@ -351,6 +351,45 @@ export class WorkflowService {
 
 
 
+  private async assertSubstituteCapacity(
+    manager: EntityManager, tenantId: string, organizationId: string, substituteUserId: string,
+    at: Date, policy?: { configured: boolean; enforceLimit: boolean; maxOpenTasksPerSubstitute: number },
+  ) {
+    const effectivePolicy = policy ?? await this.readOrganizationWorkloadPolicy(organizationId, tenantId, manager);
+    if (!effectivePolicy.configured || !effectivePolicy.enforceLimit) return { checked: false, currentLoad: null };
+    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantId + ':' + organizationId + ':' + substituteUserId]);
+    const rows = await manager.query(
+      `WITH open_load AS (
+         SELECT wt.id AS "taskId"
+           FROM task_assignees ta
+           JOIN workflow_tasks wt ON wt.id=ta."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+          WHERE ta."userId"=$3 AND ta.status='PENDING'
+         UNION
+         SELECT wt.id
+           FROM organization_substitutions s
+           JOIN workflow_tasks wt ON wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=s."organizationId"
+           JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
+          WHERE s."tenantId"=$1 AND s."organizationId"=$2 AND s."substituteUserId"=$3
+            AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
+         UNION
+         SELECT wt.id
+           FROM task_delegations td
+           JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
+           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
+          WHERE td."tenantId"=$1 AND td."toUserId"=$3 AND td."revokedAt" IS NULL
+            AND td."startsAt"<=$4 AND td."endsAt">$4
+       ) SELECT COUNT(*)::int AS count FROM open_load`,
+      [tenantId, organizationId, substituteUserId, at],
+    );
+    const currentLoad = Number(rows[0]?.count ?? 0);
+    if (currentLoad >= effectivePolicy.maxOpenTasksPerSubstitute) {
+      throw new ConflictException(`Selected substitute has reached the organization workload limit (${currentLoad}/${effectivePolicy.maxOpenTasksPerSubstitute} open tasks at the planned start time)`);
+    }
+    return { checked: true, currentLoad };
+  }
+
   async createOrganizationSubstitution(actorUserId: string, dto: CreateOrganizationSubstitutionDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const startsAt = new Date(dto.startsAt);
@@ -376,6 +415,7 @@ export class WorkflowService {
         .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
         .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
       if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Both users must be active tenant members with valid positions in the organization at the substitution start');
+      await this.assertSubstituteCapacity(manager, tenantId, dto.organizationId, dto.substituteUserId, startsAt);
       const overlap = await manager.createQueryBuilder(OrganizationSubstitution, 's')
         .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.originalUserId = :originalUserId', {
           tenantId, organizationId: dto.organizationId, originalUserId: dto.originalUserId,
@@ -456,39 +496,7 @@ export class WorkflowService {
         .andWhere('up."validFrom" <= :startsAt AND (up."validUntil" IS NULL OR up."validUntil" >= :startsAt)', { startsAt })
         .select('COUNT(DISTINCT up."userId")', 'count').getRawOne();
       if (Number(eligible?.count ?? 0) !== 2) throw new BadRequestException('Absent user and substitute must be active tenant members with valid positions at the absence start');
-      const policy = await this.readOrganizationWorkloadPolicy(dto.organizationId, tenantId, manager);
-      if (policy.configured && policy.enforceLimit) {
-        await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantId + ':' + dto.organizationId + ':' + dto.substituteUserId]);
-        const loadRows = await manager.query(
-          `WITH open_load AS (
-             SELECT wt.id AS "taskId"
-               FROM task_assignees ta
-               JOIN workflow_tasks wt ON wt.id=ta."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
-               JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
-              WHERE ta."userId"=$3 AND ta.status='PENDING'
-             UNION
-             SELECT wt.id
-               FROM organization_substitutions s
-               JOIN workflow_tasks wt ON wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
-               JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=s."organizationId"
-               JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
-              WHERE s."tenantId"=$1 AND s."organizationId"=$2 AND s."substituteUserId"=$3
-                AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
-             UNION
-             SELECT wt.id
-               FROM task_delegations td
-               JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
-               JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
-              WHERE td."tenantId"=$1 AND td."toUserId"=$3 AND td."revokedAt" IS NULL
-                AND td."startsAt"<=$4 AND td."endsAt">$4
-           ) SELECT COUNT(*)::int AS count FROM open_load`,
-          [tenantId, dto.organizationId, dto.substituteUserId, startsAt],
-        );
-        const currentLoad = Number(loadRows[0]?.count ?? 0);
-        if (currentLoad >= policy.maxOpenTasksPerSubstitute) {
-          throw new ConflictException(`Selected substitute has reached the organization workload limit (${currentLoad}/${policy.maxOpenTasksPerSubstitute} open tasks)`);
-        }
-      }
+      await this.assertSubstituteCapacity(manager, tenantId, dto.organizationId, dto.substituteUserId, startsAt);
       const substitution = await manager.save(OrganizationSubstitution, manager.create(OrganizationSubstitution, {
         tenantId, organizationId: dto.organizationId, originalUserId: dto.userId,
         substituteUserId: dto.substituteUserId, startsAt, endsAt, reason, createdByUserId: actorUserId,
@@ -563,8 +571,10 @@ export class WorkflowService {
     });
   }
 
-  async getOrganizationWorkload(organizationId: string, tenantId?: string | null) {
+  async getOrganizationWorkload(organizationId: string, tenantId?: string | null, atValue?: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const asOf = atValue ? new Date(atValue) : new Date();
+    if (!Number.isFinite(asOf.getTime())) throw new BadRequestException('at must be a valid ISO date-time');
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
     if (!organization) throw new NotFoundException('Organization not found');
     const rows = await this.dataSource.query(
@@ -575,8 +585,8 @@ export class WorkflowService {
           JOIN user_positions up ON up."userId" = u.id AND up."isActive" = true
           JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
           JOIN organization_units ou ON ou.id = p."organizationUnitId" AND ou."organizationId" = $2 AND ou."isActive" = true
-         WHERE u."isActive" = true AND up."validFrom" <= CURRENT_TIMESTAMP
-           AND (up."validUntil" IS NULL OR up."validUntil" >= CURRENT_TIMESTAMP)
+         WHERE u."isActive" = true AND up."validFrom" <= $3
+           AND (up."validUntil" IS NULL OR up."validUntil" >= $3)
       ), task_load AS (
         SELECT ta."userId", wt.id AS "taskId", false AS "isSubstitution", false AS "isDelegated"
           FROM task_assignees ta
@@ -593,14 +603,14 @@ export class WorkflowService {
              AND original."userId" = substitution."originalUserId" AND original.status = 'PENDING'
          WHERE substitution."tenantId" = $1 AND substitution."organizationId" = $2
            AND substitution."revokedAt" IS NULL
-           AND substitution."startsAt" <= CURRENT_TIMESTAMP AND substitution."endsAt" > CURRENT_TIMESTAMP
+           AND substitution."startsAt" <= $3 AND substitution."endsAt" > $3
         UNION ALL
         SELECT td."toUserId", wt.id, false, true
           FROM task_delegations td
           JOIN workflow_tasks wt ON wt.id=td."taskId" AND wt."tenantId"=$1 AND wt.status IN ('OPEN','IN_PROGRESS')
           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."organizationId"=$2
          WHERE td."tenantId"=$1 AND td."revokedAt" IS NULL
-           AND td."startsAt"<=CURRENT_TIMESTAMP AND td."endsAt">CURRENT_TIMESTAMP
+           AND td."startsAt"<=$3 AND td."endsAt">$3
       ), aggregated AS (
         SELECT "userId", COUNT(DISTINCT "taskId") AS "openTaskCount",
                COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution") AS "substitutionCoverageCount",
@@ -613,11 +623,12 @@ export class WorkflowService {
         FROM active_people people
         LEFT JOIN aggregated ON aggregated."userId" = people.id
        ORDER BY COALESCE(aggregated."openTaskCount", 0) DESC, people."lastName", people."firstName"`,
-      [tenantId, organizationId],
+      [tenantId, organizationId, asOf],
     );
     const policy = await this.readOrganizationWorkloadPolicy(organizationId, tenantId);
     return {
       organizationId,
+      asOf: asOf.toISOString(),
       policy,
       items: rows.map((row: any) => ({
         userId: row.userId,
