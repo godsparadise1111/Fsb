@@ -476,18 +476,60 @@ export class WorkflowService {
     });
   }
 
-  async listOrganizationAbsences(organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string) {
+  async listOrganizationAbsences(
+    organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string,
+    fromValue?: string, toValue?: string,
+  ) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const limit = limitValue === undefined ? 50 : Number(limitValue);
+    const limit = limitValue === undefined ? 25 : Number(limitValue);
     const offset = offsetValue === undefined ? 0 : Number(offsetValue);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be between 1 and 100');
-    if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new BadRequestException('offset must be between 0 and 100000');
+    if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) throw new BadRequestException('offset must be between 0 and 1000000');
+    if ((fromValue && !toValue) || (!fromValue && toValue)) throw new BadRequestException('from and to must be provided together');
+    let from: Date | undefined;
+    let to: Date | undefined;
+    if (fromValue && toValue) {
+      from = new Date(fromValue);
+      to = new Date(toValue);
+      if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) {
+        throw new BadRequestException('A valid date range with from earlier than to is required');
+      }
+      if (to.getTime() - from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+        throw new BadRequestException('Date range cannot exceed 93 days');
+      }
+    }
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
     if (!organization) throw new NotFoundException('Organization not found');
-    const [items, total] = await this.dataSource.getRepository(OrganizationAbsence).findAndCount({
-      where: { tenantId, organizationId }, order: { createdAt: 'DESC' }, take: limit, skip: offset,
-    });
-    return { items, total, limit, offset };
+
+    const repository = this.dataSource.getRepository(OrganizationAbsence);
+    const applyScope = (qb: ReturnType<typeof repository.createQueryBuilder>) => {
+      qb.where('absence."tenantId" = :tenantId AND absence."organizationId" = :organizationId', { tenantId, organizationId });
+      if (from && to) qb.andWhere('absence."startsAt" < :to AND absence."endsAt" > :from', { from, to });
+      return qb;
+    };
+    const itemsQuery = applyScope(repository.createQueryBuilder('absence'))
+      .orderBy('absence."createdAt"', 'DESC')
+      .addOrderBy('absence.id', 'DESC')
+      .take(limit).skip(offset);
+    const countQuery = applyScope(repository.createQueryBuilder('absence'));
+    const [items, total] = await Promise.all([itemsQuery.getMany(), countQuery.getCount()]);
+
+    const summaryQuery = repository.createQueryBuilder('absence')
+      .select('COUNT(*)', 'total')
+      .addSelect('COUNT(*) FILTER (WHERE absence."cancelledAt" IS NOT NULL)', 'cancelled')
+      .addSelect('COUNT(*) FILTER (WHERE absence."cancelledAt" IS NULL AND absence."startsAt" <= CURRENT_TIMESTAMP AND absence."endsAt" > CURRENT_TIMESTAMP)', 'active')
+      .addSelect('COUNT(*) FILTER (WHERE absence."cancelledAt" IS NULL AND absence."startsAt" > CURRENT_TIMESTAMP)', 'upcoming')
+      .addSelect('COUNT(*) FILTER (WHERE absence."cancelledAt" IS NULL AND absence."endsAt" <= CURRENT_TIMESTAMP)', 'expired')
+      .where('absence."tenantId" = :tenantId AND absence."organizationId" = :organizationId', { tenantId, organizationId });
+    const summaryRaw = await summaryQuery.getRawOne();
+    const summary = {
+      total: Number(summaryRaw?.total ?? 0),
+      active: Number(summaryRaw?.active ?? 0),
+      upcoming: Number(summaryRaw?.upcoming ?? 0),
+      expired: Number(summaryRaw?.expired ?? 0),
+      cancelled: Number(summaryRaw?.cancelled ?? 0),
+    };
+    return { items, total, limit, offset, summary, range: from && to ? { from: from.toISOString(), to: to.toISOString() } : null };
   }
 
   async cancelOrganizationAbsence(organizationId: string, absenceId: string, actorUserId: string, tenantId?: string | null) {
