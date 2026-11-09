@@ -205,6 +205,74 @@ export class TenantReportsService {
     };
   }
 
+
+  async operationalAlertSla(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
+    const tenant = await this.dataSource.getRepository(Tenant).findOne({ where: { id: tenantId } });
+    if (!tenant || tenant.status !== 'ACTIVE') throw new NotFoundException('Active tenant not found');
+    const now = new Date();
+    const defaultTo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const defaultFrom = new Date(defaultTo.getTime() - 30 * 86400000);
+    const from = this.parseDate(options.from, defaultFrom, 'from');
+    const to = this.parseDate(options.to, defaultTo, 'to');
+    if (from >= to || to.getTime() - from.getTime() > 366 * 86400000) throw new BadRequestException('Invalid report range; maximum is 366 days');
+    const organizationId = options.organizationId ?? null;
+    if (organizationId) {
+      const [owned] = await this.dataSource.query('SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true',[organizationId,tenantId]);
+      if (!owned) throw new NotFoundException('Organization not found in this tenant');
+    }
+    const [summary] = await this.dataSource.query(
+      `SELECT count(*)::int AS "totalAlerts",
+        count(*) FILTER (WHERE "acknowledgedAt" IS NOT NULL)::int AS "responded",
+        count(*) FILTER (WHERE ("acknowledgedAt" IS NULL AND "responseDueAt"<now()) OR "acknowledgedAt">"responseDueAt")::int AS "responseBreached",
+        count(*) FILTER (WHERE "resolvedAt" IS NOT NULL)::int AS "resolved",
+        count(*) FILTER (WHERE ("resolvedAt" IS NULL AND "resolutionDueAt"<now()) OR "resolvedAt">"resolutionDueAt")::int AS "resolutionBreached",
+        round(avg(EXTRACT(EPOCH FROM ("acknowledgedAt"-"firstDetectedAt"))/60) FILTER (WHERE "acknowledgedAt">="firstDetectedAt")::numeric,2) AS "averageResponseMinutes",
+        round(avg(EXTRACT(EPOCH FROM ("resolvedAt"-"firstDetectedAt"))/3600) FILTER (WHERE "resolvedAt">="firstDetectedAt")::numeric,2) AS "averageResolutionHours",
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("acknowledgedAt"-"firstDetectedAt"))/60)
+          FILTER (WHERE "acknowledgedAt">="firstDetectedAt") AS "medianResponseMinutes",
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("resolvedAt"-"firstDetectedAt"))/3600)
+          FILTER (WHERE "resolvedAt">="firstDetectedAt") AS "medianResolutionHours"
+       FROM organization_operational_alerts
+       WHERE "tenantId"=$1 AND "firstDetectedAt">=$2 AND "firstDetectedAt"<$3 AND ($4::uuid IS NULL OR "organizationId"=$4)`,
+      [tenantId,from,to,organizationId],
+    );
+    const bySeverity = await this.dataSource.query(
+      `SELECT severity,count(*)::int AS total,
+        count(*) FILTER (WHERE "acknowledgedAt" IS NOT NULL AND "acknowledgedAt"<="responseDueAt")::int AS "responseMet",
+        count(*) FILTER (WHERE "acknowledgedAt">"responseDueAt" OR ("acknowledgedAt" IS NULL AND "responseDueAt"<now()))::int AS "responseBreached",
+        count(*) FILTER (WHERE "resolvedAt" IS NOT NULL AND "resolvedAt"<="resolutionDueAt")::int AS "resolutionMet",
+        count(*) FILTER (WHERE "resolvedAt">"resolutionDueAt" OR ("resolvedAt" IS NULL AND "resolutionDueAt"<now()))::int AS "resolutionBreached",
+        round(avg(EXTRACT(EPOCH FROM ("acknowledgedAt"-"firstDetectedAt"))/60) FILTER (WHERE "acknowledgedAt">="firstDetectedAt")::numeric,2) AS "averageResponseMinutes",
+        round(avg(EXTRACT(EPOCH FROM ("resolvedAt"-"firstDetectedAt"))/3600) FILTER (WHERE "resolvedAt">="firstDetectedAt")::numeric,2) AS "averageResolutionHours"
+       FROM organization_operational_alerts
+       WHERE "tenantId"=$1 AND "firstDetectedAt">=$2 AND "firstDetectedAt"<$3 AND ($4::uuid IS NULL OR "organizationId"=$4)
+       GROUP BY severity ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END`,
+      [tenantId,from,to,organizationId],
+    );
+    const byOrganization = await this.dataSource.query(
+      `SELECT o.id AS "organizationId",o.name AS "organizationName",count(a.id)::int AS total,
+        count(a.id) FILTER (WHERE a."acknowledgedAt" IS NOT NULL AND a."acknowledgedAt"<=a."responseDueAt")::int AS "responseMet",
+        count(a.id) FILTER (WHERE a."acknowledgedAt">a."responseDueAt" OR (a."acknowledgedAt" IS NULL AND a."responseDueAt"<now()))::int AS "responseBreached",
+        count(a.id) FILTER (WHERE a."resolvedAt" IS NOT NULL AND a."resolvedAt"<=a."resolutionDueAt")::int AS "resolutionMet",
+        count(a.id) FILTER (WHERE a."resolvedAt">a."resolutionDueAt" OR (a."resolvedAt" IS NULL AND a."resolutionDueAt"<now()))::int AS "resolutionBreached"
+       FROM organizations o LEFT JOIN organization_operational_alerts a
+         ON a."organizationId"=o.id AND a."tenantId"=$1 AND a."firstDetectedAt">=$2 AND a."firstDetectedAt"<$3
+       WHERE o."tenantId"=$1 AND o."isActive"=true AND ($4::uuid IS NULL OR o.id=$4)
+       GROUP BY o.id,o.name ORDER BY total DESC,o.name LIMIT 100`,
+      [tenantId,from,to,organizationId],
+    );
+    const numeric = (row: any) => Object.fromEntries(Object.entries(row ?? {}).map(([key,value]) => [key,value == null ? null : typeof value === 'string' && /^-?\\d+(\\.\\d+)?$/.test(value) ? Number(value) : value]));
+    const responded=Number(summary?.responded ?? 0), responseBreached=Number(summary?.responseBreached ?? 0);
+    const resolved=Number(summary?.resolved ?? 0), resolutionBreached=Number(summary?.resolutionBreached ?? 0);
+    return {
+      tenant:{id:tenant.id,name:tenant.name},period:{from:from.toISOString(),to:to.toISOString()},filters:{organizationId},
+      summary:numeric(summary),
+      responseCompliancePercent:responded ? Number((((responded-responseBreached)/responded)*100).toFixed(2)) : null,
+      resolutionCompliancePercent:resolved ? Number((((resolved-resolutionBreached)/resolved)*100).toFixed(2)) : null,
+      bySeverity:bySeverity.map(numeric),byOrganization:byOrganization.map(numeric),generatedAt:new Date().toISOString(),
+    };
+  }
+
   async overviewCsv(tenantId: string, options: { from?: string; to?: string; organizationId?: string }) {
     const report = await this.overview(tenantId, options);
     const cell = (value: unknown) => {
