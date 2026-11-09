@@ -209,7 +209,7 @@ export class ReportBuilderService {
 
   async getSaved(tenantId: string, userId: string, id: string) {
     const [report] = await this.dataSource.query(
-      `SELECT id, title, description, "isShared", config, "ownerUserId", "createdAt", "updatedAt"
+      `SELECT id, title, description, "isShared", config, "ownerUserId", "createdAt", "updatedAt", ("ownerUserId" = $3) AS "isOwner"
          FROM tenant_saved_reports
         WHERE id = $1 AND "tenantId" = $2 AND ("ownerUserId" = $3 OR "isShared" = true)`,
       [id, tenantId, userId],
