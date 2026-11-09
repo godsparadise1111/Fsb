@@ -69,7 +69,6 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
          JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true
          JOIN task_assignees ta ON ta."taskId" = t.id AND ta.status = 'PENDING'
         WHERE t.status IN ('OPEN', 'IN_PROGRESS')
-          AND NOT EXISTS (SELECT 1 FROM workflow_task_reassignments r WHERE r."taskId" = t.id AND r."triggerType" = 'INACTIVE_ASSIGNEE')
           AND (NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ta."userId" AND u."isActive" = true)
             OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId" = pi."tenantId" AND tm."userId" = ta."userId" AND tm."isActive" = true)
             OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
@@ -90,7 +89,6 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       const [instance] = await manager.query(`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
         JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true WHERE pi.id = $1`, [task.processInstanceId]);
       if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId) return;
-      const [history] = await manager.query(`SELECT id FROM workflow_task_reassignments WHERE "taskId"=$1 AND "triggerType"='INACTIVE_ASSIGNEE'`, [candidate.taskId]); if (history) return;
       const assignments = await manager.query(`SELECT "userId",status FROM task_assignees WHERE "taskId"=$1 FOR UPDATE`, [candidate.taskId]) as Array<{userId:string;status:string}>;
       const pending = assignments.filter(a => a.status === 'PENDING'); if (!pending.length) return;
       const invalid = await manager.query(`SELECT ta."userId" FROM task_assignees ta WHERE ta."taskId"=$1 AND ta.status='PENDING' AND (
@@ -108,7 +106,8 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
           await manager.query(`UPDATE workflow_tasks SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now() WHERE id=$1 AND status IN ('OPEN','IN_PROGRESS')`, [candidate.taskId]);
           await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","details") VALUES ($1,$2,'TASK_CANCELLED_NO_ELIGIBLE_ASSIGNEE',$3::jsonb)`, [candidate.tenantId, candidate.taskId, JSON.stringify({ displacedUserIds: displaced, reason })]);
         }
-        await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)`, [candidate.tenantId, candidate.taskId, JSON.stringify(displaced), JSON.stringify(retained), reason]);
+        await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId","details") SELECT $1,$2,'ASSIGNEE_RECONCILED',affected_user,jsonb_build_object('reason',$4::text,'replacementUserIds',$5::jsonb) FROM unnest($3::uuid[]) AS affected(affected_user)`, [candidate.tenantId, candidate.taskId, displaced, reason, JSON.stringify(retained)]);
+        await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5) ON CONFLICT ("taskId","triggerType") DO NOTHING`, [candidate.tenantId, candidate.taskId, JSON.stringify(displaced), JSON.stringify(retained), reason]);
       };
       const configured = instance.step?.reassignUserIds;
       if (instance.step?.reassignOnInactiveAssignee !== true) {
@@ -139,7 +138,8 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       const newTargets = targets.filter(id => !byUser.has(id));
       await manager.query(`UPDATE task_assignees SET status='REASSIGNED', comment='Automatically reassigned because assignee is inactive or no longer eligible' WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])`, [candidate.taskId,displaced]);
       if (newTargets.length) await manager.query(`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,target_id,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) AS targets(target_id) ON CONFLICT ("taskId","userId") DO NOTHING`, [candidate.taskId,newTargets]);
-      await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)`, [candidate.tenantId,candidate.taskId,JSON.stringify(displaced),JSON.stringify(finalIds),'Automatic reassignment because pending assignees became inactive or lost valid tenant/organization membership']);
+      await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId","details") SELECT $1,$2,'ASSIGNEE_REASSIGNED',affected_user,jsonb_build_object('replacementUserIds',$4::jsonb) FROM unnest($3::uuid[]) AS affected(affected_user)`, [candidate.tenantId, candidate.taskId, displaced, JSON.stringify(finalIds)]);
+      await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5) ON CONFLICT ("taskId","triggerType") DO NOTHING`, [candidate.tenantId,candidate.taskId,JSON.stringify(displaced),JSON.stringify(finalIds),'Automatic reassignment because pending assignees became inactive or lost valid tenant/organization membership']);
     });
   }
 
