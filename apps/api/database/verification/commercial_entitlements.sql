@@ -52,3 +52,51 @@ SELECT c.id, c."tenantId", t.status
 FROM tenant_api_credentials c
 JOIN tenants t ON t.id=c."tenantId"
 WHERE c.status='ACTIVE' AND t.status='CLOSED';
+
+
+-- 9. Active members plus unexpired pending invitations must not exceed maxUsers.
+SELECT t.id AS "tenantId", p.code AS "planCode",
+       count(DISTINCT tm.id) FILTER (WHERE tm."isActive"=true AND u."isActive"=true)
+       + count(DISTINCT i.id) FILTER (WHERE i."acceptedAt" IS NULL AND i."revokedAt" IS NULL AND i."expiresAt">now()) AS "reservedSeats",
+       (p.limits->>'maxUsers')::bigint AS "maxUsers"
+FROM tenants t
+JOIN tenant_subscriptions s ON s."tenantId"=t.id
+JOIN commercial_plans p ON p.code=s."planCode"
+LEFT JOIN tenant_memberships tm ON tm."tenantId"=t.id
+LEFT JOIN users u ON u.id=tm."userId"
+LEFT JOIN tenant_invitations i ON i."tenantId"=t.id
+GROUP BY t.id,p.code,p.limits
+HAVING count(DISTINCT tm.id) FILTER (WHERE tm."isActive"=true AND u."isActive"=true)
+       + count(DISTINCT i.id) FILTER (WHERE i."acceptedAt" IS NULL AND i."revokedAt" IS NULL AND i."expiresAt">now())
+       > (p.limits->>'maxUsers')::bigint;
+
+-- 10. Active organizations must not exceed maxOrganizations.
+SELECT t.id AS "tenantId", count(o.id) AS "activeOrganizations",
+       (p.limits->>'maxOrganizations')::bigint AS "maxOrganizations"
+FROM tenants t
+JOIN tenant_subscriptions s ON s."tenantId"=t.id
+JOIN commercial_plans p ON p.code=s."planCode"
+LEFT JOIN organizations o ON o."tenantId"=t.id AND o."isActive"=true
+GROUP BY t.id,p.limits
+HAVING count(o.id) > (p.limits->>'maxOrganizations')::bigint;
+
+-- 11. Process definitions must not exceed maxProcesses.
+SELECT t.id AS "tenantId", count(pd.id) AS "processDefinitions",
+       (p.limits->>'maxProcesses')::bigint AS "maxProcesses"
+FROM tenants t
+JOIN tenant_subscriptions s ON s."tenantId"=t.id
+JOIN commercial_plans p ON p.code=s."planCode"
+LEFT JOIN organizations o ON o."tenantId"=t.id
+LEFT JOIN process_definitions pd ON pd."organizationId"=o.id
+GROUP BY t.id,p.limits
+HAVING count(pd.id) > (p.limits->>'maxProcesses')::bigint;
+
+-- 12. Stored attachment bytes must not exceed maxStorageBytes.
+SELECT t.id AS "tenantId", COALESCE(sum(fa.size::numeric),0) AS "storedBytes",
+       (p.limits->>'maxStorageBytes')::numeric AS "maxStorageBytes"
+FROM tenants t
+JOIN tenant_subscriptions s ON s."tenantId"=t.id
+JOIN commercial_plans p ON p.code=s."planCode"
+LEFT JOIN file_attachments fa ON fa."tenantId"=t.id
+GROUP BY t.id,p.limits
+HAVING COALESCE(sum(fa.size::numeric),0) > (p.limits->>'maxStorageBytes')::numeric;
