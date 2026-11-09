@@ -104,7 +104,7 @@ export class WorkflowRecoveryIncidentService {
       await manager.query(
         `INSERT INTO workflow_recovery_incident_events ("tenantId","incidentId","eventType","actorUserId","eventKey",metadata)
          VALUES ($1,$2,$3,$4,$5,$6::jsonb)`,
-        [tenantId, incidentId, action, actorUserId, eventKey, JSON.stringify({ note: note ?? null, fromStatus: incident.status, toStatus: status })],
+        [tenantId, incidentId, action === 'RESOLVE' ? 'RESOLVED' : action, actorUserId, eventKey, JSON.stringify({ note: note ?? null, fromStatus: incident.status, toStatus: status })],
       );
       await this.audit.record(manager, {
         tenantId, actorUserId, action: `workflow.recovery_incident.${action.toLowerCase()}`,
