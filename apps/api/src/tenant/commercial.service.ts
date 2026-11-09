@@ -139,7 +139,8 @@ export class CommercialService {
     }
     return this.dataSource.transaction(async manager => {
       const [subscription] = await manager.query(
-        'SELECT id FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE',
+        `SELECT s.id FROM tenant_subscriptions s JOIN tenants t ON t.id=s."tenantId"
+          WHERE s."tenantId"=$1 AND t.status<>'CLOSED' FOR UPDATE OF t,s`,
         [input.tenantId],
       );
       if (!subscription) throw new BadRequestException('Tenant has no subscription; assign a plan first');
