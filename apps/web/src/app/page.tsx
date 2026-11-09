@@ -6,6 +6,7 @@ const modules = [
   { title: 'کارتابل گردش کار', description: 'اقدام، تأیید، رد و بازگشت مستند به مراحل قبلی', status: 'کارتابل عملیاتی', href: '/tasks', icon: '☷' },
   { title: 'داشبورد مدیریتی مشتری', description: 'شاخص‌های کلان، وظایف، فرایندها و هشدارهای سازمان', status: 'نمای مدیریتی', href: '/dashboard', icon: '▦' },
   { title: 'سلامت تجمیعی پلتفرم', description: 'پایش چندمشتری موتور گردش‌کار و صف اعلان‌ها', status: 'ویژه مدیر پلتفرم', href: '/platform-workflow-health', icon: '⌁' },
+  { title: 'مدیریت مشتریان پلتفرم', description: 'ایجاد Tenant، تخصیص مدیر اولیه و فعال‌سازی مشتری', status: 'ویژه مدیر پلتفرم', href: '/platform-tenants', icon: '▤' },
   { title: 'مدیریت تجاری پلتفرم', description: 'پلن‌ها، اشتراک مشتریان و صورتحساب‌های سازمانی', status: 'ویژه مدیر پلتفرم', href: '/platform-commercial', icon: '◫' },
   { title: 'اشتراک و صورتحساب مشتری', description: 'مشاهده پلن، قابلیت‌ها و صورتحساب‌های سازمان', status: 'ویژه اعضای مشتری', href: '/tenant-commercial', icon: '▣' },
   { title: 'کلیدهای API سازمان', description: 'صدور، مشاهده و لغو کلیدهای اتصال نسخه‌بندی‌شده', status: 'ویژه مدیر مشتری', href: '/tenant-api-keys', icon: '⌘' },
