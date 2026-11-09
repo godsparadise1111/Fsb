@@ -28,11 +28,34 @@ export class IdentityService {
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
   ) {}
 
-  async createUser(dto: CreateUserDto) {
-    if (await this.users.findOne({ where: [{ email: dto.email.toLowerCase() }, { username: dto.username }] })) throw new ConflictException('Email or username already exists');
+  async createUser(dto: CreateUserDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required to create a tenant user');
     const passwordHash = await bcrypt.hash(dto.password, 12);
-    const { password, ...profile } = dto;
-    return this.users.save(this.users.create({ ...profile, passwordHash, email: dto.email.toLowerCase() }));
+    return this.users.manager.transaction(async manager => {
+      const tenant = await manager.findOne(Tenant, {
+        where: { id: tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!tenant || tenant.status !== 'ACTIVE') throw new ForbiddenException('The active tenant was not found');
+      const normalizedEmail = dto.email.trim().toLowerCase();
+      const existing = await manager.getRepository(User).createQueryBuilder('user')
+        .where('LOWER(user.email) = :email OR user.username = :username', {
+          email: normalizedEmail, username: dto.username,
+        })
+        .getOne();
+      if (existing) throw new ConflictException('Email or username already exists');
+      const { password, ...profile } = dto;
+      const userRepository = manager.getRepository(User);
+      const user = await userRepository.save(userRepository.create({
+        ...profile, passwordHash, email: normalizedEmail,
+      }));
+      const membershipRepository = manager.getRepository(TenantMembership);
+      await membershipRepository.save(membershipRepository.create({
+        tenantId, userId: user.id, isActive: true, isTenantAdmin: false, acceptedAt: new Date(),
+      }));
+      const { passwordHash: omittedPasswordHash, ...safeUser } = user;
+      return safeUser;
+    });
   }
   listUsers(tenantId?: string | null) {
     if (!tenantId) return this.users.find({ where: { isActive: true }, order: { lastName: 'ASC', firstName: 'ASC' } });
