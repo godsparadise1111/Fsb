@@ -12,7 +12,7 @@ export class TenantDashboardService {
     const [workflow] = await this.dataSource.query(
       `SELECT
         count(DISTINCT pi.id) FILTER (WHERE pi.status='RUNNING')::int AS "runningProcesses",
-        count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
+        count(DISTINCT wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
         count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt" IS NOT NULL AND wt."dueAt"<now())::int AS "overdueTasks",
         count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt">now() AND wt."dueAt"<now()+interval '24 hours')::int AS "dueNext24Hours",
         count(DISTINCT pi.id) FILTER (WHERE pi."startedAt">=now()-interval '24 hours')::int AS "startedLast24Hours",
@@ -99,8 +99,8 @@ export class TenantDashboardService {
       `SELECT
         count(DISTINCT pi.id) FILTER (WHERE pi.status='RUNNING')::int AS "runningProcesses",
         count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
-        count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt"<now())::int AS "overdueTasks",
-        count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND NOT EXISTS
+        count(DISTINCT wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt"<now())::int AS "overdueTasks",
+        count(DISTINCT wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND NOT EXISTS
           (SELECT 1 FROM task_assignees ta WHERE ta."taskId"=wt.id AND ta.status='PENDING'))::int AS "unassignedTasks",
         count(DISTINCT oa.id) FILTER (WHERE oa.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS'))::int AS "activeAlerts",
         count(DISTINCT oa.id) FILTER (WHERE oa.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')
