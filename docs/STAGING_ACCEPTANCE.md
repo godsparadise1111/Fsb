@@ -129,3 +129,19 @@ Migration `20261109_015_workflow_access_revocation_lifecycle.sql` باید پس 
 - نقش سازمانی عادی بدون مجوز صریح نباید رخدادهای سازمان دیگر را ببیند یا مدیریت کند؛ مدیر Tenant فقط در Tenant فعال خودش مجاز است.
 - worker را در staging روشن کنید و رخدادهای تکراری را در چند چرخه پایش کنید؛ جزئیات رخداد و fingerprint باید ثابت بمانند و تعداد تلاش‌ها فقط به‌صورت event افزایشی ثبت شود.
 - تا زمانی که یک Handler مستقل، قابل‌تکرار، دارای idempotency key و دارای اثر جانبی کاملاً محدود تعریف نشده، هیچ Replay عملیاتی فعال نشود. Replay اقدام انسانی، ارسال مجدد فرم، اجرای مجدد انتقال مرحله یا انتخاب مرحله از روی حدس ممنوع است.
+
+
+## ۱۳. سلامت تجمیعی پلتفرم و Registry امن Replay
+
+- با حساب مدیر پلتفرم دارای نقش PLATFORM و مجوز `tenants.read`، پنل `/platform-workflow-health` و `GET /api/platform/workflow-health` را باز کنید؛ شاخص‌های تجمیعی و فهرست Tenantهای ACTIVE/SUSPENDED باید نمایش داده شوند.
+- همان endpoint را با Tenant Admin، مدیر سازمان و کاربر عادی فراخوانی کنید؛ پاسخ باید 403 باشد. ارسال `tenantId` در query/header نباید محدودهٔ گزارش را تغییر دهد.
+- مقادیر کلان runningProcesses، activeTasks، overdueTasks، activeRecoveryIncidents و صف Outbox را با queryهای مستقل دیتابیس و فقط برای Tenantهای ACTIVE تطبیق دهید.
+- با دو Tenant آزمایشی، رخداد باز و رویداد WORKER_SCAN ایجاد کنید؛ نمای مدیر پلتفرم باید آن‌ها را در ردیف‌های مجزا نشان دهد و پنل Tenant A نباید داده‌های Tenant B را دریافت کند.
+- داشبورد مشتری را با Tenant Admin باز کنید؛ تعداد رخدادهای فعال، رخدادهای بسته‌شده در ۲۴ ساعت و آخرین WORKER_SCAN باید با دادهٔ همان Tenant تطبیق داشته باشد.
+- Worker را در حالت روشن و خاموش بررسی کنید؛ مقدار configured از env و سیگنال observed از رویدادهای پایگاه داده مستقل‌اند. نبود scan در بازه بدون incident واجد شرایط نباید به‌عنوان خرابی قطعی تفسیر شود.
+- پنل سلامت پلتفرم باید هر ۳۰ ثانیه تازه شود و فقط دادهٔ خواندنی نمایش دهد؛ هیچ عملیات مدیریتی بین Tenantها از این پنل انجام نمی‌شود.
+- endpoint `GET /api/workflow/recovery-incidents/replay-capabilities` باید در وضعیت فعلی آرایهٔ خالی برگرداند. هر دو نوع رخداد فعلی با Replay باید 409 بگیرند و رویداد REPLAY_REJECTED و Audit ثبت شود.
+- در آزمون Registry، ثبت handler فاقد systemOnly/idempotent/required idempotency key یا دارای مجوز اقدام انسانی/پیشبرد مرحله باید fail شود؛ ثبت دو handler برای یک incident type نیز باید fail شود.
+- حتی اگر Handler آزمایشی واجد شرایط به Registry اضافه شود، endpoint Replay تا تکمیل executor تراکنشی و جدول/receipt پایدار idempotency همچنان باید fail-closed بماند. هیچ اقدام انسانی یا انتقال مرحله‌ای نباید اجرا شود.
+- دسترسی مستقیم به مسیر پنل یا جعل شناسه Tenant نباید مجوز PLATFORM ایجاد کند؛ مجوز فقط از نقش و permission سمت سرور به دست می‌آید.
+
