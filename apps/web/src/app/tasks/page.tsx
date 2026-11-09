@@ -131,7 +131,7 @@ export default function TasksPage() {
       }
       const response = await fetch(API + '/tasks/' + taskId + '/actions', {
         method: 'POST',
-        headers: { ...headers(), 'Content-Type': 'application/json' },
+        headers: { ...headers(), 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify(body),
       });
       const data = await response.json().catch(() => null);
