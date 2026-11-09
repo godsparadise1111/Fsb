@@ -16,6 +16,7 @@ CREATE TABLE tenant_api_credentials (
   CONSTRAINT "CK_tenant_api_credentials_status" CHECK (status IN ('ACTIVE','REVOKED')),
   CONSTRAINT "CK_tenant_api_credentials_scopes" CHECK (
     cardinality(scopes) BETWEEN 1 AND 10 AND
+    array_position(scopes, NULL) IS NULL AND
     scopes <@ ARRAY['tenant.read','reports.read']::text[]
   ),
   CONSTRAINT "CK_tenant_api_credentials_revoked" CHECK (
