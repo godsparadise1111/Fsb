@@ -430,7 +430,8 @@ export default function AbsencesPage() {
               </span>
               <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString('fa-IR') : '—'} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString('fa-IR') : '—'}</small>
             </div>
-            <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
+            <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد منبع: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
+            <small>مهلت پاسخ: {alert.responseDueAt ? new Date(alert.responseDueAt).toLocaleString("fa-IR") : "—"} · مهلت حل: {alert.resolutionDueAt ? new Date(alert.resolutionDueAt).toLocaleString("fa-IR") : "—"}</small>
             <div className="absence-alert-top">
               <span className="absence-step">وضعیت: {alert.status === 'OPEN' ? 'باز' : alert.status === 'ACKNOWLEDGED' ? 'مشاهده و تأییدشده' : alert.status === 'IN_PROGRESS' ? 'در حال پیگیری' : 'حل‌شده'}{alert.assignedToUserId ? ` · مسئول: ${personName(userMap.get(alert.assignedToUserId))}` : ''}</span>
               <div className="absence-actions">
