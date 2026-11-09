@@ -540,6 +540,7 @@ export class WorkflowService {
     return this.dataSource.transaction(async manager => {
       const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, tenantId, isActive: true } });
       if (!organization) throw new NotFoundException('Active organization not found in this tenant');
+      await this.assertActiveWorkflowMember(manager, tenantId, actorUserId, dto.organizationId);
       const eligible = await manager.createQueryBuilder(UserPosition, 'up')
         .innerJoin('up.position', 'position').innerJoin('position.unit', 'unit')
         .innerJoin('tenant_memberships', 'tm', 'tm."tenantId" = :tenantId AND tm."userId" = up."userId" AND tm."isActive" = true', { tenantId })
