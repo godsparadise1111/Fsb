@@ -51,7 +51,7 @@ export class FileAttachmentsService {
          INNER JOIN organizations o ON o.id = fd."organizationId"
          INNER JOIN tenants t ON t.id = o."tenantId"
         WHERE fs.id = $1 AND fv.id = $2 AND fs."tenantId" = $3
-          AND o."tenantId" = $3 AND t.status = 'ACTIVE'`,
+          AND o."tenantId" = $3 AND o."isActive" = true AND t.status = 'ACTIVE'`,
       [submissionId, versionId, tenantId],
     );
     if (!submission.length) throw new NotFoundException('Submission not found in the active customer account');
@@ -89,6 +89,7 @@ export class FileAttachmentsService {
       .andWhere('attachment.tenantId = :tenantId', { tenantId })
       .andWhere('organization.tenantId = :tenantId', { tenantId })
       .andWhere('tenant.status = :status', { status: 'ACTIVE' })
+      .andWhere('organization.isActive = true')
       .orderBy('attachment.createdAt', 'DESC')
       .getMany();
     return rows.map(item => ({
@@ -110,6 +111,7 @@ export class FileAttachmentsService {
       .andWhere('version.id = :versionId', { versionId })
       .andWhere('attachment.tenantId = :tenantId', { tenantId })
       .andWhere('tenant.status = :status', { status: 'ACTIVE' })
+      .andWhere('organization.isActive = true')
       .getOne();
     if (!attachment) throw new NotFoundException('Attachment not found');
     const buffer = await readFile(this.getStoragePath(attachment.storageKey)).catch(() => { throw new NotFoundException('Attachment content is unavailable'); });
