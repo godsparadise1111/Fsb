@@ -1,5 +1,10 @@
 services:
   postgres:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -16,6 +21,11 @@ services:
       retries: 20
     networks: [fsb_internal]
   api:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -53,6 +63,11 @@ services:
       - "127.0.0.1:${API_PORT:-3001}:3001"
     networks: [fsb_internal]
   web:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -72,6 +87,11 @@ services:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     networks: [fsb_internal]
   worker:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     profiles: ["workers"]
     build:
       context: .
