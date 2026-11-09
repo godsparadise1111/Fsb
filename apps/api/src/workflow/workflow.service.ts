@@ -669,6 +669,92 @@ export class WorkflowService {
     };
   }
 
+  async getOrganizationOperationalAlertSlaPolicy(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    const rows = await this.dataSource.query(
+      `SELECT * FROM organization_operational_alert_sla_policies WHERE "tenantId"=$1 AND "organizationId"=$2`,
+      [tenantId, organizationId],
+    );
+    if (rows.length) return rows[0];
+    return {
+      tenantId, organizationId, enabled: true,
+      criticalResponseMinutes: 15, highResponseMinutes: 60, mediumResponseMinutes: 240, lowResponseMinutes: 1440,
+      criticalResolutionHours: 4, highResolutionHours: 8, mediumResolutionHours: 24, lowResolutionHours: 72,
+      configured: false,
+    };
+  }
+
+  async updateOrganizationOperationalAlertSlaPolicy(
+    organizationId: string, tenantId: string | null | undefined, actorUserId: string,
+    dto: Record<string, unknown>,
+  ) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    const fields = [
+      'criticalResponseMinutes','highResponseMinutes','mediumResponseMinutes','lowResponseMinutes',
+      'criticalResolutionHours','highResolutionHours','mediumResolutionHours','lowResolutionHours',
+    ];
+    const defaults: Record<string, number> = {
+      criticalResponseMinutes:15, highResponseMinutes:60, mediumResponseMinutes:240, lowResponseMinutes:1440,
+      criticalResolutionHours:4, highResolutionHours:8, mediumResolutionHours:24, lowResolutionHours:72,
+    };
+    const values: Record<string, number> = {};
+    for (const field of fields) {
+      const value = dto[field] === undefined ? defaults[field] : Number(dto[field]);
+      const max = field.endsWith('Minutes') ? 10080 : 720;
+      if (!Number.isInteger(value) || value < 1 || value > max) throw new BadRequestException(`${field} must be an integer between 1 and ${max}`);
+      values[field] = value;
+    }
+    if (typeof dto.enabled !== 'boolean') throw new BadRequestException('enabled must be a boolean');
+    return this.dataSource.transaction(async manager => {
+      await manager.query(
+        `INSERT INTO organization_operational_alert_sla_policies (
+          "tenantId","organizationId","criticalResponseMinutes","highResponseMinutes","mediumResponseMinutes","lowResponseMinutes",
+          "criticalResolutionHours","highResolutionHours","mediumResolutionHours","lowResolutionHours","enabled","updatedByUserId"
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT ("tenantId","organizationId") DO UPDATE SET
+          "criticalResponseMinutes"=EXCLUDED."criticalResponseMinutes","highResponseMinutes"=EXCLUDED."highResponseMinutes",
+          "mediumResponseMinutes"=EXCLUDED."mediumResponseMinutes","lowResponseMinutes"=EXCLUDED."lowResponseMinutes",
+          "criticalResolutionHours"=EXCLUDED."criticalResolutionHours","highResolutionHours"=EXCLUDED."highResolutionHours",
+          "mediumResolutionHours"=EXCLUDED."mediumResolutionHours","lowResolutionHours"=EXCLUDED."lowResolutionHours",
+          "enabled"=EXCLUDED."enabled","updatedByUserId"=EXCLUDED."updatedByUserId","updatedAt"=now()`,
+        [tenantId,organizationId,values.criticalResponseMinutes,values.highResponseMinutes,values.mediumResponseMinutes,values.lowResponseMinutes,
+          values.criticalResolutionHours,values.highResolutionHours,values.mediumResolutionHours,values.lowResolutionHours,dto.enabled,actorUserId],
+      );
+      if (dto.enabled) {
+        await manager.query(
+          `UPDATE organization_operational_alerts a SET
+             "responseDueAt"=a."firstDetectedAt" + make_interval(mins => CASE a.severity
+               WHEN 'CRITICAL' THEN $3 WHEN 'HIGH' THEN $4 WHEN 'MEDIUM' THEN $5 ELSE $6 END),
+             "resolutionDueAt"=a."firstDetectedAt" + make_interval(hours => CASE a.severity
+               WHEN 'CRITICAL' THEN $7 WHEN 'HIGH' THEN $8 WHEN 'MEDIUM' THEN $9 ELSE $10 END)
+           WHERE a."tenantId"=$1 AND a."organizationId"=$2 AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
+          [tenantId,organizationId,values.criticalResponseMinutes,values.highResponseMinutes,values.mediumResponseMinutes,values.lowResponseMinutes,
+            values.criticalResolutionHours,values.highResolutionHours,values.mediumResolutionHours,values.lowResolutionHours],
+        );
+      } else {
+        await manager.query(
+          `UPDATE organization_operational_alerts SET "responseDueAt"=NULL,"resolutionDueAt"=NULL
+            WHERE "tenantId"=$1 AND "organizationId"=$2 AND status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
+          [tenantId,organizationId],
+        );
+      }
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, action:'organization.operational_alert_sla.updated',
+        resourceType:'ORGANIZATION',resourceId:organizationId,
+        metadata:{...values,enabled:dto.enabled},
+      });
+      const [result] = await manager.query(
+        `SELECT * FROM organization_operational_alert_sla_policies WHERE "tenantId"=$1 AND "organizationId"=$2`,
+        [tenantId,organizationId],
+      );
+      return result;
+    });
+  }
+
   async updateOperationalAlert(organizationId: string, alertId: string, actorUserId: string, tenantId: string | null | undefined, action: 'ACKNOWLEDGE' | 'ASSIGN' | 'RESOLVE' | 'REOPEN', assignedToUserId?: string | null, note?: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
