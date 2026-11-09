@@ -1,4 +1,22 @@
 import type { Metadata } from 'next';
+import '@fontsource-variable/vazirmatn';
 import './globals.css';
-export const metadata: Metadata = { title: 'F-S | BPMS', description: 'سامانه مدیریت فرایندهای سازمانی' };
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="fa" dir="rtl"><body>{children}</body></html>; }
+import ThemeControl from '../components/theme-control';
+
+export const metadata: Metadata = {
+  title: 'F-S | BPMS',
+  description: 'سامانه مدیریت فرایندهای سازمانی',
+  applicationName: 'F-S',
+  themeColor: '#172554',
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="fa" dir="rtl" suppressHydrationWarning>
+      <body>
+        {children}
+        <ThemeControl />
+      </body>
+    </html>
+  );
+}
