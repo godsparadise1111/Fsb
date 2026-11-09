@@ -41,10 +41,11 @@ CREATE TABLE IF NOT EXISTS tenant_report_jobs (
   CONSTRAINT ck_tenant_report_jobs_scope CHECK (jsonb_typeof("scopeOrganizationIds")='array'),
   CONSTRAINT ck_tenant_report_jobs_status CHECK (status IN ('PENDING','PROCESSING','COMPLETED','FAILED')),
   CONSTRAINT ck_tenant_report_jobs_attempts CHECK (attempts BETWEEN 0 AND 10),
+  CONSTRAINT ck_tenant_report_jobs_schedule_pair CHECK (("scheduleId" IS NULL)=("scheduledFor" IS NULL)),
   CONSTRAINT uq_tenant_report_jobs_schedule_run UNIQUE ("scheduleId","scheduledFor")
 );
 CREATE INDEX IF NOT EXISTS idx_tenant_report_jobs_queue
-  ON tenant_report_jobs (status,"createdAt") WHERE status IN ('PENDING','PROCESSING');
+  ON tenant_report_jobs (status,"availableAt","createdAt") WHERE status IN ('PENDING','PROCESSING');
 CREATE INDEX IF NOT EXISTS idx_tenant_report_jobs_owner
   ON tenant_report_jobs ("tenantId","ownerUserId","createdAt" DESC);
 
