@@ -240,6 +240,12 @@ UPDATE workflow_tasks wt
  WHERE wt."processInstanceId"=pi.id AND wt.status IN ('OPEN','IN_PROGRESS')
    AND (o."isActive"=false OR t.status='CLOSED');
 
+UPDATE process_instances pi
+   SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now()
+  FROM organizations o JOIN tenants t ON t.id=o."tenantId"
+ WHERE pi."organizationId"=o.id AND pi.status='RUNNING'
+   AND (o."isActive"=false OR t.status='CLOSED');
+
 UPDATE task_assignees ta
    SET status='REASSIGNED', "actedAt"=now(),
        comment=concat_ws(E'\\n', ta.comment, 'Assignment closed during workflow lifecycle migration')
