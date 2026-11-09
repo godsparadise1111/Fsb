@@ -16,12 +16,14 @@ import { OrganizationAbsence } from './entities/organization-absence.entity';
 import { WorkflowTaskReassignment } from './entities/workflow-task-reassignment.entity';
 import { WorkflowAutomationWorker } from './workflow-automation.worker';
 import { WorkflowRecoveryWorker } from './workflow-recovery.worker';
+import { WorkflowRecoveryIncidentController } from './workflow-recovery-incident.controller';
+import { WorkflowRecoveryIncidentService } from './workflow-recovery-incident.service';
 import { TenantModule } from '../tenant/tenant.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ProcessVersion, Organization, User, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, TaskDelegation, TaskDeferralRequest, OrganizationSubstitution, OrganizationAbsence, WorkflowTaskReassignment ]), TenantModule, NotificationsModule],
-  controllers: [WorkflowController],
-  providers: [WorkflowService, WorkflowAutomationWorker, WorkflowRecoveryWorker],
+  controllers: [WorkflowController, WorkflowRecoveryIncidentController],
+  providers: [WorkflowService, WorkflowAutomationWorker, WorkflowRecoveryWorker, WorkflowRecoveryIncidentService],
 })
 export class WorkflowModule {}
