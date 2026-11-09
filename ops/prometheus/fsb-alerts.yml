@@ -1,0 +1,47 @@
+groups:
+  - name: fsb-api
+    rules:
+      - alert: FsbApiMetricsUnavailable
+        expr: up{job="fsb-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: fsb
+        annotations:
+          summary: F-S API metrics endpoint is unavailable
+          description: Prometheus cannot scrape the protected F-S API metrics endpoint.
+
+      - alert: FsbApiHighServerErrorRate
+        expr: |
+          (
+            sum(rate(fsb_http_requests_total{job="fsb-api",status_class="5xx"}[5m]))
+            /
+            clamp_min(sum(rate(fsb_http_requests_total{job="fsb-api"}[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: fsb
+        annotations:
+          summary: F-S API server error rate is above 5 percent
+          description: More than five percent of completed API requests are returning 5xx responses.
+
+      - alert: FsbApiSlowRequests
+        expr: max_over_time(fsb_http_request_duration_ms_max{job="fsb-api"}[5m]) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          service: fsb
+        annotations:
+          summary: F-S API has slow requests
+          description: At least one route has observed a request duration above five seconds.
+
+      - alert: FsbApiProcessRestarted
+        expr: changes(fsb_process_uptime_seconds{job="fsb-api"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: info
+          service: fsb
+        annotations:
+          summary: F-S API process restarted
+          description: Process uptime reset within the last ten minutes.
