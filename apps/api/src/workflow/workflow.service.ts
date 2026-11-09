@@ -118,6 +118,13 @@ export class WorkflowService {
         WHERE delegation."taskId" = task.id AND delegation."toUserId" = :userId
           AND delegation."tenantId" = :tenantId AND delegation."revokedAt" IS NULL
           AND delegation."startsAt" <= now() AND delegation."endsAt" > now()
+          AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users du ON du.id=tm."userId" AND du."isActive"=true
+                       WHERE tm."tenantId"=delegation."tenantId" AND tm."userId"=:userId AND tm."isActive"=true)
+          AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId"
+                       JOIN organization_units ou ON ou.id=p."organizationUnitId"
+                      WHERE up."userId"=:userId AND ou."organizationId"=instance."organizationId"
+                        AND up."isActive"=true AND p."isActive"=true AND ou."isActive"=true
+                        AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
       ))`)
       .orderBy('task.dueAt', 'ASC', 'NULLS LAST')
       .addOrderBy('task.createdAt', 'ASC').getMany();
@@ -177,6 +184,17 @@ export class WorkflowService {
         if (active.length > 1) throw new ConflictException('Multiple active delegations exist for this task; administrator review is required');
         actingDelegation = active[0] ?? null;
         if (actingDelegation) {
+          const eligibleDelegate = await manager.createQueryBuilder(UserPosition, 'membership')
+            .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+            .innerJoin('tenant_memberships', 'tm',
+              'tm."userId"=membership."userId" AND tm."tenantId"=:tenantId AND tm."isActive"=true', { tenantId })
+            .where('membership.userId=:userId AND unit.organizationId=:organizationId', {
+              userId, organizationId: task.processInstance.organizationId,
+            })
+            .andWhere('membership.isActive=true AND position.isActive=true AND unit.isActive=true')
+            .andWhere('membership.validFrom<=CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil>=CURRENT_TIMESTAMP)')
+            .getCount();
+          if (!eligibleDelegate) throw new ForbiddenException('An active tenant membership and organization position are required for delegated task actions');
           assignment = await manager.findOne(TaskAssignee, {
             where: { taskId, userId: actingDelegation.fromUserId, status: 'PENDING' },
             lock: { mode: 'pessimistic_write' },
