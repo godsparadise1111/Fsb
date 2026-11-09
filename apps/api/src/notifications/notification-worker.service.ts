@@ -150,6 +150,45 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       await this.outbox.markDead(item.id, this.workerId, 'Tenant is not active; notification was not sent');
       return false;
     }
+    if (item.eventType === 'workflow.task.assigned') {
+      const taskId = String(item.payload.taskId ?? '');
+      const userId = String(item.payload.userId ?? '');
+      const organizationId = String(item.payload.organizationId ?? '');
+      const [valid] = await this.dataSource.query(
+        `SELECT wt.id,wt.title
+           FROM workflow_tasks wt
+           JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."tenantId"=$2 AND pi.status='RUNNING'
+           JOIN organizations o ON o.id=pi."organizationId" AND o."tenantId"=$2 AND o."isActive"=true
+           JOIN tenants t ON t.id=$2 AND t.status='ACTIVE'
+           JOIN task_assignees ta ON ta."taskId"=wt.id AND ta."userId"=$3 AND ta.status='PENDING'
+           JOIN users u ON u.id=ta."userId" AND u."isActive"=true AND lower(u.email)=lower($4)
+           JOIN tenant_memberships tm ON tm."tenantId"=$2 AND tm."userId"=u.id AND tm."isActive"=true
+           JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true
+             AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())
+           JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+           JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=pi."organizationId" AND ou."isActive"=true
+          WHERE wt.id=$1 AND wt.status IN ('OPEN','IN_PROGRESS') AND pi."organizationId"=$5
+          LIMIT 1`,
+        [taskId,item.tenantId,userId,item.recipient,organizationId],
+      );
+      if (!valid) {
+        await this.outbox.markDead(item.id,this.workerId,'Workflow task is closed or assignment recipient is no longer eligible');
+        return false;
+      }
+      const title=String(valid.title ?? item.payload.title ?? 'Workflow task');
+      const safeTitle=this.escapeHtml(title);
+      const baseUrl=new URL(process.env.FSB_PUBLIC_APP_URL!);
+      const taskUrl=new URL(`/tasks/${encodeURIComponent(taskId)}`,baseUrl).toString();
+      const safeUrl=this.escapeHtml(taskUrl);
+      const subject=(item.subject ?? `New workflow task: ${title}`).replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      await this.transporter.sendMail({
+        from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
+        text:`A workflow task has been assigned to you: "${title}". Open: ${taskUrl}`,
+        html:`<p>A workflow task has been assigned to you: <strong>${safeTitle}</strong>.</p><p><a href="${safeUrl}">Open task</a></p>`,
+        messageId:`<fsb-${item.id}@${baseUrl.hostname}>`,
+      });
+      return true;
+    }
     if (item.eventType === 'organization.alert.sla.breached') {
       const alertId = String(item.payload.alertId ?? '');
       const userId = String(item.payload.userId ?? '');
