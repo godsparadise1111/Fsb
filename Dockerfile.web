@@ -3,7 +3,7 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 COPY . .
-RUN npm install --no-audit --no-fund && npm run build --workspace @fsb/web
+RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi && npm run build --workspace @fsb/web
 
 FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production
@@ -11,7 +11,8 @@ WORKDIR /app
 COPY package.json ./package.json
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
-RUN npm install --omit=dev --no-audit --no-fund --workspace @fsb/web --include-workspace-root=false
+COPY --from=build /app/package-lock.json ./package-lock.json
+RUN npm ci --omit=dev --no-audit --no-fund --workspace @fsb/web --include-workspace-root=false
 COPY --from=build /app/apps/web/.next ./apps/web/.next
 COPY --from=build /app/apps/web/next.config.mjs ./apps/web/next.config.mjs
 RUN chown -R node:node /app/apps/web/.next
