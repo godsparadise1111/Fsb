@@ -65,6 +65,11 @@ export class PermissionsGuard implements CanActivate {
          FROM workflow_tasks wt INNER JOIN process_instances pi ON pi.id = wt."processInstanceId"
         WHERE wt.id = ANY($1::uuid[])
        UNION ALL
+       SELECT ri.id AS "resourceId", pi."organizationId"
+         FROM workflow_recovery_incidents ri
+         INNER JOIN process_instances pi ON pi.id=ri."processInstanceId" AND pi."tenantId"=ri."tenantId"
+        WHERE ri.id=ANY($1::uuid[])
+       UNION ALL
        SELECT fs.id AS "resourceId", COALESCE(pi."organizationId", fd."organizationId") AS "organizationId"
          FROM form_submissions fs
          JOIN form_versions fv ON fv.id=fs."formVersionId"
