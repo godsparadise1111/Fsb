@@ -5,6 +5,7 @@ const modules = [
   { title: 'طراحی فرایند', description: 'تعریف فرایند و انتشار نسخه‌های مستقل', status: 'نسخه‌بندی و API' },
   { title: 'کارتابل گردش کار', description: 'اقدام، تأیید، رد و بازگشت مستند به مراحل قبلی', status: 'کارتابل عملیاتی', href: '/tasks' },
   { title: 'داشبورد مدیریتی مشتری', description: 'شاخص‌های کلان مشتری و وضعیت فرایندها، هشدارها و صف اعلان‌ها', status: 'نمای زنده مدیریتی', href: '/dashboard' },
+  { title: 'سلامت تجمیعی پلتفرم', description: 'پایش چندمشتری موتور گردش‌کار، رخدادهای بازیابی و صف اعلان‌ها', status: 'ویژه مدیر پلتفرم', href: '/platform-workflow-health' },
   { title: 'داشبورد مدیر سازمان', description: 'عملکرد سازمان، وظایف معوق، کارهای بدون مسئول و هشدارهای SLA', status: 'نمای تفکیکی سازمان', href: '/organization-dashboard' },
   { title: 'رخدادهای بازیابی گردش‌کار', description: 'بررسی رخدادهای Worker، تاریخچه اصلاح، تأیید رسیدگی و بستن ممیزی‌شده', status: 'پنل مدیریت رخدادها', href: '/recovery-incidents' },\n  { title: 'مدیریت صف اعلان‌ها', description: 'پایش Outbox، Dead Letter Queue و بازپردازش کنترل‌شده', status: 'پنل عملیاتی', href: '/notifications' },
   { title: 'تحلیل گلوگاه فرایندها', description: 'زمان انتظار، چرخه، تأخیر، نرخ رد و نرخ برگشت واقعی مراحل', status: 'تحلیل عملیاتی', href: '/process-analytics' },
