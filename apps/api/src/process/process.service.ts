@@ -185,7 +185,6 @@ export class ProcessService {
           const key = String(from) + ':' + String(action);
           if (keys.has(key)) throw new BadRequestException('Only one transition per step and action is allowed');
           keys.add(key);
-          if (to !== null) reachable.add(Number(to));
         }
         let changed = true;
         while (changed) {
