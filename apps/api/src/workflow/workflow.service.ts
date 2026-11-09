@@ -432,17 +432,17 @@ export class WorkflowService {
 
   async listTaskDelegations(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
-    if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
-    await this.assertActiveWorkflowMember(this.dataSource.manager, tenantId, requesterId, task.processInstance.organizationId);
-    const [assigned, started] = await Promise.all([
-      this.assignees.exist({ where: { taskId, userId: requesterId } }),
-      this.instances.exist({ where: { id: task.processInstanceId, startedByUserId: requesterId } }),
-    ]);
-    const delegated = await this.dataSource.getRepository(TaskDelegation).exist({ where: { taskId, tenantId, toUserId: requesterId } });
-    if (!assigned && !started && !delegated) throw new ForbiddenException('You are not allowed to view task delegations');
-    return this.dataSource.getRepository(TaskDelegation).find({
-      where: { taskId, tenantId }, order: { createdAt: 'DESC' },
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } } });
+      if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, requesterId, task.processInstance.organizationId);
+      const assigned = await manager.getRepository(TaskAssignee).exist({ where: { taskId, userId: requesterId } });
+      const started = await manager.getRepository(ProcessInstance).exist({ where: { id: task.processInstanceId, startedByUserId: requesterId } });
+      const delegated = await manager.getRepository(TaskDelegation).exist({ where: { taskId, tenantId, toUserId: requesterId } });
+      if (!assigned && !started && !delegated) throw new ForbiddenException('You are not allowed to view task delegations');
+      return manager.getRepository(TaskDelegation).find({
+        where: { taskId, tenantId }, order: { createdAt: 'DESC' },
+      });
     });
   }
 
@@ -1323,35 +1323,37 @@ export class WorkflowService {
     const offset = requestedOffset === undefined ? 0 : Number(requestedOffset);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new BadRequestException('limit must be an integer between 1 and 100');
     if (!Number.isInteger(offset) || offset < 0 || offset > 100000) throw new BadRequestException('offset must be a non-negative integer no greater than 100000');
-    const organization = await this.organizations.createQueryBuilder('organization')
-      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :active', { active: 'ACTIVE' })
-      .where('organization.id = :organizationId AND organization.tenantId = :tenantId AND organization.isActive = true', { organizationId, tenantId }).getOne();
-    if (!organization) throw new NotFoundException('Organization not found');
-    await this.assertActiveWorkflowMember(this.dataSource.manager, tenantId, requesterId, organizationId);
-    return this.dataSource.getRepository(TaskDeferralRequest).createQueryBuilder('request')
-      .innerJoin('workflow_tasks', 'task', 'task.id = request."taskId"')
-      .innerJoin('process_instances', 'instance', 'instance.id = task."processInstanceId"')
-      .where('request."tenantId" = :tenantId AND request.status = :status', { tenantId, status: 'PENDING' })
-      .andWhere('instance."organizationId" = :organizationId', { organizationId })
-      .orderBy('request."createdAt"', 'ASC')
-      .take(limit).skip(offset)
-      .getManyAndCount()
-      .then(([items, total]) => ({ items, total, limit, offset }));
+    return this.dataSource.transaction(async manager => {
+      const organization = await manager.createQueryBuilder(Organization, 'organization')
+        .innerJoin('organization.tenant', 'tenant', 'tenant.status = :active', { active: 'ACTIVE' })
+        .where('organization.id = :organizationId AND organization.tenantId = :tenantId AND organization.isActive = true', { organizationId, tenantId }).getOne();
+      if (!organization) throw new NotFoundException('Organization not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, requesterId, organizationId);
+      const [items, total] = await manager.getRepository(TaskDeferralRequest).createQueryBuilder('request')
+        .innerJoin('workflow_tasks', 'task', 'task.id = request."taskId"')
+        .innerJoin('process_instances', 'instance', 'instance.id = task."processInstanceId"')
+        .where('request."tenantId" = :tenantId AND request.status = :status', { tenantId, status: 'PENDING' })
+        .andWhere('instance."organizationId" = :organizationId', { organizationId })
+        .orderBy('request."createdAt"', 'ASC')
+        .take(limit).skip(offset)
+        .getManyAndCount();
+      return { items, total, limit, offset };
+    });
   }
 
   async listTaskDeferrals(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
-    if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
-    await this.assertActiveWorkflowMember(this.dataSource.manager, tenantId, requesterId, task.processInstance.organizationId);
-    const [assigned, started, delegated] = await Promise.all([
-      this.assignees.exist({ where: { taskId, userId: requesterId } }),
-      this.instances.exist({ where: { id: task.processInstanceId, startedByUserId: requesterId } }),
-      this.dataSource.getRepository(TaskDelegation).exist({ where: { taskId, tenantId, toUserId: requesterId } }),
-    ]);
-    if (!assigned && !started && !delegated) throw new ForbiddenException('You are not allowed to view task deadline requests');
-    return this.dataSource.getRepository(TaskDeferralRequest).find({
-      where: { taskId, tenantId }, order: { createdAt: 'DESC' },
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } } });
+      if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, requesterId, task.processInstance.organizationId);
+      const assigned = await manager.getRepository(TaskAssignee).exist({ where: { taskId, userId: requesterId } });
+      const started = await manager.getRepository(ProcessInstance).exist({ where: { id: task.processInstanceId, startedByUserId: requesterId } });
+      const delegated = await manager.getRepository(TaskDelegation).exist({ where: { taskId, tenantId, toUserId: requesterId } });
+      if (!assigned && !started && !delegated) throw new ForbiddenException('You are not allowed to view task deadline requests');
+      return manager.getRepository(TaskDeferralRequest).find({
+        where: { taskId, tenantId }, order: { createdAt: 'DESC' },
+      });
     });
   }
 
