@@ -2,7 +2,7 @@
 
 ## دامنه پیاده‌سازی
 
-Migrationهای `20261109_021_commercial_subscriptions.sql` و `20261109_022_tenant_api_credentials.sql` به‌ترتیب کاتالوگ پلن/اشتراک/صورتحساب و کلیدهای API مختص Tenant را ایجاد می‌کنند. این migrationها باید پس از تمام migrationهای قبلی و از طریق `scripts/migrate-onprem.sh` اعمال شوند؛ اجرای آن‌ها در این مرحله انجام نشده است.
+Migrationهای `20261109_021_commercial_subscriptions.sql`، `20261109_022_tenant_api_credentials.sql` و `20261109_023_subscription_renewal_receipts.sql` به‌ترتیب کاتالوگ پلن/اشتراک/صورتحساب، کلیدهای API مختص Tenant و ایندکس رسیدهای تمدید را ایجاد می‌کنند. این migrationها باید پس از تمام migrationهای قبلی و از طریق `scripts/migrate-onprem.sh` اعمال شوند؛ اجرای آن‌ها در این مرحله انجام نشده است.
 
 ## پلن‌ها
 
