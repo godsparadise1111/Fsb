@@ -74,23 +74,32 @@ export class NotificationOutboxService {
   async claimBatch(workerId: string, limit = 20) {
     if (!/^[a-zA-Z0-9._:-]{3,120}$/.test(workerId)) throw new Error('Invalid worker id');
     const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
-    const rows = await this.dataSource.transaction(async manager => manager.query(
-      `WITH candidates AS (
-         SELECT id FROM notification_outbox
-          WHERE (status = 'PENDING' AND "availableAt" <= now())
-             OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '2 minutes')
-          ORDER BY "availableAt", "createdAt"
-          FOR UPDATE SKIP LOCKED
-          LIMIT $1
-       )
-       UPDATE notification_outbox o
-          SET status = 'PROCESSING', "lockedBy" = $2, "lockedAt" = now(),
-              attempts = o.attempts + 1, "updatedAt" = now()
-         FROM candidates c
-        WHERE o.id = c.id
-       RETURNING o.*`,
-      [safeLimit, workerId],
-    )) as NotificationOutbox[];
+    const rows = await this.dataSource.transaction(async manager => {
+      await manager.query(
+        `UPDATE notification_outbox
+            SET status='DEAD', "lockedBy"=NULL, "lockedAt"=NULL,
+                lastError='Maximum delivery attempts reached before worker recovery', "updatedAt"=now()
+          WHERE attempts >= 10 AND status IN ('PENDING','PROCESSING')`,
+      );
+      return manager.query(
+        `WITH candidates AS (
+           SELECT id FROM notification_outbox
+            WHERE ((status = 'PENDING' AND "availableAt" <= now())
+                OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '2 minutes'))
+              AND attempts < 10
+            ORDER BY "availableAt", "createdAt"
+            FOR UPDATE SKIP LOCKED
+            LIMIT $1
+         )
+         UPDATE notification_outbox o
+            SET status = 'PROCESSING', "lockedBy" = $2, "lockedAt" = now(),
+                attempts = o.attempts + 1, "updatedAt" = now()
+           FROM candidates c
+          WHERE o.id = c.id
+         RETURNING o.*`,
+        [safeLimit, workerId],
+      );
+    }) as NotificationOutbox[];
     return rows.map(row => ({
       id: row.id,
       tenantId: row.tenantId,
