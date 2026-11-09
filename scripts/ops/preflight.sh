@@ -5,35 +5,53 @@ set -eu
 command -v docker >/dev/null 2>&1 || { echo "ERROR: Docker CLI is required." >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "ERROR: Docker Compose plugin is required." >&2; exit 1; }
 
-# Compose parses .env and validates all required substitutions without printing secret values.
+# Let Compose parse the dotenv file and all required substitutions; never source .env as shell code.
 docker compose --env-file .env -f compose.production.yaml config --quiet
 
-set -a
-. ./.env
-set +a
-
-[ "${NODE_ENV:-production}" = "production" ] || { echo "ERROR: NODE_ENV must be production." >&2; exit 1; }
-[ "${POSTGRES_PASSWORD:-}" != "change_me_locally" ] || { echo "ERROR: replace the example PostgreSQL password." >&2; exit 1; }
-[ "${JWT_SECRET:-}" != "replace_with_a_long_random_secret_at_least_32_chars" ] || { echo "ERROR: replace the example JWT secret." >&2; exit 1; }
-[ "${BOOTSTRAP_TOKEN:-}" != "replace_with_a_separate_one_time_secret" ] || { echo "ERROR: replace the example bootstrap token." >&2; exit 1; }
-[ "${DB_SYNCHRONIZE:-false}" != "true" ] || { echo "ERROR: DB_SYNCHRONIZE=true is forbidden." >&2; exit 1; }
-[ -n "${JWT_SECRET:-}" ] && [ "${#JWT_SECRET}" -ge 32 ] || { echo "ERROR: JWT_SECRET must contain at least 32 characters." >&2; exit 1; }
-[ -n "${BOOTSTRAP_TOKEN:-}" ] && [ "${#BOOTSTRAP_TOKEN}" -ge 32 ] || { echo "ERROR: BOOTSTRAP_TOKEN must contain at least 32 characters." >&2; exit 1; }
-[ -n "${CORS_ORIGINS:-}" ] || { echo "ERROR: CORS_ORIGINS is required." >&2; exit 1; }
-case "$CORS_ORIGINS" in *\***) echo "ERROR: CORS_ORIGINS must not contain wildcard origins." >&2; exit 1 ;; esac
-case "${FSB_PUBLIC_APP_URL:-}" in https://*) ;; *) echo "ERROR: FSB_PUBLIC_APP_URL must use HTTPS." >&2; exit 1 ;; esac
-
-[ -n "${FSB_OUTBOX_ENCRYPTION_KEY:-}" ] || { echo "ERROR: FSB_OUTBOX_ENCRYPTION_KEY is required." >&2; exit 1; }
-KEY="$FSB_OUTBOX_ENCRYPTION_KEY" node -e "const k=process.env.KEY;let b;if(/^[0-9a-fA-F]{64}$/.test(k))b=Buffer.from(k,'hex');else{try{b=Buffer.from(k,'base64')}catch{b=Buffer.alloc(0)}}if(b.length!==32)process.exit(1)" || {
-  echo "ERROR: FSB_OUTBOX_ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex chars or base64)." >&2
-  exit 1
+node <<'NODE'
+const fs = require('node:fs');
+const values = {};
+for (const rawLine of fs.readFileSync('.env', 'utf8').split(/\r?\n/)) {
+  const line = rawLine.trim();
+  if (!line || line.startsWith('#')) continue;
+  const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+  if (!match) continue;
+  let value = match[2].trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1);
+  } else {
+    value = value.replace(/\s+#.*$/, '');
+  }
+  values[match[1]] = value;
 }
+const fail = message => { process.stderr.write('ERROR: ' + message + '\n'); process.exit(1); };
+const required = key => {
+  if (!values[key]) fail(key + ' is required.');
+  return values[key];
+};
+if ((values.NODE_ENV || 'production') !== 'production') fail('NODE_ENV must be production.');
+if ((values.DB_SYNCHRONIZE || 'false') === 'true') fail('DB_SYNCHRONIZE=true is forbidden in production.');
+if (required('POSTGRES_PASSWORD') === 'change_me_locally') fail('Replace the example PostgreSQL password.');
+if (required('JWT_SECRET') === 'replace_with_a_long_random_secret_at_least_32_chars' || values.JWT_SECRET.length < 32) fail('Replace JWT_SECRET with at least 32 random characters.');
+if (required('BOOTSTRAP_TOKEN') === 'replace_with_a_separate_one_time_secret' || values.BOOTSTRAP_TOKEN.length < 32) fail('Replace BOOTSTRAP_TOKEN with at least 32 random characters.');
+if (required('CORS_ORIGINS').includes('*')) fail('CORS_ORIGINS must not contain wildcard origins.');
+const publicUrl = required('FSB_PUBLIC_APP_URL');
+if (!publicUrl.startsWith('https://')) fail('FSB_PUBLIC_APP_URL must use HTTPS.');
+const apiUrl = required('NEXT_PUBLIC_API_URL');
+if (!apiUrl.startsWith('https://')) fail('NEXT_PUBLIC_API_URL must use HTTPS.');
+const key = required('FSB_OUTBOX_ENCRYPTION_KEY');
+let decoded;
+if (/^[0-9a-fA-F]{64}$/.test(key)) decoded = Buffer.from(key, 'hex');
+else {
+  try { decoded = Buffer.from(key, 'base64'); } catch { decoded = Buffer.alloc(0); }
+}
+if (decoded.length !== 32) fail('FSB_OUTBOX_ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex chars or base64).');
+required('FSB_SMTP_HOST');
+required('FSB_EMAIL_FROM');
+if (Boolean(values.FSB_SMTP_USER) !== Boolean(values.FSB_SMTP_PASS)) fail('Configure both SMTP username and password, or neither.');
+const port = Number(values.FSB_SMTP_PORT || 587);
+if (!Number.isInteger(port) || port < 1 || port > 65535) fail('FSB_SMTP_PORT is invalid.');
+process.stdout.write('Production configuration preflight passed.\n');
+NODE
 
-[ -n "${FSB_SMTP_HOST:-}" ] && [ -n "${FSB_EMAIL_FROM:-}" ] || { echo "ERROR: SMTP host and sender address are required." >&2; exit 1; }
-if [ -n "${FSB_SMTP_USER:-}" ] || [ -n "${FSB_SMTP_PASS:-}" ]; then
-  [ -n "${FSB_SMTP_USER:-}" ] && [ -n "${FSB_SMTP_PASS:-}" ] || { echo "ERROR: configure both SMTP username and password, or neither." >&2; exit 1; }
-fi
-[ -n "${NEXT_PUBLIC_API_URL:-}" ] || { echo "ERROR: NEXT_PUBLIC_API_URL is required." >&2; exit 1; }
-case "$NEXT_PUBLIC_API_URL" in https://*) ;; *) echo "ERROR: NEXT_PUBLIC_API_URL must use HTTPS." >&2; exit 1 ;; esac
-
-echo "Preflight passed. No database migration, SMTP connection, or PDF glyph rendering was tested."
+echo "NOTE: This preflight does not connect to SMTP, apply migrations, or prove PDF glyph rendering."
