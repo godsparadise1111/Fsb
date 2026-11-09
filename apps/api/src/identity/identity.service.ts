@@ -98,7 +98,9 @@ export class IdentityService {
       if (!position) throw new NotFoundException('Active position not found');
       const organization = position.unit.organization;
       const tenantId = organization?.tenantId;
-      if (!tenantId || !organization.isActive) throw new BadRequestException('Position must belong to an active organization');
+      if (!position.unit.isActive || !tenantId || !organization.isActive) {
+        throw new BadRequestException('Position must belong to an active unit and organization');
+      }
       const tenant = await manager.findOne(Tenant, { where: { id: tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!tenant || tenant.status !== 'ACTIVE') throw new BadRequestException('Position must belong to an active tenant');
       const tenantMember = await manager.findOne(TenantMembership, {
@@ -150,7 +152,10 @@ export class IdentityService {
       .innerJoin('membership.user', 'user')
       .innerJoinAndSelect('membership.position', 'position')
       .innerJoinAndSelect('position.unit', 'unit')
-      .where('membership.userId = :userId AND membership.isActive = true', { userId });
+      .where('membership.userId = :userId AND membership.isActive = true', { userId })
+      .andWhere('membership.validFrom <= CURRENT_TIMESTAMP')
+      .andWhere('(membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
+      .andWhere('position.isActive = true AND unit.isActive = true');
     if (tenantId) {
       query
         .innerJoin('unit.organization', 'organization',
