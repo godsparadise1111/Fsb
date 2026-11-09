@@ -15,6 +15,7 @@ set -- "$migration_dir"/*.sql
 [ -f "$1" ] || { echo "ERROR: no SQL migrations found." >&2; exit 1; }
 
 if [ -n "${FSB_MIGRATION_BASELINE:-}" ]; then
+  case "$FSB_MIGRATION_BASELINE" in */* ) echo "ERROR: baseline must be a migration filename, not a path." >&2; exit 1 ;; esac
   [ "${FSB_CONFIRM_BASELINE:-}" = "YES" ] || {
     echo "ERROR: set FSB_CONFIRM_BASELINE=YES only after verifying every migration up to the selected baseline is already applied." >&2
     exit 1
@@ -35,45 +36,45 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c '
   );
 ' >/dev/null
 
-record_baseline() {
+run_ledger_transaction() {
   file="$1"
+  mode="$2"
   name="$(basename "$file")"
+  case "$name" in *[!A-Za-z0-9_.-]* ) echo "ERROR: unsafe migration filename: $name" >&2; exit 1 ;; esac
   checksum="$(sha256sum "$file" | awk '{print $1}')"
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
-    INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded)
-    VALUES ('$name','$checksum',true)
-    ON CONFLICT (filename) DO NOTHING
-  " >/dev/null
-  recorded="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT sha256 FROM fsb_schema_migration_ledger WHERE filename='$name'")"
-  [ "$recorded" = "$checksum" ] || { echo "ERROR: baseline checksum conflict for $name." >&2; exit 1; }
-  echo "Baseline recorded (not executed): $name"
-}
-
-apply_one() {
-  file="$1"
-  name="$(basename "$file")"
-  checksum="$(sha256sum "$file" | awk '{print $1}')"
-  recorded="$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "SELECT sha256 FROM fsb_schema_migration_ledger WHERE filename='$name'")"
-  if [ -n "$recorded" ]; then
-    [ "$recorded" = "$checksum" ] || { echo "ERROR: checksum mismatch for already recorded migration $name." >&2; exit 1; }
-    echo "Already applied and checksum verified: $name"
-    return
+  script="$(mktemp)"
+  migration_sql=""
+  if [ "$mode" = "apply" ]; then
+    migration_sql="$(mktemp)"
+    sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/Id; /^[[:space:]]*COMMIT;[[:space:]]*$/Id' "$file" > "$migration_sql"
   fi
-
-  tmp="$(mktemp)"
   {
-    printf "SELECT pg_advisory_xact_lock(hashtext('fsb-schema-migrations'));
-"
-    sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/Id; /^[[:space:]]*COMMIT;[[:space:]]*$/Id' "$file"
-    printf "\nINSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',false);\n" "$name" "$checksum"
-  } > "$tmp"
-  if ! psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f "$tmp"; then
-    rm -f "$tmp"
-    echo "ERROR: migration failed and its transaction was rolled back: $name" >&2
+    printf "BEGIN;\nSELECT pg_advisory_xact_lock(hashtext('fsb-schema-migrations'));\n"
+    printf "SELECT EXISTS(SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s') AS migration_applied \\gset\n" "$name"
+    printf "\\if :migration_applied\n"
+    printf "  SELECT EXISTS(SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s' AND sha256='%s') AS checksum_matches \\gset\n" "$name" "$checksum"
+    printf "  \\if :checksum_matches\n"
+    printf "    \\echo Already recorded and checksum verified: %s\n" "$name"
+    printf "  \\else\n    \\echo ERROR: checksum mismatch for %s\n    \\quit 3\n  \\endif\n" "$name"
+    printf "\\else\n"
+    if [ "$mode" = "baseline" ]; then
+      printf "  INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',true);\n" "$name" "$checksum"
+      printf "  \\echo Baseline recorded without execution: %s\n" "$name"
+    else
+      printf "  \\i '%s'\n" "$migration_sql"
+      printf "  INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',false);\n" "$name" "$checksum"
+      printf "  \\echo Applied and checksummed: %s\n" "$name"
+    fi
+    printf "\\endif\nCOMMIT;\n"
+  } > "$script"
+  if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$script"; then
+    rm -f "$script"
+    [ -z "$migration_sql" ] || rm -f "$migration_sql"
+    echo "ERROR: migration transaction failed: $name" >&2
     exit 1
   fi
-  rm -f "$tmp"
-  echo "Applied and checksummed: $name"
+  rm -f "$script"
+  [ -z "$migration_sql" ] || rm -f "$migration_sql"
 }
 
 baseline_pending=false
@@ -82,14 +83,14 @@ baseline_found=false
 for file in "$migration_dir"/*.sql; do
   name="$(basename "$file")"
   if [ "$baseline_pending" = true ]; then
-    record_baseline "$file"
+    run_ledger_transaction "$file" baseline
     if [ "$name" = "$FSB_MIGRATION_BASELINE" ]; then
       baseline_pending=false
       baseline_found=true
     fi
     continue
   fi
-  apply_one "$file"
+  run_ledger_transaction "$file" apply
 done
 
 if [ -n "${FSB_MIGRATION_BASELINE:-}" ] && [ "$baseline_found" != true ]; then
