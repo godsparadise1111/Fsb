@@ -159,6 +159,7 @@ export class PermissionsGuard implements CanActivate {
     if (request.method === 'GET' && (requestPath.endsWith('/organizations/accessible') || requestPath.endsWith('/report-builder/scope')) && required.length === 1 && (required[0] === 'organization.read' || required[0] === 'tenant.reports.read')) return true;
     if (request.method === 'GET' && requestPath.endsWith('/tasks/my') && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
     if (request.method === 'GET' && requestPath.endsWith('/process-instances/my') && required.length === 1 && required[0] === 'workflow.history.read') return true;
+    if (request.method === 'GET' && /\/process-instances\/[0-9a-f-]{36}$/i.test(requestPath) && required.length === 1 && required[0] === 'workflow.history.read') return true;
     if (request.method === 'GET' && requestPath.endsWith('/tenant/dashboard/me') && required.length === 1 && required[0] === 'workflow.tasks.read') return true;
 
     // Tenant administrators get only explicitly listed tenant-level capabilities.
