@@ -95,6 +95,9 @@ Reverse proxy باید TLS را خاتمه دهد و فقط به پورت‌ها
 - با دو Tenant و دو سازمان مستقل، IDOR، دسترسی به کارتابل، گزارش، فایل، تاریخچه و Outbox را آزمایش کنید.
 - Recovery را با وضعیت‌های آزمایشی ناسازگار بررسی کنید؛ هیچ Incident مبهمی نباید خودکار به مرحله بعد منتقل شود.
 
+- پیش از Production، `npm run build` و `npm run test:workflow --workspace @fsb/api` اجرا شوند؛ GitHub Actions نیز Build، تست انتقال Workflow و اعتبارسنجی Compose را روی push/PR بررسی می‌کند.
+- تست‌های یکپارچه PostgreSQL، مجوز Tenant/سازمان، SMTP، PDF/XLSX، مرورگر و بازیابی کامل همچنان باید در Staging اجرا شوند.
+
 ## 7. بازیابی
 
 1. ترافیک ورودی را در Reverse Proxy متوقف کنید.
