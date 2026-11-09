@@ -60,6 +60,9 @@ Migration دوم برای process/form definitions و versions، process instanc
 
 - 20261109_016_workflow_action_idempotency.sql: ذخیرهٔ پایدار کلید idempotency برای اقدام وظیفه با دامنهٔ Tenant/وظیفه/کاربر، hash درخواست، پاسخ نهایی و FK مرکب Tenant؛ رکوردهای تکمیل‌شده تغییرناپذیرند و برای replay پاسخ حذف نمی‌شوند؛ migration همچنین assignmentهای Pending باقی‌مانده روی وظایف terminal را REASSIGNED می‌کند و lifecycle eventهای اقدام تاریخی را از action logها backfill می‌کند. این migration باید پیش از انتشار نسخه‌ای که هدر `Idempotency-Key` را اجباری می‌کند اعمال شود.
 
+
+- 20261109_017_workflow_recovery_incidents.sql: ثبت پایدار رخدادهای بازیابی فرایند با fingerprint یکتا، جزئیات تغییرناپذیر و وضعیت OPEN/ACKNOWLEDGED/RESOLVED؛ پس از migrationهای 015 و 016 اجرا شود. این جدول برای فرایندهای RUNNING بدون وظیفهٔ فعال یا دارای چند وظیفهٔ فعال و فرایندهای terminal با وظیفهٔ باز، مسیر پیگیری اپراتوری فراهم می‌کند.
+
 ## کنترل نهایی پس از مهاجرت
 ```sql
 SELECT id, name, code FROM organizations WHERE "tenantId" IS NULL;
