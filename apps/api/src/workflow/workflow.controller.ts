@@ -97,53 +97,53 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Post('organizations/:organizationId/operational-alerts/:alertId/acknowledge')
   acknowledgeOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'ACKNOWLEDGE');
   }
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Post('organizations/:organizationId/operational-alerts/:alertId/assign')
   assignOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @Body() body: { assignedToUserId: string }, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'ASSIGN', body.assignedToUserId);
   }
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Post('organizations/:organizationId/operational-alerts/:alertId/resolve')
   resolveOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @Body() body: { note: string }, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'RESOLVE', null, body.note);
   }
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Post('organizations/:organizationId/operational-alerts/:alertId/reopen')
   reopenOperationalAlert(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.updateOperationalAlert(organizationId, alertId, user.sub, user.tenantId, 'REOPEN');
   }
 
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Post('organizations/:organizationId/operational-alerts/:alertId/notes')
   addOperationalAlertNote(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @Body() body: { note: string }, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.addOperationalAlertNote(organizationId, alertId, user.sub, user.tenantId, body.note);
   }
 
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Get('organizations/:organizationId/operational-alerts/:alertId/history')
   operationalAlertHistory(@Param('organizationId') organizationId: string, @Param('alertId') alertId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listOperationalAlertHistory(organizationId, alertId, user.tenantId);
   }
 
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Get('organizations/:organizationId/operational-alerts')
   organizationOperationalAlerts(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.listOrganizationOperationalAlerts(organizationId, user.tenantId);
   }
 
   @RequirePermissions('workflow.substitutions.manage')
-  @RequiresFeature('delegation')
+  @RequiresFeature('sla')
   @Get('organizations/:organizationId/operations-overview')
   organizationOperationsOverview(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.getOrganizationOperationsOverview(organizationId, user.tenantId);
@@ -178,7 +178,6 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.tasks.defer.approve')
-  @RequiresFeature('delegation')
   @RequiresFeature('delegation')
   @Get('tasks/deferrals/pending')
   pendingDeferrals(@Query('organizationId') organizationId: string, @Query('limit') limit: string, @Query('offset') offset: string, @CurrentUser() user: AuthenticatedUser) {
