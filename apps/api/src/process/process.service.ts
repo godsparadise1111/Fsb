@@ -127,6 +127,62 @@ export class ProcessService {
         if ((index > 0 || hasExplicitTransitions) && !hasAssigneeSource) {
           throw new BadRequestException(`Process step ${index + 1} must define assigneeUserIds, assigneePositionIds or assigneeUnitIds`);
         }
+        if (hasAssigneeSource) {
+          const userIds = Array.isArray(config.assigneeUserIds) ? config.assigneeUserIds as string[] : [];
+          const positionIds = Array.isArray(config.assigneePositionIds) ? config.assigneePositionIds as string[] : [];
+          const unitIds = Array.isArray(config.assigneeUnitIds) ? config.assigneeUnitIds as string[] : [];
+          if (userIds.length) {
+            const [eligibleUsers] = await manager.query(
+              `SELECT count(DISTINCT up."userId")::int AS count
+                 FROM user_positions up
+                 JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+                 JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
+                 JOIN tenant_memberships tm ON tm."tenantId"=$2 AND tm."userId"=up."userId" AND tm."isActive"=true
+                 JOIN users u ON u.id=up."userId" AND u."isActive"=true
+                WHERE up."userId"=ANY($3::uuid[]) AND up."isActive"=true
+                  AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())`,
+              [definition.organizationId, definition.tenantId, userIds],
+            );
+            if (Number(eligibleUsers?.count ?? 0) !== userIds.length) {
+              throw new BadRequestException(`Process step ${index + 1} directly assigned users must have active membership and position in the process organization`);
+            }
+          }
+          if (positionIds.length) {
+            const [validPositions] = await manager.query(
+              `SELECT count(*)::int AS count FROM positions p
+                JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
+               WHERE p.id=ANY($2::uuid[]) AND p."isActive"=true`,
+              [definition.organizationId, positionIds],
+            );
+            if (Number(validPositions?.count ?? 0) !== positionIds.length) {
+              throw new BadRequestException(`Process step ${index + 1} positions must be active and belong to the process organization`);
+            }
+          }
+          if (unitIds.length) {
+            const [validUnits] = await manager.query(
+              'SELECT count(*)::int AS count FROM organization_units WHERE id=ANY($2::uuid[]) AND "organizationId"=$1 AND "isActive"=true',
+              [definition.organizationId, unitIds],
+            );
+            if (Number(validUnits?.count ?? 0) !== unitIds.length) {
+              throw new BadRequestException(`Process step ${index + 1} units must be active and belong to the process organization`);
+            }
+          }
+          const [resolvedTargets] = await manager.query(
+            `SELECT count(DISTINCT up."userId")::int AS count
+               FROM user_positions up
+               JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+               JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$1 AND ou."isActive"=true
+               JOIN tenant_memberships tm ON tm."tenantId"=$2 AND tm."userId"=up."userId" AND tm."isActive"=true
+               JOIN users u ON u.id=up."userId" AND u."isActive"=true
+              WHERE up."isActive"=true AND up."validFrom"<=now()
+                AND (up."validUntil" IS NULL OR up."validUntil">=now())
+                AND (up."userId"=ANY($3::uuid[]) OR p.id=ANY($4::uuid[]) OR ou.id=ANY($5::uuid[]))`,
+            [definition.organizationId, definition.tenantId, userIds, positionIds, unitIds],
+          );
+          if (Number(resolvedTargets?.count ?? 0) < 1 || Number(resolvedTargets?.count ?? 0) > 50) {
+            throw new BadRequestException(`Process step ${index + 1} targets must currently resolve to between 1 and 50 active users`);
+          }
+        }
         const dueInHours = config.dueInHours;
         if (dueInHours !== undefined && dueInHours !== null &&
             (typeof dueInHours !== 'number' || !Number.isFinite(dueInHours) || dueInHours <= 0 || dueInHours > 8760)) {
