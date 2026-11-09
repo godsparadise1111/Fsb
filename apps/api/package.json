@@ -17,7 +17,8 @@
     "worker:workflow": "node dist/notifications/worker.main.js",
     "worker:workflow:dev": "tsx src/notifications/worker.main.ts",
     "worker:recovery": "node dist/notifications/worker.main.js",
-    "worker:recovery:dev": "tsx src/notifications/worker.main.ts"
+    "worker:recovery:dev": "tsx src/notifications/worker.main.ts",
+    "test:workflow": "tsx --test src/workflow/workflow.transition.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
