@@ -126,7 +126,10 @@ export class WorkflowRecoveryIncidentService {
         [incidentId, tenantId],
       );
       if (!incident) throw new NotFoundException('Recovery incident not found');
-      const registered = this.replayRegistry.resolve(incident.incidentType);\n      const reason = registered\n        ? 'A handler is registered, but this endpoint remains fail-closed until a transactional replay executor with durable idempotency receipts is enabled.'\n        : 'No registered safe, idempotent replay handler exists for this incident type. Human actions and process-stage advancement are never replayed.';
+      const registered = this.replayRegistry.resolve(incident.incidentType);
+      const reason = registered
+        ? 'A handler is registered, but this endpoint remains fail-closed until a transactional replay executor with durable idempotency receipts is enabled.'
+        : 'No registered safe, idempotent replay handler exists for this incident type. Human actions and process-stage advancement are never replayed.';
       await manager.query(
         `INSERT INTO workflow_recovery_incident_events ("tenantId","incidentId","eventType","actorUserId","eventKey",metadata)
          VALUES ($1,$2,'REPLAY_REJECTED',$3,$4,$5::jsonb)`,
