@@ -1,6 +1,6 @@
 -- Read-only post-migration checks. Every query should return zero rows
 -- except the final tenant-admin summary, which should show >= 1 active admin.
--- Run against staging after migrations 001-012; do not use as a substitute for race tests.
+-- Run against staging after migrations 001-013; do not use as a substitute for race tests.
 
 -- Active memberships may be retained during tenant suspension, but users and tenants must exist.
 SELECT tm.id, tm."tenantId", tm."userId"
