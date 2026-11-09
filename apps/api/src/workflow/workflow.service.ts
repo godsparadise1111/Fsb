@@ -511,6 +511,8 @@ export class WorkflowService {
             AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=s."tenantId" AND tm."userId"=s."originalUserId" AND tm."isActive"=true)
             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=s."tenantId" AND tm."userId"=s."substituteUserId" AND tm."isActive"=true)
+            AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=s."organizationId" AND ou."isActive"=true WHERE up."userId"=s."originalUserId" AND up."isActive"=true AND up."validFrom"<=$4 AND (up."validUntil" IS NULL OR up."validUntil">=$4))
+            AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=s."organizationId" AND ou."isActive"=true WHERE up."userId"=s."substituteUserId" AND up."isActive"=true AND up."validFrom"<=$4 AND (up."validUntil" IS NULL OR up."validUntil">=$4))
          UNION
          SELECT wt.id
            FROM task_assignees source
@@ -1146,7 +1148,9 @@ export class WorkflowService {
            WHERE os."tenantId" = $1 AND os."organizationId" = $2 AND os."revokedAt" IS NULL
              AND os."startsAt" <= now() AND os."endsAt" > now()
              AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
-             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)) AS "activeSubstitutions"`,
+             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)
+              OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."originalUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
+              OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=os."organizationId" AND ou."isActive"=true WHERE up."userId"=os."substituteUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))) AS "activeSubstitutions"`,
       [tenantId, organizationId],
     );
 
