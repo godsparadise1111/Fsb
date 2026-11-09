@@ -23,6 +23,7 @@ export default function ReportBuilderPanel() {
   const [tenantId,setTenantId] = useState('');
   const [catalog,setCatalog] = useState<Source[]>([]);
   const [organizations,setOrganizations] = useState<Organization[]>([]);
+  const [tenantWide,setTenantWide] = useState(false);
   const [organizationId,setOrganizationId] = useState('');
   const [schedules,setSchedules] = useState<Schedule[]>([]);
   const [jobId,setJobId] = useState('');
@@ -61,7 +62,7 @@ export default function ReportBuilderPanel() {
   const groupFields = source?.fields.filter(field=>field.groupable) ?? [];
   const numericFields = source?.fields.filter(field=>field.type==='number') ?? [];
 
-  const scopedPath = useCallback((path:string)=>path+(path.includes('?')?'&':'?')+'organizationId='+encodeURIComponent(organizationId),[organizationId]);
+  const scopedPath = useCallback((path:string)=>organizationId?path+(path.includes('?')?'&':'?')+'organizationId='+encodeURIComponent(organizationId):path,[organizationId]);
   const refreshSaved = useCallback(async()=>{
     const items = await request(scopedPath('/tenant/report-builder/saved'));
     setSaved(items || []);
@@ -85,16 +86,18 @@ export default function ReportBuilderPanel() {
   useEffect(()=>{
     if (!token) return;
     let active = true;
-    request('/tenant/report-builder/organizations/accessible').then(items=>{
+    request('/tenant/report-builder/scope').then(data=>{
       if(!active) return;
-      setOrganizations(items||[]);
-      if(items?.length) setOrganizationId(current=>current||items[0].id);
+      setTenantWide(data.tenantWide===true);
+      setOrganizations(data.organizations||[]);
+      if(data.tenantWide===true) setOrganizationId(current=>current||'');
+      else if(data.organizations?.length) setOrganizationId(current=>current||data.organizations[0].id);
     }).catch(error=>{if(active)setError(error instanceof Error?error.message:'دریافت سازمان‌های مجاز ناموفق بود')});
     return ()=>{active=false};
   },[token,request]);
 
   useEffect(()=>{
-    if (!token || !organizationId) return;
+    if (!token || (!tenantWide && !organizationId)) return;
     let active = true;
     Promise.all([
       request(scopedPath('/tenant/report-builder/catalog')),
@@ -106,7 +109,7 @@ export default function ReportBuilderPanel() {
       if (items?.length) setSourceKey(items[0].key);
     }).catch(error=>{if(active)setError(error instanceof Error?error.message:'خطا در دریافت تنظیمات گزارش‌ساز')});
     return ()=>{active=false};
-  },[token,organizationId,request,scopedPath]);
+  },[token,tenantWide,organizationId,request,scopedPath]);
 
   useEffect(()=>{
     if (!source) return;
@@ -117,7 +120,7 @@ export default function ReportBuilderPanel() {
   },[source,sourceKey]);
 
   function makeSpec():Spec {
-    return {source:sourceKey,from,to,organizationId:organizationId||undefined,groupBy:groupBy||undefined,aggregate,measure:aggregate==='count'?undefined:measure,
+    return {source:sourceKey,from,to,...(organizationId?{organizationId}:{}),groupBy:groupBy||undefined,aggregate,measure:aggregate==='count'?undefined:measure,
       filters:filters.filter(item=>item.field && item.value.trim()).map(item=>({field:item.field,operator:item.operator,value:item.operator==='in'?item.value.split(',').map(value=>value.trim()).filter(Boolean):item.value})),limit:200};
   }
 
@@ -224,7 +227,7 @@ export default function ReportBuilderPanel() {
   }
 
   useEffect(()=>{
-    if(!token||!organizationId||!jobId)return;
+    if(!token||(!tenantWide&&!organizationId)||!jobId)return;
     let active=true;
     let timer:number|undefined;
     const poll=async()=>{
@@ -242,7 +245,7 @@ export default function ReportBuilderPanel() {
     timer=window.setInterval(()=>void poll(),5000);
     void poll();
     return ()=>{active=false;if(timer!==undefined)window.clearInterval(timer)};
-  },[token,organizationId,jobId,request,scopedPath]);
+  },[token,tenantWide,organizationId,jobId,request,scopedPath]);
 
   const maxValue=Math.max(1,...(result?.rows||[]).map(row=>Math.abs(row.value||0)));
   return <section style={panel} dir="rtl">
@@ -251,7 +254,7 @@ export default function ReportBuilderPanel() {
       <span style={{fontSize:12,opacity:.7}}>منابع داده محدود و امن · حداکثر ۲۰۰ ردیف</span>
     </div>
     {error&&<p role="alert" style={{color:'#b42318',marginTop:12}}>{error}</p>}
-    <label style={{display:'grid',gap:6,marginTop:16}}>سازمان گزارش<select style={control} value={organizationId} onChange={e=>{setOrganizationId(e.target.value);setResult(null);setLoadedId('');setCatalog([]);setSaved([])}}>{organizations.map(org=><option key={org.id} value={org.id}>{org.name} · {org.code}</option>)}</select></label>
+    <label style={{display:'grid',gap:6,marginTop:16}}>سازمان گزارش<select style={control} value={organizationId} onChange={e=>{setOrganizationId(e.target.value);setResult(null);setLoadedId('');setCatalog([]);setSaved([])}}>{tenantWide&&<option value="">تمام سازمان‌ها</option>}{organizations.map(org=><option key={org.id} value={org.id}>{org.name} · {org.code}</option>)}</select></label>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))',gap:12,marginTop:18}}>
       <label style={{display:'grid',gap:6}}>منبع داده<select style={control} value={sourceKey} onChange={e=>{setSourceKey(e.target.value);setGroupBy('');setFilters([]);setAggregate('count');setMeasure('');setResult(null);setLoadedId('')}}>{catalog.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
       <label style={{display:'grid',gap:6}}>گروه‌بندی<select style={control} value={groupBy} onChange={e=>setGroupBy(e.target.value)}><option value="">بدون گروه‌بندی · کل</option>{groupFields.map(field=><option key={field.key} value={field.key}>{field.label}</option>)}</select></label>
@@ -269,7 +272,7 @@ export default function ReportBuilderPanel() {
         <button type="button" style={button} onClick={()=>setFilters(current=>current.filter((_,i)=>i!==index))}>حذف شرط</button>
       </div>)}
     </div>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18}}><button type="button" style={button} disabled={busy||!sourceKey||!organizationId||(aggregate!=='count'&&!measure)} onClick={()=>void run()}>{busy?'در حال پردازش…':'اجرای گزارش'}</button><button type="button" style={button} disabled={busy||!sourceKey||!organizationId} onClick={()=>void enqueueReport()}>اجرای پس‌زمینه</button><button type="button" style={button} onClick={()=>{setLoadedId('');setCanEdit(true);setTitle('');setDescription('');setIsShared(false);setResult(null);setFilters([]);setGroupBy('');setAggregate('count');setMeasure('')}}>گزارش جدید</button></div>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18}}><button type="button" style={button} disabled={busy||!sourceKey||(!tenantWide&&!organizationId)||(aggregate!=='count'&&!measure)} onClick={()=>void run()}>{busy?'در حال پردازش…':'اجرای گزارش'}</button><button type="button" style={button} disabled={busy||!sourceKey||(!tenantWide&&!organizationId)} onClick={()=>void enqueueReport()}>اجرای پس‌زمینه</button><button type="button" style={button} onClick={()=>{setLoadedId('');setCanEdit(true);setTitle('');setDescription('');setIsShared(false);setResult(null);setFilters([]);setGroupBy('');setAggregate('count');setMeasure('')}}>گزارش جدید</button></div>
     <div style={{borderTop:'1px solid var(--border, #e5e7eb)',marginTop:20,paddingTop:18}}>
       <h3 style={{marginTop:0}}>اجرای پس‌زمینه و زمان‌بندی</h3>
       {jobId&&<div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}><span>شناسه اجرا: {jobId.slice(0,8)} · وضعیت: {jobStatus}</span><button type="button" style={button} disabled={busy} onClick={()=>void refreshJob()}>به‌روزرسانی وضعیت</button></div>}
@@ -278,7 +281,7 @@ export default function ReportBuilderPanel() {
         {frequency==='WEEKLY'&&<label style={{display:'grid',gap:5}}>روز هفته<select style={control} value={weekday} onChange={e=>setWeekday(Number(e.target.value))}>{[['0','یکشنبه'],['1','دوشنبه'],['2','سه‌شنبه'],['3','چهارشنبه'],['4','پنجشنبه'],['5','جمعه'],['6','شنبه']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>}
         <label style={{display:'grid',gap:5}}>ساعت ارسال<input style={control} type="time" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)}/></label>
       </div>
-      <button type="button" style={{...button,marginTop:10}} disabled={busy||!organizationId} onClick={()=>void createSchedule()}>ثبت زمان‌بندی و ارسال ایمیل به حساب من</button>
+      <button type="button" style={{...button,marginTop:10}} disabled={busy||(!tenantWide&&!organizationId)} onClick={()=>void createSchedule()}>ثبت زمان‌بندی و ارسال ایمیل به حساب من</button>
       {!!schedules.length&&<div style={{display:'grid',gap:8,marginTop:12}}>{schedules.map(item=><div key={item.id} style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center',border:'1px solid var(--border, #e5e7eb)',borderRadius:9,padding:10}}><span>{item.frequency==='DAILY'?'روزانه':item.frequency==='WEEKLY'?'هفتگی':'ماهانه'} · {String(item.timeOfDay).slice(0,5)} · {item.isActive?'فعال':'متوقف'}</span><button type="button" style={button} disabled={busy} onClick={()=>void toggleSchedule(item)}>{item.isActive?'توقف':'فعال‌سازی'}</button></div>)}</div>}
     </div>
     <div style={{borderTop:'1px solid var(--border, #e5e7eb)',marginTop:20,paddingTop:18}}>
