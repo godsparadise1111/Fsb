@@ -832,7 +832,7 @@ export class WorkflowService {
       [tenantId,organizationId],
     );
     const persisted = await this.dataSource.query(
-      `SELECT id,severity,type,title,description,"resourceId","lastDetectedAt" AS "occurredAt","dueAt",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","responseDueAt","resolutionDueAt","escalatedAt","escalationLevel"
+      `SELECT id,severity,type,title,description,"resourceId","lastDetectedAt" AS "occurredAt","dueAt","responseDueAt","resolutionDueAt",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","responseDueAt","resolutionDueAt","escalatedAt","escalationLevel"
          FROM organization_operational_alerts WHERE "tenantId"=$1 AND "organizationId"=$2 AND status NOT IN ('RESOLVED','IGNORED')
          ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,"lastDetectedAt" ASC NULLS LAST LIMIT 100`,
       [tenantId,organizationId],
@@ -852,6 +852,8 @@ export class WorkflowService {
         description: row.description, resourceId: row.resourceId,
         occurredAt: row.occurredAt ? new Date(row.occurredAt).toISOString() : null,
         dueAt: row.dueAt ? new Date(row.dueAt).toISOString() : null,
+        responseDueAt: row.responseDueAt ? new Date(row.responseDueAt).toISOString() : null,
+        resolutionDueAt: row.resolutionDueAt ? new Date(row.resolutionDueAt).toISOString() : null,
         status: row.status, assignedToUserId: row.assignedToUserId,
         acknowledgedAt: row.acknowledgedAt ? new Date(row.acknowledgedAt).toISOString() : null,
         resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).toISOString() : null,
