@@ -82,3 +82,19 @@
 - سیاست نگهداشت، legal hold، export و حذف قانونی را طبق `docs/DATA_RETENTION.md` مرور و شواهد تأیید owner ثبت کنید.
 
 Migration `20261109_015_workflow_access_revocation_lifecycle.sql` باید پس از migrations مربوط به workflow delegation/deferral، Tenant integrity و inactive-assignee اجرا شود.
+
+
+## ۱۰. یکپارچگی تراکنشی و Idempotency گردش‌کار
+
+- migration `20261109_016_workflow_action_idempotency.sql` را پس از پیش‌نیازهای Tenant و workflow اعمال کنید؛ هیچ اقدام API پیش از migration جدید منتشر نشود.
+- اقدام `APPROVED` را با `Idempotency-Key` ثابت ارسال و همان درخواست را هم‌زمان از چند اتصال تکرار کنید؛ فقط یک action log، یک تغییر assignment، یک تغییر مرحله/وظیفه و یک اعلان Outbox باید ثبت شود و پاسخ‌ها یکسان باشند.
+- همان کلید را با action یا comment متفاوت تکرار کنید؛ باید `409 Conflict` دریافت شود و هیچ تغییری در تاریخچه/وضعیت رخ ندهد.
+- درخواست را عمداً در میانهٔ عملیات با خطای DB rollback کنید؛ نباید action log، وظیفهٔ مرحلهٔ بعد، اعلان Outbox یا رکورد idempotency نیمه‌کاره commit شود.
+- برای اقدام موفق، اتصال را پس از commit و پیش از دریافت پاسخ قطع کنید؛ retry با همان کلید باید پاسخ ذخیره‌شده را برگرداند، نه اینکه اقدام را دوباره اجرا کند.
+- هنگام اقدام کاربر، Worker بازتخصیص غیرفعال و Worker SLA را هم‌زمان اجرا کنید؛ وضعیت assignment نباید دو بار یا با ترتیب متناقض تغییر کند و قفل‌ها باید با ترتیب Tenant → Organization → Task گرفته شوند.
+- هنگام ساخت وظیفهٔ مرحلهٔ بعد و بازگشت به مرحلهٔ قبل، اعلان assignment باید در همان تراکنش در Outbox درج شود؛ با rollback هیچ اعلان قابل ارسال نباشد.
+- پس از لغو عضویت گیرنده یا بسته‌شدن وظیفه پیش از ارسال، Worker باید پیام را به DEAD منتقل کند و ایمیل ارسال نشود.
+- پس از crash پیش از commit، هیچ رکورد idempotency نیمه‌تمامی نباید قابل مشاهده باشد؛ پس از crash بعد از commit، retry باید پاسخ ذخیره‌شده را بازپخش کند.
+- اسکریپت `apps/api/database/verification/workflow_transactional_invariants.sql` را اجرا کنید؛ تمام queryهای کنترل باید صفر ردیف برگردانند.
+
+نکتهٔ سازگاری: کلاینت API باید هدر `Idempotency-Key` (۱۶ تا ۱۲۸ نویسه از حروف/اعداد و `. _ : -`) را ارسال کند و برای retry یک درخواست، همان کلید را نگه دارد.
