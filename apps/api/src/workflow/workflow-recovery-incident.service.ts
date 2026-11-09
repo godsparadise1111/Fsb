@@ -1,13 +1,16 @@
 import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
+import { WorkflowRecoveryReplayRegistry } from './workflow-recovery-replay.registry';
 
 const INCIDENT_TYPES = ['TERMINAL_PROCESS_HAS_ACTIVE_TASKS', 'RUNNING_PROCESS_TASK_COUNT_MISMATCH'] as const;
 type IncidentType = typeof INCIDENT_TYPES[number];
 
 @Injectable()
 export class WorkflowRecoveryIncidentService {
-  constructor(private readonly dataSource: DataSource, private readonly audit: TenantAuditService) {}
+  constructor(private readonly dataSource: DataSource, private readonly audit: TenantAuditService, private readonly replayRegistry: WorkflowRecoveryReplayRegistry) {}
+
+  replayCapabilities() { return this.replayRegistry.listCapabilities(); }
 
   private severity(type: string): string {
     if (type === 'RUNNING_PROCESS_TASK_COUNT_MISMATCH') return 'CRITICAL';
@@ -123,7 +126,7 @@ export class WorkflowRecoveryIncidentService {
         [incidentId, tenantId],
       );
       if (!incident) throw new NotFoundException('Recovery incident not found');
-      const reason = 'No registered safe, idempotent replay handler exists for this incident type. Human actions and process-stage advancement are never replayed.';
+      const registered = this.replayRegistry.resolve(incident.incidentType);\n      const reason = registered\n        ? 'A handler is registered, but this endpoint remains fail-closed until a transactional replay executor with durable idempotency receipts is enabled.'\n        : 'No registered safe, idempotent replay handler exists for this incident type. Human actions and process-stage advancement are never replayed.';
       await manager.query(
         `INSERT INTO workflow_recovery_incident_events ("tenantId","incidentId","eventType","actorUserId","eventKey",metadata)
          VALUES ($1,$2,'REPLAY_REJECTED',$3,$4,$5::jsonb)`,
