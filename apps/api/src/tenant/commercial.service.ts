@@ -71,10 +71,11 @@ export class CommercialService {
   }) {
     return this.dataSource.transaction(async manager => {
       const [tenant] = await manager.query(
-        'SELECT id, plan FROM tenants WHERE id = $1 FOR UPDATE',
+        'SELECT id, plan, status FROM tenants WHERE id = $1 FOR UPDATE',
         [input.tenantId],
       );
       if (!tenant) throw new NotFoundException('Tenant not found');
+      if (tenant.status === 'CLOSED') throw new BadRequestException('Closed tenants cannot receive subscription changes');
       const [plan] = await manager.query(
         'SELECT code FROM commercial_plans WHERE code = $1 AND "isActive" = true',
         [input.planCode],
@@ -163,8 +164,9 @@ export class CommercialService {
   async renewSubscriptionFromPaidInvoice(tenantId: string, invoiceId: string, actorUserId: string) {
     return this.dataSource.transaction(async manager => {
       const [subscription] = await manager.query(
-        `SELECT id,status,"billingCycle","currentPeriodStart","currentPeriodEnd"
-           FROM tenant_subscriptions WHERE "tenantId"=$1 FOR UPDATE`,
+        `SELECT s.id,s.status,s."billingCycle",s."currentPeriodStart",s."currentPeriodEnd"
+           FROM tenant_subscriptions s JOIN tenants t ON t.id=s."tenantId"
+          WHERE s."tenantId"=$1 AND t.status='ACTIVE' FOR UPDATE OF t,s`,
         [tenantId],
       );
       if (!subscription) throw new NotFoundException('Tenant subscription not found');
