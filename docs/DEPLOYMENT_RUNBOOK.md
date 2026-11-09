@@ -94,9 +94,18 @@ Reverse proxy باید TLS را خاتمه دهد و فقط به پورت‌ها
 1. ترافیک ورودی را در Reverse Proxy متوقف کنید.
 2. سرویس‌های Worker و API را متوقف کنید؛ DB را تا پایان Backup دست‌نخورده نگه دارید.
 3. checksum فایل Backup رمزگذاری‌شده را بررسی و سپس با کلید خصوصی age بازگشایی کنید.
-4. Restore را ابتدا در یک دیتابیس و volume ایزوله انجام دهید؛ روی دیتابیس اصلی آزمایش نکنید.
+4. Restore را ابتدا در یک دیتابیس و زیرشاخه فایل ایزوله انجام دهید؛ روی دیتابیس اصلی آزمایش نکنید. اسکریپت زیر این جداسازی را اعمال می‌کند و دیتابیس موجود را overwrite نمی‌کند:
+
+```sh
+BACKUP_FILE='backups/fsb-<timestamp>.tar.gz.age' \
+AGE_IDENTITY='/secure/keys/backup-identity.txt' \
+RESTORE_DATABASE='fsb_restore_2026' \
+ALLOW_STAGING_RESTORE=YES \
+sh scripts/ops/restore-staging.sh
+```
+
 5. checksum فایل‌های خصوصی، تعداد رکوردهای کلیدی، Migration ledger و سلامت FKها را بررسی کنید.
-6. API و Workerها را در محیط ایزوله بالا بیاورید و smoke test انجام دهید.
+6. API و Workerها را در محیط ایزوله با دیتابیس و مسیر فایل Restoreشده بالا بیاورید و smoke test انجام دهید.
 7. فقط پس از تأیید مالک فنی، مقصد بازیابی را جایگزین کنید.
 
 RPO/RTO تا زمان تمرین بازیابی واقعی و تصویب مالک کسب‌وکار مقدار تأییدشده‌ای ندارد. این راهنما ادعای Restore آزمایش‌شده نمی‌کند.
