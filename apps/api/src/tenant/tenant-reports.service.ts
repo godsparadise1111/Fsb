@@ -301,7 +301,7 @@ export class TenantReportsService {
        LEFT JOIN workflow_tasks wt ON
          ((wt."createdAt">=days.day AND wt."createdAt"<days.day+interval '1 day')
           OR (wt."completedAt">=days.day AND wt."completedAt"<days.day+interval '1 day'))
-       LEFT JOIN process_instances pi ON pi.id=wt."processInstanceId"
+       LEFT JOIN process_instances pi ON pi.id=wt."processInstanceId" AND pi."tenantId"=$1
        LEFT JOIN organizations o ON o.id=pi."organizationId" AND o."tenantId"=$1
          AND ($4::uuid IS NULL OR o.id=$4)
        WHERE wt.id IS NULL OR o.id IS NOT NULL
