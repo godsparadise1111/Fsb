@@ -213,7 +213,7 @@ export default function AbsencesPage() {
       setNotice('غیبت و جانشینی با موفقیت ثبت شد');
       setShowForm(false);
       setForm(current => ({ ...current, reason: '' }));
-      await loadData();
+      await Promise.all([loadData(), loadCalendar()]);
     } catch (e) { setError(e instanceof Error ? e.message : 'ثبت غیبت ناموفق بود'); }
     finally { setSaving(false); }
   }
@@ -224,7 +224,7 @@ export default function AbsencesPage() {
     try {
       await request(`/organizations/${organizationId}/absences/${item.id}`, { method: 'DELETE' });
       setNotice('غیبت لغو شد و سابقهٔ آن حفظ گردید');
-      await loadData();
+      await Promise.all([loadData(), loadCalendar()]);
     } catch (e) { setError(e instanceof Error ? e.message : 'لغو غیبت ناموفق بود'); }
   }
 
