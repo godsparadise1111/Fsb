@@ -1402,48 +1402,64 @@ export class WorkflowService {
   }
 
 
-  async listTaskReassignments(taskId: string, requesterId: string, tenantId?: string | null) {
-    await this.taskHistory(taskId, requesterId, tenantId);
-    return this.dataSource.getRepository(WorkflowTaskReassignment).find({
-      where: { taskId, tenantId: tenantId! }, order: { createdAt: 'ASC' },
+  private async assertTaskHistoryAccess(manager: EntityManager, taskId: string, requesterId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required to view workflow history');
+    const task = await manager.findOne(WorkflowTask, {
+      where: { id: taskId }, relations: { processInstance: { organization: true } },
     });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.processInstance.organization?.tenantId !== tenantId) {
+      throw new ForbiddenException('Task history is outside the active tenant');
+    }
+    await this.assertActiveWorkflowMember(manager, tenantId, requesterId, task.processInstance.organizationId);
+    const assigned = await manager.getRepository(TaskAssignee).exist({ where: { taskId, userId: requesterId } });
+    const delegated = await manager.getRepository(TaskDelegation).exist({
+      where: { taskId, tenantId, toUserId: requesterId },
+    });
+    const substituted = await manager.getRepository(OrganizationSubstitution).createQueryBuilder('s')
+      .innerJoin(TaskAssignee, 'original', 'original.taskId = :taskId AND original.userId = s.originalUserId', { taskId })
+      .innerJoin('tenant_memberships', 'originalMembership',
+        'originalMembership."tenantId" = s."tenantId" AND originalMembership."userId" = s."originalUserId" AND originalMembership."isActive" = true')
+      .innerJoin(User, 'originalUser', 'originalUser.id = s."originalUserId" AND originalUser.isActive = true')
+      .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.substituteUserId = :requesterId', {
+        tenantId, organizationId: task.processInstance.organizationId, requesterId,
+      }).getCount() > 0;
+    if (!assigned && !delegated && !substituted && task.processInstance.startedByUserId !== requesterId) {
+      throw new ForbiddenException('You are not allowed to view this task history');
+    }
+    return task;
   }
 
   async listTaskLifecycleEvents(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    await this.taskHistory(taskId, requesterId, tenantId);
-    return this.dataSource.query(
-      `SELECT e.id, e."tenantId", e."taskId", e."eventType", e."affectedUserId", e.details, e."createdAt"
-         FROM workflow_task_lifecycle_events e
-         JOIN workflow_tasks wt ON wt.id=e."taskId" AND wt."tenantId"=e."tenantId"
-         JOIN process_instances pi ON pi.id=wt."processInstanceId"
-         JOIN organizations o ON o.id=pi."organizationId" AND o."tenantId"=e."tenantId" AND o."isActive"=true
-         JOIN tenants t ON t.id=e."tenantId" AND t.status='ACTIVE'
-         JOIN tenant_memberships tm ON tm."tenantId"=e."tenantId" AND tm."userId"=$3 AND tm."isActive"=true
-         JOIN users u ON u.id=tm."userId" AND u."isActive"=true
-        WHERE e."taskId"=$1 AND e."tenantId"=$2 ORDER BY e."createdAt" ASC, e.id ASC`,
-      [taskId, tenantId, requesterId],
-    );
+    return this.dataSource.transaction(async manager => {
+      await this.assertTaskHistoryAccess(manager, taskId, requesterId, tenantId);
+      return manager.query(
+        `SELECT e.id, e."tenantId", e."taskId", e."eventType", e."affectedUserId", e.details, e."createdAt"
+           FROM workflow_task_lifecycle_events e
+          WHERE e."taskId"=$1 AND e."tenantId"=$2 ORDER BY e."createdAt" ASC, e.id ASC`,
+        [taskId, tenantId],
+      );
+    });
+  }
+
+  async listTaskReassignments(taskId: string, requesterId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    return this.dataSource.transaction(async manager => {
+      await this.assertTaskHistoryAccess(manager, taskId, requesterId, tenantId);
+      return manager.getRepository(WorkflowTaskReassignment).find({
+        where: { taskId, tenantId }, order: { createdAt: 'ASC' },
+      });
+    });
   }
 
   async taskHistory(taskId: string, requesterId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required to view workflow history');
-    const task = await this.tasks.findOne({ where: { id: taskId }, relations: { processInstance: { organization: true } } });
-    if (!task) throw new NotFoundException('Task not found');
-    if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task history is outside the active tenant');
-    await this.assertActiveWorkflowMember(this.dataSource.manager, tenantId, requesterId, task.processInstance.organizationId);
-    const assigned = await this.assignees.exist({ where: { taskId, userId: requesterId } });
-    const delegated = await this.dataSource.getRepository(TaskDelegation).exist({
-      where: { taskId, tenantId, toUserId: requesterId },
+    return this.dataSource.transaction(async manager => {
+      await this.assertTaskHistoryAccess(manager, taskId, requesterId, tenantId);
+      return manager.getRepository(WorkflowActionLog).find({
+        where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' },
+      });
     });
-    const substituted = task ? await this.dataSource.getRepository(OrganizationSubstitution).createQueryBuilder('s')
-      .innerJoin(TaskAssignee, 'original', 'original.taskId = :taskId AND original.userId = s.originalUserId', { taskId })
-      .innerJoin('tenant_memberships', 'originalMembership', 'originalMembership."tenantId" = s."tenantId" AND originalMembership."userId" = s."originalUserId" AND originalMembership."isActive" = true')
-      .innerJoin(User, 'originalUser', 'originalUser.id = s."originalUserId" AND originalUser.isActive = true')
-      .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.substituteUserId = :requesterId', {
-        tenantId, organizationId: task.processInstance.organizationId, requesterId,
-      }).getCount() > 0 : false;
-    if (!task || (!assigned && !delegated && !substituted && task.processInstance.startedByUserId !== requesterId)) throw new ForbiddenException('You are not allowed to view this task history');
-    return this.dataSource.getRepository(WorkflowActionLog).find({ where: { taskId }, relations: { user: true }, order: { createdAt: 'ASC' } });
   }
 }
