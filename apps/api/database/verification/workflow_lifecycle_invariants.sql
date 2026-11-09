@@ -57,6 +57,26 @@ SELECT d.id, d."tenantId", d."taskId", d."fromUserId", d."toUserId"
      OR source_tm.id IS NULL OR source_tm."isActive" = false OR source_user."isActive" = false
      OR target_tm.id IS NULL OR target_tm."isActive" = false OR target_user."isActive" = false);
 
+-- Active substitutions must not retain authority after either party loses membership or position.
+SELECT s.id, s."tenantId", s."organizationId", s."originalUserId", s."substituteUserId"
+  FROM organization_substitutions s
+  JOIN organizations o ON o.id=s."organizationId"
+  JOIN tenants t ON t.id=s."tenantId"
+  LEFT JOIN tenant_memberships original_tm ON original_tm."tenantId"=s."tenantId" AND original_tm."userId"=s."originalUserId"
+  LEFT JOIN users original_user ON original_user.id=s."originalUserId"
+  LEFT JOIN tenant_memberships substitute_tm ON substitute_tm."tenantId"=s."tenantId" AND substitute_tm."userId"=s."substituteUserId"
+  LEFT JOIN users substitute_user ON substitute_user.id=s."substituteUserId"
+ WHERE s."revokedAt" IS NULL AND s."startsAt" <= now() AND s."endsAt" > now()
+   AND (o."isActive"=false OR t.status='CLOSED'
+     OR original_tm.id IS NULL OR original_tm."isActive"=false OR original_user."isActive"=false
+     OR substitute_tm.id IS NULL OR substitute_tm."isActive"=false OR substitute_user."isActive"=false
+     OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+                     JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=s."organizationId" AND ou."isActive"=true
+                    WHERE up."userId"=s."originalUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))
+     OR NOT EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
+                     JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=s."organizationId" AND ou."isActive"=true
+                    WHERE up."userId"=s."substituteUserId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())));
+
 -- Closed tenants must not retain queued or leased notifications.
 SELECT o.id, o."tenantId", o.status
   FROM notification_outbox o
