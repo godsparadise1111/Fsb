@@ -92,10 +92,7 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       if (!task || !['OPEN','IN_PROGRESS'].includes(task.status)) return;
       const [instance] = await manager.query(`SELECT pi."tenantId", pi."organizationId", pv.schema->'steps'->pi."currentStepIndex" AS step FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId" JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
         JOIN organizations org ON org.id = pi."organizationId" AND org."tenantId" = pi."tenantId" AND org."isActive" = true WHERE pi.id = $1`, [task.processInstanceId]);
-      if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId || instance.step?.reassignOnInactiveAssignee !== true) return;
-      const configured = instance.step?.reassignUserIds;
-      if (!Array.isArray(configured) || configured.length < 1 || configured.length > 50 || configured.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) return;
-      const targets = [...new Set(configured as string[])]; if (targets.length !== configured.length) return;
+      if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId) return;
       const [history] = await manager.query(`SELECT id FROM workflow_task_reassignments WHERE "taskId"=$1 AND "triggerType"='INACTIVE_ASSIGNEE'`, [candidate.taskId]); if (history) return;
       const assignments = await manager.query(`SELECT "userId",status FROM task_assignees WHERE "taskId"=$1 FOR UPDATE`, [candidate.taskId]) as Array<{userId:string;status:string}>;
       const pending = assignments.filter(a => a.status === 'PENDING'); if (!pending.length) return;
@@ -107,12 +104,41 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
               JOIN tenants tenant ON tenant.id=org."tenantId" AND tenant.status='ACTIVE'
               WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
       const displaced = invalid.map(x => x.userId); if (!displaced.length) return;
+      const retained = pending.map(a => a.userId).filter(id => !displaced.includes(id));
+      const finalizeWithoutReplacement = async (reason: string) => {
+        await manager.query(`UPDATE task_assignees SET status='REASSIGNED', comment=$3, "actedAt"=now() WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])`, [candidate.taskId, displaced, reason]);
+        if (!retained.length) {
+          await manager.query(`UPDATE workflow_tasks SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now() WHERE id=$1 AND status IN ('OPEN','IN_PROGRESS')`, [candidate.taskId]);
+          await manager.query(`INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","details") VALUES ($1,$2,'TASK_CANCELLED_NO_ELIGIBLE_ASSIGNEE',$3::jsonb)`, [candidate.tenantId, candidate.taskId, JSON.stringify({ displacedUserIds: displaced, reason })]);
+        }
+        await manager.query(`INSERT INTO workflow_task_reassignments ("tenantId","taskId","triggerType","fromUserIds","toUserIds",reason) VALUES ($1,$2,'INACTIVE_ASSIGNEE',$3::jsonb,$4::jsonb,$5)`, [candidate.tenantId, candidate.taskId, JSON.stringify(displaced), JSON.stringify(retained), reason]);
+      };
+      const configured = instance.step?.reassignUserIds;
+      if (instance.step?.reassignOnInactiveAssignee !== true) {
+        await finalizeWithoutReplacement('Invalid assignee removed; automatic reassignment is not enabled for this process step');
+        return;
+      }
+      if (!Array.isArray(configured) || configured.length < 1 || configured.length > 50 || configured.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+        await finalizeWithoutReplacement('Invalid assignee removed; configured fallback recipients are missing or invalid');
+        return;
+      }
+      const targets = [...new Set(configured as string[])];
+      if (targets.length !== configured.length) {
+        await finalizeWithoutReplacement('Invalid assignee removed; configured fallback recipients contain duplicates');
+        return;
+      }
       const eligible = await manager.query(`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true
            JOIN organizations org ON org.id=ou."organizationId" AND org."tenantId"=$2 AND org."isActive"=true
           WHERE u.id=ANY($1::uuid[]) AND u."isActive"=true`, [targets,candidate.tenantId,candidate.organizationId]) as Array<{id:string}>;
-      if (eligible.length !== targets.length) { this.logger.warn('Inactive-assignee fallback targets are ineligible; assignments unchanged'); return; }
+      if (eligible.length !== targets.length) {
+        await finalizeWithoutReplacement('Invalid assignee removed; one or more configured fallback recipients are no longer eligible');
+        return;
+      }
       const byUser = new Map(assignments.map(a => [a.userId,a.status])); if (targets.some(id => byUser.has(id) && byUser.get(id) !== 'PENDING')) return;
-      const retained = pending.map(a => a.userId).filter(id => !displaced.includes(id)); const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) return;
+      const finalIds = [...new Set([...retained,...targets])]; if (!finalIds.length) {
+        await finalizeWithoutReplacement('Invalid assignee removed; no eligible replacement remains');
+        return;
+      }
       const newTargets = targets.filter(id => !byUser.has(id));
       await manager.query(`UPDATE task_assignees SET status='REASSIGNED', comment='Automatically reassigned because assignee is inactive or no longer eligible' WHERE "taskId"=$1 AND status='PENDING' AND "userId"=ANY($2::uuid[])`, [candidate.taskId,displaced]);
       if (newTargets.length) await manager.query(`INSERT INTO task_assignees ("taskId","userId",status,comment) SELECT $1,target_id,'PENDING','Assigned by inactive-assignee fallback' FROM unnest($2::uuid[]) AS targets(target_id) ON CONFLICT ("taskId","userId") DO NOTHING`, [candidate.taskId,newTargets]);
