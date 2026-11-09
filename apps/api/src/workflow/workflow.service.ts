@@ -174,7 +174,7 @@ export class WorkflowService {
         actingDelegation.revokedByUserId = userId;
         await manager.save(actingDelegation);
       }
-      await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null }));
+      await manager.save(WorkflowActionLog, manager.create(WorkflowActionLog, { taskId, userId, action: dto.action, comment: dto.comment ?? null, returnToStepIndex: dto.action === 'RETURNED' ? dto.returnToStepIndex! : null }));
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
       const activeAssignments = all.filter(item => item.status !== 'REASSIGNED');
@@ -187,6 +187,7 @@ export class WorkflowService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!instance) throw new NotFoundException('Process instance not found');
+        const fromStepIndex = instance.currentStepIndex;
         const targetIndex = dto.returnToStepIndex;
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
@@ -235,7 +236,7 @@ export class WorkflowService {
         await this.tenantAudit.record(manager, {
           tenantId, actorUserId: userId, action: 'workflow.task.returned',
           resourceType: 'WORKFLOW_TASK', resourceId: task.id,
-          metadata: { processInstanceId: instance.id, fromStepIndex: instance.currentStepIndex, toStepIndex: targetIndex, newTaskId: returnedTask.id },
+          metadata: { processInstanceId: instance.id, fromStepIndex, toStepIndex: targetIndex, newTaskId: returnedTask.id },
         });
       } else if (rejected) {
         task.status = 'CANCELLED';
