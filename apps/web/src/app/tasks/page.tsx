@@ -31,6 +31,7 @@ type ProcessDetail = ProcessItem & {
   tasks: Array<{ id: string; title: string; status: string; assignmentPolicy: string; assignees?: Array<{ userId: string; status: string }> }>;
   actionLogs: Array<{ id: string; action: string; userId: string; comment?: string | null; createdAt: string }>;
   lifecycleEvents: Array<{ id: string; eventType: string; affectedUserId?: string | null; details?: unknown; createdAt: string }>;
+  reassignments: Array<{ id: string; triggerType: string; fromUserIds: string[]; toUserIds: string[]; reason: string; createdAt: string }>;
 };
 
 export default function TasksPage() {
@@ -262,6 +263,13 @@ export default function TasksPage() {
                     <li key={log.id}>{log.action} · {log.userId} · {new Date(log.createdAt).toLocaleString('fa-IR')}{log.comment ? ' · ' + log.comment : ''}</li>
                   ))}
                   {!detail.actionLogs?.length && <li>اقدامی ثبت نشده است.</li>}
+                </ol>
+                <h3>تاریخچه ارجاع مجدد</h3>
+                <ol>
+                  {(detail.reassignments || []).map(item => (
+                    <li key={item.id}>{item.triggerType} · {item.fromUserIds.join('، ') || '—'} ← {item.toUserIds.join('، ') || '—'} · {item.reason} · {new Date(item.createdAt).toLocaleString('fa-IR')}</li>
+                  ))}
+                  {!detail.reassignments?.length && <li>ارجاع مجددی ثبت نشده است.</li>}
                 </ol>
                 <h3>رویدادهای چرخه عمر</h3>
                 <ol>
