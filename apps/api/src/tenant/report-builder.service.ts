@@ -152,7 +152,7 @@ export class ReportBuilderService {
   private async sourceFor(tenantId: string, spec: ReportSpec, organizationIds: string[] = []) {
     if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new BadRequestException('تعریف گزارش نامعتبر است');
     if (spec.organizationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(spec.organizationId)) throw new BadRequestException('شناسه سازمان معتبر نیست');
-    const base = SOURCES[spec.source];
+    const base = Object.prototype.hasOwnProperty.call(SOURCES, spec.source) ? SOURCES[spec.source] : undefined;
     if (!base) throw new BadRequestException('منبع داده مجاز نیست');
     const source: Source = { ...base, fields: { ...base.fields } };
     if (spec.source !== 'submissions') return source;
@@ -241,14 +241,14 @@ export class ReportBuilderService {
     if (Object.keys(spec).some(key => !allowed.includes(key))) throw new BadRequestException('فیلد اضافی در تعریف گزارش مجاز نیست');
     if (!['count', 'sum', 'avg', 'min', 'max'].includes(spec.aggregate)) throw new BadRequestException('عملگر تجمیع نامعتبر است');
     if (spec.aggregate !== 'count') {
-      const measure = spec.measure ? source.fields[spec.measure] : undefined;
+      const measure = spec.measure && Object.prototype.hasOwnProperty.call(source.fields, spec.measure) ? source.fields[spec.measure] : undefined;
       if (!measure || measure.type !== 'number') throw new BadRequestException('شاخص عددی انتخاب‌شده مجاز نیست');
     }
-    if (spec.groupBy && !source.fields[spec.groupBy]?.groupable) throw new BadRequestException('گروه‌بندی انتخاب‌شده مجاز نیست');
+    if (spec.groupBy && (!Object.prototype.hasOwnProperty.call(source.fields, spec.groupBy) || !source.fields[spec.groupBy]?.groupable)) throw new BadRequestException('گروه‌بندی انتخاب‌شده مجاز نیست');
     if (spec.filters !== undefined && (!Array.isArray(spec.filters) || spec.filters.length > 10)) throw new BadRequestException('حداکثر ۱۰ شرط فیلتر مجاز است');
     for (const filter of spec.filters ?? []) {
       if (!filter || typeof filter !== 'object' || Array.isArray(filter) || Object.keys(filter).some(key => !['field', 'operator', 'value'].includes(key))) throw new BadRequestException('ساختار شرط فیلتر نامعتبر است');
-      const field = source.fields[filter.field];
+      const field = Object.prototype.hasOwnProperty.call(source.fields, filter.field) ? source.fields[filter.field] : undefined;
       if (!field || field.filterable === false) throw new BadRequestException('فیلد فیلتر مجاز نیست');
       if (!['eq', 'neq', 'contains', 'in', 'gte', 'lte'].includes(filter.operator)) throw new BadRequestException('عملگر فیلتر نامعتبر است');
       if (filter.operator === 'contains' && field.type !== 'text') throw new BadRequestException('contains فقط برای فیلد متنی مجاز است');
