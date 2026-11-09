@@ -36,6 +36,19 @@ export class TenantService {
     return this.tenants.find({ order: { createdAt: 'DESC' } });
   }
 
+  async listActivationCandidates(search?: string) {
+    const normalized = search?.trim() || null;
+    return this.dataSource.query(
+      `SELECT id, username, email, "firstName", "lastName"
+         FROM users
+        WHERE "isActive"=true
+          AND ($1::text IS NULL OR email ILIKE '%' || $1 || '%' OR username ILIKE '%' || $1 || '%'
+               OR "firstName" ILIKE '%' || $1 || '%' OR "lastName" ILIKE '%' || $1 || '%')
+        ORDER BY "lastName" ASC, "firstName" ASC LIMIT 100`,
+      [normalized],
+    );
+  }
+
   async get(id: string) {
     const tenant = await this.tenants.findOne({ where: { id }, relations: { organizations: true } });
     if (!tenant) throw new NotFoundException('Tenant not found');
