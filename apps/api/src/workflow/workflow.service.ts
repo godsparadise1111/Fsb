@@ -512,7 +512,7 @@ export class WorkflowService {
         const fromStepIndex = instance.currentStepIndex;
         const targetIndex = dto.returnToStepIndex;
         const rawSteps = instance.processVersion.schema?.steps;
-        const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
+        const steps = Array.isArray(rawSteps) ? rawSteps as Array<Record<string, unknown>> : [];
         if (!Number.isInteger(targetIndex) || targetIndex === undefined || targetIndex < 0 || targetIndex >= instance.currentStepIndex || targetIndex >= steps.length) {
           throw new BadRequestException('RETURNED action must target an earlier step in the same process version');
         }
@@ -533,9 +533,9 @@ export class WorkflowService {
         await manager.save(instance);
         const returnedTask = await manager.save(WorkflowTask, manager.create(WorkflowTask, {
           processInstanceId: instance.id,
-          title: target.title ?? `مرحله ${targetIndex + 1}`,
-          instructions: target.instructions ?? null,
-          assignmentPolicy: target.assignmentPolicy ?? 'ALL_ASSIGNEES',
+          title: typeof target.title === 'string' && target.title.trim() ? target.title.trim().slice(0, 200) : `مرحله ${targetIndex + 1}`,
+          instructions: typeof target.instructions === 'string' ? target.instructions : null,
+          assignmentPolicy: target.assignmentPolicy === 'ANY_ASSIGNEE' ? 'ANY_ASSIGNEE' : 'ALL_ASSIGNEES',
           status: 'OPEN',
           createdByUserId: instance.startedByUserId,
           dueAt: this.deadlineFromHours(target.dueInHours),
