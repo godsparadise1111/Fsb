@@ -294,6 +294,8 @@ export class ReportBuilderService {
     if (spec.groupBy) selectedFields.add(spec.groupBy);
     if (spec.measure) selectedFields.add(spec.measure);
     for (const filter of spec.filters ?? []) selectedFields.add(filter.field);
+    const customVersions = new Set(Array.from(selectedFields).map(key => source.fields[key]?.whereExpression?.match(/'([0-9a-f-]{36})'/i)?.[1]).filter(Boolean));
+    if (customVersions.size > 1) throw new BadRequestException('فیلدهای سفارشی انتخاب‌شده باید متعلق به یک نسخه فرم باشند');
     for (const key of selectedFields) {
       const field = source.fields[key];
       if (field?.whereExpression) clauses.push(field.whereExpression);
