@@ -25,6 +25,7 @@ import { CreateOrganizationSubstitutionDto } from './dto/create-organization-sub
 import { RequestTaskDeferralDto, ReviewTaskDeferralDto } from './dto/request-task-deferral.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
+import { isAssignmentPolicySatisfied } from './workflow-assignment-policy';
 
 @Injectable()
 export class WorkflowService {
@@ -566,10 +567,7 @@ export class WorkflowService {
       });
       const all = await manager.find(TaskAssignee, { where: { taskId } });
       const rejected = all.some(item => item.status === 'REJECTED');
-      const activeAssignments = all.filter(item => item.status !== 'REASSIGNED');
-      const completed = task.assignmentPolicy === 'ANY_ASSIGNEE'
-        ? activeAssignments.some(item => item.status === 'APPROVED')
-        : activeAssignments.length > 0 && activeAssignments.every(item => item.status === 'APPROVED');
+      const completed = isAssignmentPolicySatisfied(task.assignmentPolicy, all);
       if (dto.action === 'RETURNED') {
         const instance = await manager.findOne(ProcessInstance, {
           where: { id: task.processInstanceId }, relations: { processVersion: true },
