@@ -14,6 +14,7 @@ import { WorkflowActionLog } from './entities/workflow-action-log.entity';
 import { StartProcessDto } from './dto/start-process.dto';
 import { ActTaskDto } from './dto/act-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
+import { ReassignTaskDto } from './dto/reassign-task.dto';
 import { TaskDelegation } from './entities/task-delegation.entity';
 import { TaskDeferralRequest } from './entities/task-deferral-request.entity';
 import { OrganizationSubstitution } from './entities/organization-substitution.entity';
@@ -709,6 +710,72 @@ export class WorkflowService {
         [tenantId, taskId, userId, idempotencyKey, JSON.stringify(response)],
       );
       return response;
+    });
+  }
+
+  async reassignTask(taskId: string, actorUserId: string, dto: ReassignTaskDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const reason = dto.reason.trim();
+    if (reason.length < 3 || reason.length > 1000) throw new BadRequestException('A reassignment reason between 3 and 1000 characters is required');
+    return this.dataSource.transaction(async manager => {
+      const task = await manager.findOne(WorkflowTask, {
+        where: { id: taskId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!task) throw new NotFoundException('Workflow task not found');
+      if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) {
+        throw new ConflictException('Only open or in-progress tasks can be reassigned');
+      }
+      const instance = await manager.findOne(ProcessInstance, {
+        where: { id: task.processInstanceId }, relations: { organization: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!instance || instance.organization?.tenantId !== tenantId || instance.status !== 'RUNNING') {
+        throw new ConflictException('The task process is not active in the current tenant');
+      }
+      await this.assertActiveWorkflowMember(manager, tenantId, actorUserId, instance.organizationId);
+      const targets: Record<string, unknown> = {
+        assigneeUserIds: dto.assigneeUserIds ?? [],
+        assigneePositionIds: dto.assigneePositionIds ?? [],
+        assigneeUnitIds: dto.assigneeUnitIds ?? [],
+      };
+      const newUserIds = await this.resolveStepAssignees(manager, instance.organizationId, tenantId, targets);
+      const existing = await manager.find(TaskAssignee, {
+        where: { taskId }, lock: { mode: 'pessimistic_write' },
+      });
+      const activeExisting = existing.filter(item => item.status !== 'REASSIGNED');
+      const fromUserIds = [...new Set(activeExisting.map(item => item.userId))].sort();
+      const sortedNewUserIds = [...newUserIds].sort();
+      if (fromUserIds.length === sortedNewUserIds.length && fromUserIds.every((id, index) => id === sortedNewUserIds[index]) &&
+          activeExisting.every(item => item.status === 'PENDING')) {
+        throw new ConflictException('The task is already assigned to the requested users');
+      }
+      for (const assignment of activeExisting) {
+        assignment.status = 'REASSIGNED';
+        assignment.comment = reason;
+        assignment.actedAt = new Date();
+      }
+      if (activeExisting.length) await manager.save(TaskAssignee, activeExisting);
+      await manager.save(TaskAssignee, newUserIds.map(userId =>
+        manager.create(TaskAssignee, { taskId, userId, status: 'PENDING' }),
+      ));
+      task.status = 'OPEN';
+      task.completedAt = null;
+      await manager.save(task);
+      await manager.save(WorkflowTaskReassignment, manager.create(WorkflowTaskReassignment, {
+        tenantId, taskId, triggerType: 'MANUAL', fromUserIds, toUserIds: newUserIds, reason,
+      }));
+      await manager.query(
+        `INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
+         VALUES ($1,$2,'TASK_REASSIGNED',NULL,$3::jsonb)`,
+        [tenantId, taskId, JSON.stringify({ actorUserId, fromUserIds, toUserIds: newUserIds, reason })],
+      );
+      await this.tenantAudit.record(manager, {
+        tenantId, actorUserId, action: 'workflow.task.reassigned',
+        resourceType: 'WORKFLOW_TASK', resourceId: taskId,
+        metadata: { processInstanceId: instance.id, fromUserIds, toUserIds: newUserIds, reason },
+      });
+      await this.enqueueTaskAssignmentNotifications(manager, tenantId, taskId, newUserIds);
+      return manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { assignees: true, processInstance: true } });
     });
   }
 
