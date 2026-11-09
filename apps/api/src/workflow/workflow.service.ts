@@ -1316,7 +1316,7 @@ export class WorkflowService {
   }
 
 
-  async listPendingTaskDeferrals(organizationId: string, tenantId?: string | null, requestedLimit?: string, requestedOffset?: string) {
+  async listPendingTaskDeferrals(organizationId: string, tenantId: string | null | undefined, requesterId: string, requestedLimit?: string, requestedOffset?: string) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     if (!organizationId) throw new BadRequestException('organizationId is required');
     const limit = requestedLimit === undefined ? 50 : Number(requestedLimit);
@@ -1327,6 +1327,7 @@ export class WorkflowService {
       .innerJoin('organization.tenant', 'tenant', 'tenant.status = :active', { active: 'ACTIVE' })
       .where('organization.id = :organizationId AND organization.tenantId = :tenantId AND organization.isActive = true', { organizationId, tenantId }).getOne();
     if (!organization) throw new NotFoundException('Organization not found');
+    await this.assertActiveWorkflowMember(this.dataSource.manager, tenantId, requesterId, organizationId);
     return this.dataSource.getRepository(TaskDeferralRequest).createQueryBuilder('request')
       .innerJoin('workflow_tasks', 'task', 'task.id = request."taskId"')
       .innerJoin('process_instances', 'instance', 'instance.id = task."processInstanceId"')
