@@ -127,16 +127,18 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
 
     await this.dataSource.transaction(async manager => {
       const [task] = await manager.query(
-        `SELECT t.id, t.status, t."dueAt", t."processInstanceId"
-           FROM workflow_tasks t WHERE t.id = $1 FOR UPDATE`,
-        [candidate.taskId],
+        `SELECT t.id, t."tenantId", t.status, t."dueAt", t."processInstanceId"
+           FROM workflow_tasks t WHERE t.id = $1 AND t."tenantId" = $2 FOR UPDATE`,
+        [candidate.taskId, candidate.tenantId],
       );
       if (!task || !['OPEN', 'IN_PROGRESS'].includes(task.status) || !task.dueAt) return;
       const [instance] = await manager.query(
         `SELECT pi."tenantId", pi."organizationId", pi."currentStepIndex", pv.schema->'steps'->pi."currentStepIndex" AS step
-           FROM process_instances pi JOIN process_versions pv ON pv.id = pi."processVersionId"
-          WHERE pi.id = $1`,
-        [task.processInstanceId],
+           FROM process_instances pi
+           JOIN process_versions pv ON pv.id = pi."processVersionId"
+           JOIN tenants tenant ON tenant.id = pi."tenantId" AND tenant.status = 'ACTIVE'
+          WHERE pi.id = $1 AND pi."tenantId" = $2`,
+        [task.processInstanceId, candidate.tenantId],
       );
       if (!instance || instance.tenantId !== candidate.tenantId || instance.organizationId !== candidate.organizationId) return;
       const reassignAfterHours = Number(instance.step?.reassignAfterHours);
