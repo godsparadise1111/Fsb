@@ -6,10 +6,15 @@ command -v docker >/dev/null 2>&1 || { echo "ERROR: Docker CLI is required." >&2
 docker compose version >/dev/null 2>&1 || { echo "ERROR: Docker Compose plugin is required." >&2; exit 1; }
 
 # Let Compose parse the dotenv file and all required substitutions; never source .env as shell code.
-docker compose --env-file .env -f compose.production.yaml config --quiet
-
 node <<'NODE'
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const composeConfig = JSON.parse(execFileSync('docker', [
+  'compose', '--env-file', '.env', '-f', 'compose.production.yaml', 'config', '--format', 'json',
+], { encoding: 'utf8' }));
+const apiEnvironment = composeConfig.services?.api?.environment ?? {};
+if (apiEnvironment.NODE_ENV !== 'production') throw new Error('Production Compose API must set NODE_ENV=production.');
+if (String(apiEnvironment.DB_SYNCHRONIZE) === 'true') throw new Error('Production Compose API must set DB_SYNCHRONIZE=false.');
 const values = {};
 for (const rawLine of fs.readFileSync('.env', 'utf8').split(/\r?\n/)) {
   const line = rawLine.trim();
@@ -29,12 +34,12 @@ const required = key => {
   if (!values[key]) fail(key + ' is required.');
   return values[key];
 };
-if ((values.NODE_ENV || 'production') !== 'production') fail('NODE_ENV must be production.');
-if ((values.DB_SYNCHRONIZE || 'false') === 'true') fail('DB_SYNCHRONIZE=true is forbidden in production.');
 if (required('POSTGRES_PASSWORD') === 'change_me_locally') fail('Replace the example PostgreSQL password.');
 if (required('JWT_SECRET') === 'replace_with_a_long_random_secret_at_least_32_chars' || values.JWT_SECRET.length < 32) fail('Replace JWT_SECRET with at least 32 random characters.');
 if (required('BOOTSTRAP_TOKEN') === 'replace_with_a_separate_one_time_secret' || values.BOOTSTRAP_TOKEN.length < 32) fail('Replace BOOTSTRAP_TOKEN with at least 32 random characters.');
-if (required('CORS_ORIGINS').includes('*')) fail('CORS_ORIGINS must not contain wildcard origins.');
+const corsOrigins = required('CORS_ORIGINS');
+if (corsOrigins.includes('*')) fail('CORS_ORIGINS must not contain wildcard origins.');
+if (/localhost|127\\.0\\.0\\.1/i.test(corsOrigins)) fail('CORS_ORIGINS must not contain local development origins in Production.');
 const publicUrl = required('FSB_PUBLIC_APP_URL');
 if (!publicUrl.startsWith('https://')) fail('FSB_PUBLIC_APP_URL must use HTTPS.');
 const apiUrl = required('NEXT_PUBLIC_API_URL');
