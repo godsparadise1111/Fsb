@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
 type ProcessDefinition = { id: string; code: string; name: string; description?: string | null; status: string };
 type ProcessVersion = { id: string; versionNumber: number; status: string; schema: Record<string, unknown>; changeNote?: string | null; publishedAt?: string | null };
+type OrganizationOption = { id: string; name: string; code?: string };
 
 const exampleSchema = {
   steps: [
@@ -37,6 +38,7 @@ export default function ProcessDesignPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [organizationId, setOrganizationId] = useState('');
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
   const [definitions, setDefinitions] = useState<ProcessDefinition[]>([]);
   const [versions, setVersions] = useState<ProcessVersion[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -70,6 +72,23 @@ export default function ProcessDesignPage() {
     setOrganizationId(localStorage.getItem('fsb.organizationId') || '');
   }, []);
 
+  const loadOrganizations = useCallback(async () => {
+    if (!token) return;
+    try {
+      const rows = await api('/organizations/accessible');
+      const available = Array.isArray(rows) ? rows as OrganizationOption[] : [];
+      setOrganizations(available);
+      setOrganizationId(current => {
+        const next = current && available.some(item => item.id === current) ? current : (available[0]?.id ?? current);
+        if (next) localStorage.setItem('fsb.organizationId', next);
+        return next;
+      });
+    } catch {
+      // Process permissions may be narrower than organization.read; manual UUID entry remains available.
+      setOrganizations([]);
+    }
+  }, [token, api]);
+
   const loadDefinitions = useCallback(async () => {
     if (!token || !organizationId.trim()) return;
     setBusy(true);
@@ -94,6 +113,10 @@ export default function ProcessDesignPage() {
       setError(e instanceof Error ? e.message : 'دریافت نسخه‌ها ناموفق بود');
     }
   }, [api]);
+
+  useEffect(() => {
+    if (token) void loadOrganizations();
+  }, [token, loadOrganizations]);
 
   useEffect(() => {
     if (token && organizationId.trim()) void loadDefinitions();
@@ -222,9 +245,15 @@ export default function ProcessDesignPage() {
       <section style={panelStyle}>
         <h2>دامنه سازمان</h2>
         <p>شناسه سازمان باید متعلق به Tenant فعال شما باشد؛ مجوز سازمانی در سرور کنترل می‌شود.</p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input style={{ ...inputStyle, flex: '1 1 360px' }} placeholder="UUID سازمان" value={organizationId} onChange={e => setOrganizationId(e.target.value)} />
-          <button style={buttonStyle} disabled={busy || !organizationId.trim()} onClick={() => { localStorage.setItem('fsb.organizationId', organizationId.trim()); void loadDefinitions(); }}>بارگذاری فرایندها</button>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <select style={inputStyle} value={organizations.some(item => item.id === organizationId) ? organizationId : ''} onChange={e => { setOrganizationId(e.target.value); if (e.target.value) localStorage.setItem('fsb.organizationId', e.target.value); }}>
+            <option value="">انتخاب سازمان از فهرست مجاز</option>
+            {organizations.map(item => <option key={item.id} value={item.id}>{item.name}{item.code ? ' · ' + item.code : ''}</option>)}
+          </select>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input style={{ ...inputStyle, flex: '1 1 360px' }} placeholder="یا UUID سازمان را دستی وارد کنید" value={organizationId} onChange={e => setOrganizationId(e.target.value)} />
+            <button style={buttonStyle} disabled={busy || !organizationId.trim()} onClick={() => { localStorage.setItem('fsb.organizationId', organizationId.trim()); void loadDefinitions(); }}>بارگذاری فرایندها</button>
+          </div>
         </div>
       </section>
 
