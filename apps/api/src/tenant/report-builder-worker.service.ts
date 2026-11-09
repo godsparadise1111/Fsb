@@ -56,7 +56,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
           continue;
         }
         const [job] = await manager.query(
-          'INSERT INTO tenant_report_jobs ("tenantId","ownerUserId","organizationId",config,"scopeOrganizationIds","isTenantWide",status,"scheduleId","scheduledFor") VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,\\'PENDING\\',$7,$8) ON CONFLICT ("scheduleId","scheduledFor") DO NOTHING RETURNING id',
+          'INSERT INTO tenant_report_jobs ("tenantId","ownerUserId","organizationId",config,"scopeOrganizationIds","isTenantWide",status,"scheduleId","scheduledFor") VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,\'PENDING\',$7,$8) ON CONFLICT ("scheduleId","scheduledFor") DO NOTHING RETURNING id',
           [schedule.tenantId, schedule.ownerUserId, schedule.organizationId, JSON.stringify(schedule.config), JSON.stringify(schedule.scopeOrganizationIds), schedule.isTenantWide === true, schedule.id, scheduledFor],
         );
         const next = nextReportScheduleAt(schedule.frequency as ReportScheduleFrequency, String(schedule.timeOfDay).slice(0, 5), schedule.timezone, schedule.weekday === null ? null : Number(schedule.weekday), scheduledFor);
@@ -74,10 +74,10 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
   private async claimJobs(): Promise<ReportJobRow[]> {
     return this.dataSource.transaction(async manager => {
       await manager.query(
-        'UPDATE tenant_report_jobs SET status=CASE WHEN attempts>=5 THEN \\'FAILED\\' ELSE \\'PENDING\\' END,"lockedBy"=NULL,"lockedAt"=NULL,error=COALESCE(error,\\'Worker lease expired\\'),"updatedAt"=now() WHERE status=\\'PROCESSING\\' AND "lockedAt"<now()-interval \\'5 minutes\\'',
+        'UPDATE tenant_report_jobs SET status=CASE WHEN attempts>=5 THEN \'FAILED\' ELSE \'PENDING\' END,"lockedBy"=NULL,"lockedAt"=NULL,error=COALESCE(error,\'Worker lease expired\'),"updatedAt"=now() WHERE status=\'PROCESSING\' AND "lockedAt"<now()-interval \'5 minutes\'',
       );
       return manager.query(
-        'WITH candidates AS (SELECT id FROM tenant_report_jobs WHERE status=\\'PENDING\\' AND "availableAt"<=now() AND attempts<5 ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 5) UPDATE tenant_report_jobs j SET status=\\'PROCESSING\\',"lockedBy"=$1,"lockedAt"=now(),"startedAt"=COALESCE(j."startedAt",now()),attempts=j.attempts+1,"updatedAt"=now() FROM candidates c WHERE j.id=c.id RETURNING j.*',
+        'WITH candidates AS (SELECT id FROM tenant_report_jobs WHERE status=\'PENDING\' AND "availableAt"<=now() AND attempts<5 ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 5) UPDATE tenant_report_jobs j SET status=\'PROCESSING\',"lockedBy"=$1,"lockedAt"=now(),"startedAt"=COALESCE(j."startedAt",now()),attempts=j.attempts+1,"updatedAt"=now() FROM candidates c WHERE j.id=c.id RETURNING j.*',
         [this.workerId],
       );
     });
@@ -111,7 +111,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
     try {
       const result = await this.reports.execute(job.tenantId, job.config, scope);
       const updated = await this.dataSource.query(
-        'UPDATE tenant_report_jobs SET status=\\'COMPLETED\\',result=$3::jsonb,error=NULL,"lockedBy"=NULL,"lockedAt"=NULL,"completedAt"=now(),"updatedAt"=now() WHERE id=$1 AND status=\\'PROCESSING\\' AND "lockedBy"=$2 RETURNING id',
+        'UPDATE tenant_report_jobs SET status=\'COMPLETED\',result=$3::jsonb,error=NULL,"lockedBy"=NULL,"lockedAt"=NULL,"completedAt"=now(),"updatedAt"=now() WHERE id=$1 AND status=\'PROCESSING\' AND "lockedBy"=$2 RETURNING id',
         [job.id, this.workerId, JSON.stringify(result)],
       );
       if (updated.length) await this.notifySchedule(job, result);
@@ -120,7 +120,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
       const retry = job.attempts < 5;
       const delay = Math.min(3600, 30 * (2 ** Math.max(0, job.attempts - 1)));
       await this.dataSource.query(
-        'UPDATE tenant_report_jobs SET status=$3,error=$4,"availableAt"=now()+($5 * interval \\'1 second\\'),"lockedBy"=NULL,"lockedAt"=NULL,"updatedAt"=now() WHERE id=$1 AND status=\\'PROCESSING\\' AND "lockedBy"=$2',
+        'UPDATE tenant_report_jobs SET status=$3,error=$4,"availableAt"=now()+($5 * interval \'1 second\'),"lockedBy"=NULL,"lockedAt"=NULL,"updatedAt"=now() WHERE id=$1 AND status=\'PROCESSING\' AND "lockedBy"=$2',
         [job.id, this.workerId, retry ? 'PENDING' : 'FAILED', message, delay],
       );
       this.logger.warn('Report job ' + job.id + ' failed: ' + message.slice(0, 300));
