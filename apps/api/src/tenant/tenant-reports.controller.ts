@@ -5,6 +5,7 @@ import { RequiresFeature } from '../auth/decorators/requires-feature.decorator';
 import { TenantReportsService } from './tenant-reports.service';
 
 @Controller('tenant/reports')
+@RequiresFeature('standard_reports')
 export class TenantReportsController {
   constructor(private readonly reports: TenantReportsService) {}
 
