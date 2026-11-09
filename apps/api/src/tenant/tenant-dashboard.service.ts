@@ -67,11 +67,19 @@ export class TenantDashboardService {
                OR EXISTS (SELECT 1 FROM organization_substitutions os
                  JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=os."originalUserId" AND original.status='PENDING'
                  WHERE os."tenantId"=$1 AND os."organizationId"=pi."organizationId" AND os."substituteUserId"=$2
-                   AND os."revokedAt" IS NULL AND os."startsAt"<=now() AND os."endsAt">now())
+                   AND os."revokedAt" IS NULL AND os."startsAt"<=now() AND os."endsAt">now()
+                   AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users su ON su.id=tm."userId" AND su."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true)
+                   AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" JOIN organization_units ou ON ou.id=p."organizationUnitId"
+                     WHERE up."userId"=$2 AND ou."organizationId"=pi."organizationId" AND up."isActive"=true AND p."isActive"=true AND ou."isActive"=true
+                       AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))
                OR EXISTS (SELECT 1 FROM task_delegations td
                  JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=td."fromUserId" AND original.status='PENDING'
                  WHERE td."tenantId"=$1 AND td."taskId"=wt.id AND td."toUserId"=$2
-                   AND td."revokedAt" IS NULL AND td."startsAt"<=now() AND td."endsAt">now())
+                   AND td."revokedAt" IS NULL AND td."startsAt"<=now() AND td."endsAt">now()
+                   AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users su ON su.id=tm."userId" AND su."isActive"=true WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true)
+                   AND EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" JOIN organization_units ou ON ou.id=p."organizationUnitId"
+                     WHERE up."userId"=$2 AND ou."organizationId"=pi."organizationId" AND up."isActive"=true AND p."isActive"=true AND ou."isActive"=true
+                       AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))
              )
        )
        SELECT count(*)::int AS "openTasks",
