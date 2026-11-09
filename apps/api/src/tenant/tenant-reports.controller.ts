@@ -27,6 +27,18 @@ export class TenantReportsController {
   }
 
   @RequirePermissions('tenant.reports.read')
+  @Get('operational-alert-sla')
+  operationalAlertSla(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    if (!user.tenantId) throw new BadRequestException('Tenant context is required');
+    return this.reports.operationalAlertSla(user.tenantId, { from, to, organizationId });
+  }
+
+  @RequirePermissions('tenant.reports.read')
   @Get('overview')
   overview(
     @CurrentUser() user: AuthenticatedUser,
