@@ -102,7 +102,10 @@ export class WorkflowAutomationWorker implements OnModuleInit, OnModuleDestroy {
       const invalid = await manager.query(`SELECT ta."userId" FROM task_assignees ta WHERE ta."taskId"=$1 AND ta.status='PENDING' AND (
         NOT EXISTS(SELECT 1 FROM users u WHERE u.id=ta."userId" AND u."isActive"=true) OR
         NOT EXISTS(SELECT 1 FROM tenant_memberships tm WHERE tm."tenantId"=$2 AND tm."userId"=ta."userId" AND tm."isActive"=true) OR
-        NOT EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
+        NOT EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true
+              JOIN organizations org ON org.id=ou."organizationId" AND org."tenantId"=$2 AND org."isActive"=true
+              JOIN tenants tenant ON tenant.id=org."tenantId" AND tenant.status='ACTIVE'
+              WHERE up."userId"=ta."userId" AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now())))`, [candidate.taskId,candidate.tenantId,candidate.organizationId]) as Array<{userId:string}>;
       const displaced = invalid.map(x => x.userId); if (!displaced.length) return;
       const eligible = await manager.query(`SELECT DISTINCT u.id FROM users u JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=$2 AND tm."isActive"=true JOIN user_positions up ON up."userId"=u.id AND up."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()) JOIN positions p ON p.id=up."positionId" AND p."isActive"=true JOIN organization_units ou ON ou.id=p."organizationUnitId" AND ou."organizationId"=$3 AND ou."isActive"=true
            JOIN organizations org ON org.id=ou."organizationId" AND org."tenantId"=$2 AND org."isActive"=true
