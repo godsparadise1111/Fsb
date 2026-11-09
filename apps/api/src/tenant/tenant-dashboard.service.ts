@@ -15,8 +15,8 @@ export class TenantDashboardService {
         count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
         count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt" IS NOT NULL AND wt."dueAt"<now())::int AS "overdueTasks",
         count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt">now() AND wt."dueAt"<now()+interval '24 hours')::int AS "dueNext24Hours",
-        count(pi.id) FILTER (WHERE pi."startedAt">=now()-interval '24 hours')::int AS "startedLast24Hours",
-        count(pi.id) FILTER (WHERE pi."completedAt">=now()-interval '24 hours')::int AS "completedLast24Hours"
+        count(DISTINCT pi.id) FILTER (WHERE pi."startedAt">=now()-interval '24 hours')::int AS "startedLast24Hours",
+        count(DISTINCT pi.id) FILTER (WHERE pi."completedAt">=now()-interval '24 hours')::int AS "completedLast24Hours"
        FROM organizations o
        LEFT JOIN process_instances pi ON pi."organizationId"=o.id
        LEFT JOIN workflow_tasks wt ON wt."processInstanceId"=pi.id
