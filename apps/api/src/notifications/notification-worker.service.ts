@@ -258,11 +258,21 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       const safeUrl = this.escapeHtml(reportUrl);
       const sourceLabel = this.escapeHtml(String(item.payload.sourceLabel ?? 'گزارش'));
       const rowCount = Number(item.payload.rowCount ?? 0);
+      const result = job.result ?? {};
+      const csvCell = (value: unknown) => {
+        let text = value === null || value === undefined ? '' : String(value);
+        if (/^[\\s]*[=+@-]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g,'""') + '"';
+      };
+      const reportRows = [[result.groupLabel ?? 'گروه',result.measureLabel ?? 'تعداد'], ...(Array.isArray(result.rows) ? result.rows.map((row: any) => [row.dimension ?? 'همه',row.value]) : [])];
+      const reportCsv = '\\uFEFF' + reportRows.map((row: unknown[]) => row.map(csvCell).join(',')).join('\\r\\n');
+
       const subject = (item.subject ?? 'گزارش زمان‌بندی‌شده آماده است').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
       await this.transporter.sendMail({
         from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
         text:'گزارش زمان‌بندی‌شده شما آماده است. منبع: ' + String(item.payload.sourceLabel ?? 'گزارش') + '. تعداد ردیف: ' + rowCount + '. مشاهده: ' + reportUrl,
-        html:'<p>گزارش زمان‌بندی‌شده شما آماده است.</p><p>منبع: <strong>' + sourceLabel + '</strong> · تعداد ردیف: ' + rowCount + '</p><p><a href="' + safeUrl + '">مشاهده گزارش در سامانه</a></p>',
+        html:'<p>گزارش زمان‌بندی‌شده شما آماده است.</p><p>منبع: <strong>' + sourceLabel + '</strong> · تعداد ردیف: ' + rowCount + '</p><p>فایل CSV گزارش به این ایمیل پیوست شده است.</p><p><a href="' + safeUrl + '">مشاهده گزارش در سامانه</a></p>',
+        attachments:[{ filename:'fsb-scheduled-report.csv', content:Buffer.from(reportCsv,'utf8'), contentType:'text/csv; charset=utf-8' }],
         messageId:`<fsb-report-${jobId}@${baseUrl.hostname}>`,
       });
       return true;
