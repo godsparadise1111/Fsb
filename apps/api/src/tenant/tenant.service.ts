@@ -4,6 +4,8 @@ import { DataSource, Repository } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { TenantAuditService } from './tenant-audit.service';
+import { User } from '../identity/entities/user.entity';
+import { TenantMembership } from './entities/tenant-membership.entity';
 
 @Injectable()
 export class TenantService {
@@ -33,7 +35,12 @@ export class TenantService {
     return tenant;
   }
 
-  async changeStatus(id: string, status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED', actorUserId: string) {
+  async changeStatus(
+    id: string,
+    status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED',
+    actorUserId: string,
+    initialAdminUserId?: string,
+  ) {
     return this.dataSource.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, { where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!tenant) throw new NotFoundException('Tenant not found');
@@ -43,14 +50,73 @@ export class TenantService {
       if (tenant.status === 'PENDING' && status === 'SUSPENDED') {
         throw new BadRequestException('A pending tenant cannot be suspended before activation');
       }
+      if (status !== 'ACTIVE' && initialAdminUserId) {
+        throw new BadRequestException('initialAdminUserId is only valid when activating a tenant');
+      }
+
       const previousStatus = tenant.status;
-      if (previousStatus === status) return tenant;
+      let activeAdminCount = 0;
+      if (status === 'ACTIVE') {
+        activeAdminCount = await manager.getRepository(TenantMembership).createQueryBuilder('membership')
+          .innerJoin('membership.user', 'user', 'user.isActive = true')
+          .where('membership.tenantId = :tenantId AND membership.isActive = true AND membership.isTenantAdmin = true', {
+            tenantId: tenant.id,
+          })
+          .getCount();
+        if (activeAdminCount === 0 && !initialAdminUserId) {
+          throw new BadRequestException('Select an active initial tenant administrator before activation');
+        }
+        if (activeAdminCount > 0 && initialAdminUserId) {
+          throw new BadRequestException('This tenant already has an active administrator; omit initialAdminUserId');
+        }
+      }
+
+      if (previousStatus === status && !(status === 'ACTIVE' && activeAdminCount === 0)) return tenant;
       tenant.status = status;
       if (status === 'ACTIVE' && !tenant.activatedAt) tenant.activatedAt = new Date();
       if (status === 'SUSPENDED') tenant.suspendedAt = new Date();
       if (status === 'ACTIVE') tenant.suspendedAt = null;
       const saved = await manager.save(tenant);
-      await this.audit.record(manager, { tenantId: tenant.id, actorUserId, action: 'TENANT_STATUS_CHANGED', resourceType: 'TENANT', resourceId: tenant.id, metadata: { from: previousStatus, to: status } });
+
+      if (status === 'ACTIVE' && activeAdminCount === 0 && initialAdminUserId) {
+        const user = await manager.findOne(User, {
+          where: { id: initialAdminUserId, isActive: true },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!user) throw new NotFoundException('Active initial tenant administrator user not found');
+        const memberships = manager.getRepository(TenantMembership);
+        let membership = await memberships.findOne({
+          where: { tenantId: tenant.id, userId: user.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (membership?.isActive && membership.isTenantAdmin) {
+          throw new ConflictException('The selected user is already an active tenant administrator');
+        }
+        if (membership) {
+          membership.isActive = true;
+          membership.isTenantAdmin = true;
+          membership.acceptedAt = new Date();
+        } else {
+          membership = memberships.create({
+            tenantId: tenant.id, userId: user.id, isActive: true,
+            isTenantAdmin: true, acceptedAt: new Date(),
+          });
+        }
+        await memberships.save(membership);
+        await this.audit.record(manager, {
+          tenantId: tenant.id, actorUserId, targetUserId: user.id,
+          action: 'INITIAL_ADMIN_ASSIGNED', resourceType: 'TENANT_MEMBERSHIP',
+          resourceId: membership.id,
+        });
+      }
+
+      if (previousStatus !== status) {
+        await this.audit.record(manager, {
+          tenantId: tenant.id, actorUserId, action: 'TENANT_STATUS_CHANGED',
+          resourceType: 'TENANT', resourceId: tenant.id,
+          metadata: { from: previousStatus, to: status },
+        });
+      }
       return saved;
     });
   }
