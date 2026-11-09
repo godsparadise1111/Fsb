@@ -281,7 +281,8 @@ export class TenantReportsService {
               count(*) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS'))::int AS "openTasks",
               count(*) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS') AND wt."dueAt"<now())::int AS "overdueTasks",
               count(*) FILTER (WHERE wt.status='COMPLETED')::int AS "completedTasks",
-              count(*) FILTER (WHERE wt.status='CANCELLED')::int AS "cancelledTasks"
+              count(*) FILTER (WHERE wt.status='CANCELLED')::int AS "cancelledTasks",
+              count(*) FILTER (WHERE wt.status='RETURNED')::int AS "returnedTasks"
          FROM workflow_tasks wt JOIN process_instances pi ON pi.id=wt."processInstanceId"
          JOIN organizations o ON o.id=pi."organizationId"
         WHERE o."tenantId"=$1 AND wt."createdAt">=$2 AND wt."createdAt"<$3
