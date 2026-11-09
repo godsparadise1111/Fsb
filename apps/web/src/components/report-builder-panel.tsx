@@ -223,13 +223,20 @@ export default function ReportBuilderPanel() {
   useEffect(()=>{
     if(!token||!organizationId||!jobId)return;
     let active=true;
-    request(scopedPath('/tenant/report-builder/jobs/'+jobId)).then(job=>{
-      if(!active)return;
-      setJobStatus(job.status||'');
-      if(job.result)setResult(job.result);
-      if(job.error)setError(job.error);
-    }).catch(error=>{if(active)setError(error instanceof Error?error.message:'بازیابی گزارش زمان‌بندی‌شده ناموفق بود')});
-    return ()=>{active=false};
+    const poll=async()=>{
+      try {
+        const job=await request(scopedPath('/tenant/report-builder/jobs/'+jobId));
+        if(!active)return;
+        setJobStatus(job.status||'');
+        if(job.result)setResult(job.result);
+        if(job.error)setError(job.error);
+      } catch(error) {
+        if(active)setError(error instanceof Error?error.message:'بازیابی گزارش زمان‌بندی‌شده ناموفق بود');
+      }
+    };
+    void poll();
+    const timer=window.setInterval(()=>void poll(),5000);
+    return ()=>{active=false;window.clearInterval(timer)};
   },[token,organizationId,jobId,request,scopedPath]);
 
   const maxValue=Math.max(1,...(result?.rows||[]).map(row=>Math.abs(row.value||0)));
