@@ -143,6 +143,7 @@
 - [x] آماده‌سازی توپولوژی Docker Compose تولید با API/Web، PostgreSQL داخلی و Workerهای مستقل گزارش، اعلان، اتوماسیون گردش کار و Recovery؛ اجرا روی Staging باقی است
 - [x] Dockerfileهای runtime برای API و Web، فونت DejaVu در تصویر API و preflight تنظیمات محیط Production
 - [x] اسکریپت Backup رمزگذاری‌شده DB و فایل خصوصی با age و ledger/checksum مستقل برای Migrationهای گزارش‌ساز 024 و 025
+- [x] اسکریپت Restore غیرمخرب Staging در دیتابیس جدید و زیرشاخه جداگانه فایل خصوصی؛ جایگزینی دیتابیس فعال خودکار انجام نمی‌شود
 - [x] Runbook استقرار، Migration، SMTP، آزمون پذیرش و بازیابی Staging
 - [x] Migrationهای نسخه‌بندی‌شده با ledger و checksum؛ جلوگیری از synchronize در Production
 - [x] backup رمزگذاری‌شده دیتابیس و فایل خصوصی با age و checksum؛ اسکریپت بازیابی تأییدشده (بازیابی واقعی هنوز باید در Staging تمرین شود)
