@@ -112,7 +112,7 @@ BEGIN
        AND ("fromUserId" = OLD."userId" OR "toUserId" = OLD."userId")
        AND "revokedAt" IS NULL;
 
-    SELECT set_config('fsb.lifecycle_cleanup', 'on', true);
+    PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
     UPDATE task_deferral_requests r
        SET status = 'CANCELLED', "reviewerUserId" = NULL, "reviewedAt" = now(),
            "reviewerComment" = 'Automatically cancelled because requester membership was revoked'
@@ -120,7 +120,7 @@ BEGIN
      WHERE wt.id = r."taskId" AND wt."tenantId" = OLD."tenantId"
        AND r."tenantId" = OLD."tenantId" AND r."requesterUserId" = OLD."userId"
        AND r.status = 'PENDING';
-    SELECT set_config('fsb.lifecycle_cleanup', 'off', true);
+    PERFORM set_config('fsb.lifecycle_cleanup', 'off', true);
 
     INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","affectedUserId",details)
     SELECT DISTINCT OLD."tenantId", wt.id, 'ASSIGNEE_MEMBERSHIP_REVOKED', OLD."userId",
@@ -168,13 +168,13 @@ BEGIN
       JOIN process_instances pi ON pi.id=wt."processInstanceId"
      WHERE td."taskId"=wt.id AND pi."organizationId"=NEW.id AND td."revokedAt" IS NULL;
 
-    SELECT set_config('fsb.lifecycle_cleanup', 'on', true);
+    PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
     UPDATE task_deferral_requests r SET status='CANCELLED', "reviewerUserId"=NULL,
       "reviewedAt"=now(), "reviewerComment"='Automatically cancelled because the organization was deactivated'
       FROM workflow_tasks wt
       JOIN process_instances pi ON pi.id=wt."processInstanceId"
      WHERE r."taskId"=wt.id AND pi."organizationId"=NEW.id AND r.status='PENDING';
-    SELECT set_config('fsb.lifecycle_cleanup', 'off', true);
+    PERFORM set_config('fsb.lifecycle_cleanup', 'off', true);
   END IF;
   RETURN NEW;
 END $$;
@@ -203,11 +203,11 @@ BEGIN
     UPDATE task_delegations SET "revokedAt"=now(), "revokedByUserId"=NULL
      WHERE "tenantId"=NEW.id AND "revokedAt" IS NULL;
 
-    SELECT set_config('fsb.lifecycle_cleanup', 'on', true);
+    PERFORM set_config('fsb.lifecycle_cleanup', 'on', true);
     UPDATE task_deferral_requests SET status='CANCELLED', "reviewerUserId"=NULL,
       "reviewedAt"=now(), "reviewerComment"='Automatically cancelled because the tenant was closed'
      WHERE "tenantId"=NEW.id AND status='PENDING';
-    SELECT set_config('fsb.lifecycle_cleanup', 'off', true);
+    PERFORM set_config('fsb.lifecycle_cleanup', 'off', true);
 
     UPDATE notification_outbox SET status='DEAD', "lockedBy"=NULL, "lockedAt"=NULL,
       lastError='Tenant closed; queued notification was permanently suppressed', "updatedAt"=now()
