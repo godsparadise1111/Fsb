@@ -5,7 +5,7 @@ import { User } from '../../identity/entities/user.entity';
 @Entity('workflow_action_logs')
 export class WorkflowActionLog {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column('uuid', { insert: false, update: false }) tenantId: string;
+  @Column({ type: 'uuid', insert: false, update: false }) tenantId: string;
   @Column('uuid') taskId: string;
   @ManyToOne(() => WorkflowTask, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'taskId' }) task: WorkflowTask;
