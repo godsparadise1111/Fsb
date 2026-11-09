@@ -155,17 +155,17 @@ export class ReportBuilderService {
          FROM form_versions fv
          JOIN form_definitions fd ON fd.id=fv."definitionId"
          JOIN organizations o ON o.id=fd."organizationId" AND o."tenantId"=$1 AND o."isActive"=true
-        WHERE fv.status='PUBLISHED' AND ($2::uuid[] IS NULL OR fd."organizationId"=ANY($2::uuid[]))
+        WHERE fv.status IN ('PUBLISHED','RETIRED') AND EXISTS (SELECT 1 FROM form_submissions existing_fs WHERE existing_fs."formVersionId"=fv.id) AND ($2::uuid[] IS NULL OR fd."organizationId"=ANY($2::uuid[]))
           AND ($3::uuid IS NULL OR fd."organizationId"=$3)
         ORDER BY fd.name,fv."versionNumber" DESC LIMIT 500`,
       [tenantId, organizationIds.length ? organizationIds : null, spec.organizationId ?? null],
     ) as Array<{ versionId: string; versionNumber: number; schema: unknown; formName: string }>;
     const seen = new Set<string>();
-    const collect = (node: unknown, version: typeof versions[number], depth = 0): void => {
+    const collect = (node: unknown, version: typeof versions[number], depth = 0, keyHint?: string): void => {
       if (depth > 12 || node === null || typeof node !== 'object') return;
       if (Array.isArray(node)) { for (const child of node.slice(0, 500)) collect(child, version, depth + 1); return; }
       const item = node as Record<string, unknown>;
-      const rawId = item.fieldId ?? item.fieldKey ?? item.id ?? item.key ?? item.name;
+      const rawId = item.fieldId ?? item.fieldKey ?? item.id ?? item.key ?? item.name ?? keyHint;
       const rawType = String(item.fieldType ?? item.dataType ?? item.controlType ?? item.widgetType ?? item.inputType ?? item.type ?? '').toLowerCase();
       const rawLabel = item.label ?? item.title ?? item.caption ?? item.name;
       const fieldId = typeof rawId === 'string' ? rawId.trim() : '';
@@ -190,7 +190,12 @@ export class ReportBuilderService {
         }
       }
       for (const key of ['fields', 'children', 'elements', 'components', 'items', 'properties', 'schema', 'pages', 'sections']) {
-        if (item[key] !== undefined) collect(item[key], version, depth + 1);
+        if (item[key] !== undefined) {
+          const nested = item[key];
+          if (key === 'fields' && nested && typeof nested === 'object' && !Array.isArray(nested)) {
+            for (const [fieldKey, fieldSchema] of Object.entries(nested as Record<string, unknown>)) collect(fieldSchema, version, depth + 1, fieldKey);
+          } else collect(nested, version, depth + 1);
+        }
       }
     };
     for (const version of versions) collect(version.schema, version);
