@@ -121,27 +121,22 @@ export class TenantService {
       }
       if (status === 'SUSPENDED') tenant.suspendedAt = new Date();
       if (status === 'ACTIVE') tenant.suspendedAt = null;
-      const saved = await manager.save(tenant);
+      let activeApiCredentialCount = 0;
       if (status === 'CLOSED') {
-        await manager.query(
-          `UPDATE tenant_subscriptions
-              SET status='CANCELLED',"cancelledAt"=COALESCE("cancelledAt",now()),"updatedAt"=now()
-            WHERE "tenantId"=$1 AND status<>'CANCELLED'`,
+        const [credentialCount] = await manager.query(
+          `SELECT count(*)::int AS count FROM tenant_api_credentials
+            WHERE "tenantId"=$1 AND status='ACTIVE'`,
           [tenant.id],
         );
-        const revoked = await manager.query(
-          `UPDATE tenant_api_credentials
-              SET status='REVOKED',"revokedAt"=now()
-            WHERE "tenantId"=$1 AND status='ACTIVE'
-            RETURNING id`,
-          [tenant.id],
-        );
-        if (revoked.length) {
-          await this.audit.record(manager, {
-            tenantId: tenant.id, actorUserId, action: 'TENANT_API_CREDENTIALS_REVOKED_ON_CLOSE',
-            resourceType: 'TENANT_API_CREDENTIAL', metadata: { count: revoked.length },
-          });
-        }
+        activeApiCredentialCount = Number(credentialCount?.count ?? 0);
+      }
+      // Migration 022's database trigger atomically cancels the subscription and revokes API keys.
+      const saved = await manager.save(tenant);
+      if (status === 'CLOSED' && activeApiCredentialCount > 0) {
+        await this.audit.record(manager, {
+          tenantId: tenant.id, actorUserId, action: 'TENANT_API_CREDENTIALS_REVOKED_ON_CLOSE',
+          resourceType: 'TENANT_API_CREDENTIAL', metadata: { count: activeApiCredentialCount },
+        });
       }
 
       if (status === 'ACTIVE' && activeAdminCount === 0 && initialAdminUserId) {
