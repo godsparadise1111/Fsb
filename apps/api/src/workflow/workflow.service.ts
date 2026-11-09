@@ -332,7 +332,7 @@ export class WorkflowService {
           assigneePositionIds: dto.initialAssigneePositionIds ?? [],
           assigneeUnitIds: dto.initialAssigneeUnitIds ?? [],
         };
-        const requestedUserIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, requestTargets);
+        const requestedUserIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenant.id, requestTargets);
         if (schemaHasTargets && (
           requestedUserIds.length !== schemaUserIds.length ||
           requestedUserIds.some(userId => !schemaUserIds.includes(userId))
