@@ -163,6 +163,9 @@ BEGIN
       JOIN process_instances pi ON pi.id=wt."processInstanceId"
      WHERE ta."taskId"=wt.id AND pi."organizationId"=NEW.id AND ta.status='PENDING';
 
+    UPDATE process_instances SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now()
+     WHERE "organizationId"=NEW.id AND status='RUNNING';
+
     UPDATE task_delegations td SET "revokedAt"=now(), "revokedByUserId"=NULL
       FROM workflow_tasks wt
       JOIN process_instances pi ON pi.id=wt."processInstanceId"
@@ -199,6 +202,9 @@ BEGIN
            comment=concat_ws(E'\n', ta.comment, 'Assignment closed because the tenant was closed')
       FROM workflow_tasks wt
      WHERE ta."taskId"=wt.id AND wt."tenantId"=NEW.id AND wt.status='CANCELLED' AND ta.status='PENDING';
+
+    UPDATE process_instances SET status='CANCELLED', "completedAt"=now(), "updatedAt"=now()
+     WHERE "tenantId"=NEW.id AND status='RUNNING';
 
     UPDATE task_delegations SET "revokedAt"=now(), "revokedByUserId"=NULL
      WHERE "tenantId"=NEW.id AND "revokedAt" IS NULL;
