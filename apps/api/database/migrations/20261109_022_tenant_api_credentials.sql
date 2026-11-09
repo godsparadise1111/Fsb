@@ -29,7 +29,8 @@ RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW."tenantId" <> OLD."tenantId" OR NEW."keyPrefix" <> OLD."keyPrefix" OR
      NEW."secretHash" <> OLD."secretHash" OR NEW."createdByUserId" <> OLD."createdByUserId" OR
-     NEW."createdAt" <> OLD."createdAt" THEN
+     NEW."createdAt" <> OLD."createdAt" OR NEW.name <> OLD.name OR
+     NEW.scopes IS DISTINCT FROM OLD.scopes OR NEW."expiresAt" IS DISTINCT FROM OLD."expiresAt" THEN
     RAISE EXCEPTION 'API credential identity is immutable';
   END IF;
   IF OLD.status='REVOKED' AND NEW.status <> 'REVOKED' THEN
@@ -41,4 +42,13 @@ $$;
 CREATE TRIGGER trg_protect_api_credential_identity
 BEFORE UPDATE ON tenant_api_credentials
 FOR EACH ROW EXECUTE FUNCTION fsb_protect_api_credential_identity();
+CREATE OR REPLACE FUNCTION fsb_prevent_api_credential_delete()
+RETURNS trigger LANGUAGE plpgsql AS $
+BEGIN
+  RAISE EXCEPTION 'API credentials cannot be hard-deleted; revoke them instead';
+END;
+$;
+CREATE TRIGGER trg_prevent_api_credential_delete
+BEFORE DELETE ON tenant_api_credentials
+FOR EACH ROW EXECUTE FUNCTION fsb_prevent_api_credential_delete();
 COMMIT;
