@@ -33,6 +33,7 @@ export default function AbsencesPage() {
   const pageSize = 25;
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarTruncated, setCalendarTruncated] = useState(false);
+  const [conflictItems, setConflictItems] = useState<Absence[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -111,16 +112,46 @@ export default function AbsencesPage() {
   useEffect(() => { if (loggedIn && token) void loadData(); }, [loggedIn, token, loadData]);
 
   const userMap = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
+  useEffect(() => {
+    if (!token || !organizationId) { setConflictItems([]); return; }
+    const fromDate = new Date(form.startsAt);
+    const toDate = new Date(form.endsAt);
+    if (!Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime()) ||
+        toDate <= fromDate || toDate.getTime() - fromDate.getTime() > 93 * 24 * 60 * 60 * 1000) {
+      setConflictItems([]);
+      return;
+    }
+    let cancelled = false;
+    const loadConflicts = async () => {
+      try {
+        const rows: Absence[] = [];
+        let offset = 0;
+        let totalRows = 0;
+        do {
+          const result = await request(`/organizations/${organizationId}/absences?limit=100&offset=${offset}&from=${encodeURIComponent(fromDate.toISOString())}&to=${encodeURIComponent(toDate.toISOString())}&status=ALL`);
+          rows.push(...(result.items || []));
+          totalRows = Number(result.total || 0);
+          offset += 100;
+        } while (offset < totalRows && offset < 10000);
+        if (!cancelled) setConflictItems(rows);
+      } catch {
+        if (!cancelled) setConflictItems([]);
+      }
+    };
+    void loadConflicts();
+    return () => { cancelled = true; };
+  }, [token, organizationId, form.startsAt, form.endsAt, request]);
+
   const conflicts = useMemo(() => {
     const start = new Date(form.startsAt).getTime(), end = new Date(form.endsAt).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
-    return items.filter(item => {
+    return conflictItems.filter(item => {
       if (item.cancelledAt) return false;
       const overlaps = start < new Date(item.endsAt).getTime() && end > new Date(item.startsAt).getTime();
       return overlaps && (item.userId === form.userId || item.substituteUserId === form.substituteUserId ||
         item.userId === form.substituteUserId || item.substituteUserId === form.userId);
     });
-  }, [items, form]);
+  }, [conflictItems, form]);
   const calendarCells = useMemo(() => {
     const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
     const offset = (first.getDay() + 1) % 7;
