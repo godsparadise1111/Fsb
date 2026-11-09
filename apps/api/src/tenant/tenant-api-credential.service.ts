@@ -90,11 +90,12 @@ export class TenantApiCredentialService {
          JOIN tenants t ON t.id=c."tenantId" AND t.status='ACTIVE'
          JOIN tenant_subscriptions s ON s."tenantId"=t.id AND s.status IN ('ACTIVE','TRIALING')
          JOIN commercial_plans p ON p.code=s."planCode" AND (p.features->>'api_access')::boolean=true
+          AND (p.features->>$2)::boolean=true
         WHERE c."keyPrefix"=$1 AND c.status='ACTIVE'
           AND (c."expiresAt" IS NULL OR c."expiresAt">now())
           AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">now())
           AND (s.status<>'TRIALING' OR s."trialEndsAt" IS NULL OR s."trialEndsAt">now())`,
-      [prefix],
+      [prefix, requiredScope === 'reports.read' ? 'standard_reports' : 'api_access'],
     );
     if (!credential) throw new UnauthorizedException('Invalid or inactive API credential');
     const expected = Buffer.from(credential.secretHash, 'hex');
