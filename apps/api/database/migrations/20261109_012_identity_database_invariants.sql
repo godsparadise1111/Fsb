@@ -79,9 +79,35 @@ UPDATE tenant_memberships tm
  WHERE u.id = tm."userId" AND u."isActive" = false
    AND tm."isActive" = true;
 
+-- A user may have at most one active primary position per tenant.
+DO $
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM user_positions
+     WHERE "isActive" = true AND "isPrimary" = true
+     GROUP BY "tenantId", "userId" HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Duplicate active primary positions exist; reconcile before migration 012';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM user_positions
+     WHERE "validUntil" IS NOT NULL AND "validUntil" <= "validFrom"
+  ) THEN
+    RAISE EXCEPTION 'Invalid user position validity ranges exist; reconcile before migration 012';
+  END IF;
+END $;
+
+CREATE UNIQUE INDEX "UQ_user_positions_one_active_primary"
+  ON user_positions ("tenantId", "userId")
+  WHERE "isActive" = true AND "isPrimary" = true;
+
+ALTER TABLE user_positions
+  ADD CONSTRAINT "CHK_user_positions_validity_range"
+  CHECK ("validUntil" IS NULL OR "validUntil" > "validFrom");
+
 -- Composite FKs make cross-tenant assignments impossible even if a service
 -- accidentally supplies a valid user and a valid position from different tenants.
-DO $$
+DO $
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_user_positions_tenant_member') THEN
     ALTER TABLE user_positions
