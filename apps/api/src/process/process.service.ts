@@ -95,6 +95,13 @@ export class ProcessService {
           throw new BadRequestException(`Process step ${index + 1} must be an object`);
         }
         const config = step as Record<string, unknown>;
+        if (config.title !== undefined && (typeof config.title !== 'string' || !config.title.trim() || config.title.length > 200)) {
+          throw new BadRequestException(`Process step ${index + 1} title must be a non-empty string up to 200 characters`);
+        }
+        if (config.instructions !== undefined && config.instructions !== null &&
+            (typeof config.instructions !== 'string' || config.instructions.length > 4000)) {
+          throw new BadRequestException(`Process step ${index + 1} instructions must be text up to 4000 characters`);
+        }
         if (config.assignmentPolicy !== undefined && !['ANY_ASSIGNEE', 'ALL_ASSIGNEES'].includes(String(config.assignmentPolicy))) {
           throw new BadRequestException(`Process step ${index + 1} assignmentPolicy must be ANY_ASSIGNEE or ALL_ASSIGNEES`);
         }
