@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 type Field = { label: string; expression: string; type: 'text' | 'date' | 'number'; groupable?: boolean; filterable?: boolean };
@@ -123,10 +123,10 @@ export class ReportBuilderService {
         clauses.push(`${expression} = ANY($${params.length})`);
       } else {
         let value = filter.value;
-        if (filter.operator === 'contains') value = `%${String(value).replace(/[\\%_]/g, '\\$&')}%`;
+        if (filter.operator === 'contains') value = String(value);
         params.push(value);
         const p = `$${params.length}`;
-        if (filter.operator === 'contains') clauses.push(`${expression} ILIKE ${p} ESCAPE '\\\\'`);
+        if (filter.operator === 'contains') clauses.push(`POSITION(LOWER(${p}) IN LOWER(${expression}::text)) > 0`);
         else {
           const operator = ({ eq: '=', neq: '<>', gte: '>=', lte: '<=' } as const)[filter.operator];
           clauses.push(`${expression} ${operator} ${p}`);
