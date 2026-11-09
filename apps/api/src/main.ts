@@ -43,7 +43,7 @@ async function bootstrap() {
       const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
       const route = request.route?.path
         ? `${request.baseUrl ?? ''}${request.route.path}`
-        : String(request.path ?? '/unknown').replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:id').replace(/\/\d+(?=\/|$)/g, '/:id');
+        : '/unmatched';
       telemetry.record(String(request.method ?? 'OTHER'), route, response.statusCode, durationMs);
       // Never log request bodies, authorization headers, cookies, query strings or personal data.
       console.log(JSON.stringify({
