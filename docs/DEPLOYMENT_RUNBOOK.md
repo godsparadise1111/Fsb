@@ -45,9 +45,16 @@ Dockerfileها فعلاً برای نصب از `npm install` استفاده می
 
 - هیچ Migration را روی Production برای اولین بار اجرا نکنید.
 - ابتدا یک Staging هم‌نسخه با Production بسازید و Backup دیتابیس و volume فایل خصوصی تهیه کنید.
-- ترتیب فایل‌های SQL باید مطابق ترتیب نسخه/شماره مهاجرت و ledger/checksum مورد استفاده استقرار باشد؛ فایل‌های Migration را با اجرای دستی خارج از ledger دوباره اجرا نکنید.
-- Migrationهای گزارش‌ساز `20261109_024_tenant_saved_reports.sql` و `20261109_025_report_jobs_cache_schedules.sql` باید پس از پیش‌نیازهای Tenant، عضویت، نقش/مجوز و جدول‌های گزارش اجرا شوند.
-- قبل و بعد از Migration، وضعیت ledger/checksum، شمار جدول‌ها، قیود FK و ایندکس‌ها را ثبت کنید.
+- ابتدا تمام Migrationهای پایه و دامنه را با runner/ledger رسمی همان نسخه اعمال کنید؛ فایل‌های Migration را با اجرای دستی خارج از ledger دوباره اجرا نکنید.
+- Migrationهای گزارش‌ساز `20261109_024_tenant_saved_reports.sql` و `20261109_025_report_jobs_cache_schedules.sql` پس از وجود Tenant، عضویت، نقش/مجوز و جدول‌های پایه لازم اجرا می‌شوند.
+- برای این دو Migration، اسکریپت `scripts/ops/apply-report-migrations.sh` یک ledger مستقل checksumدار ایجاد می‌کند و هر Migration را به‌همراه ثبت checksum در یک تراکنش اجرا می‌کند. اجرا فقط در Staging و با Backup معتبر مجاز است:
+
+```sh
+DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-migration.dump' sh scripts/ops/apply-report-migrations.sh
+```
+
+- اگر اشیای Migration از قبل وجود داشته باشند اما در ledger این اسکریپت ثبت نشده باشند، اسکریپت عمداً متوقف می‌شود؛ وضعیت را دستی reconcile کنید و اسکریپت را دور نزنید.
+- قبل و بعد از Migration، ledger/checksum، جدول‌ها، قیود FK و ایندکس‌ها را ثبت و بررسی کنید.
 - اسکریپت Backup زیر به `age` و کلید عمومی گیرنده نیاز دارد و هم DB و هم فایل‌های خصوصی را رمزگذاری می‌کند:
 
 ```sh
