@@ -66,6 +66,16 @@ HAVING COUNT(*) FILTER (
          WHERE tm."isActive" = true AND tm."isTenantAdmin" = true AND u."isActive" = true
        ) = 0;
 
+-- Attachment tenant ownership must match the form submission and its organization's tenant.
+SELECT fa.id, fa."tenantId", fs."tenantId" AS submission_tenant, o."tenantId" AS organization_tenant
+  FROM file_attachments fa
+  LEFT JOIN form_submissions fs ON fs.id = fa."submissionId"
+  LEFT JOIN form_versions fv ON fv.id = fs."formVersionId"
+  LEFT JOIN form_definitions fd ON fd.id = fv."definitionId"
+  LEFT JOIN organizations o ON o.id = fd."organizationId"
+ WHERE fs.id IS NULL OR o.id IS NULL
+    OR fa."tenantId" <> fs."tenantId" OR fa."tenantId" <> o."tenantId";
+
 -- Active task assignees must still be active members of the task tenant.
 SELECT ta.id, ta."tenantId", ta."taskId", ta."userId"
   FROM task_assignees ta
@@ -89,7 +99,7 @@ SELECT p.id, p."organizationUnitId"
   LEFT JOIN tenants t ON t.id = o."tenantId"
  WHERE p."isActive" = true
    AND (ou.id IS NULL OR ou."isActive" = false OR o.id IS NULL
-     OR o."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE');
+     OR o."isActive" = false OR t.id IS NULL);
 
 -- Parent-child unit references must remain within one organization.
 SELECT child.id, child."parentId", child."organizationId", parent."organizationId" AS parent_org
