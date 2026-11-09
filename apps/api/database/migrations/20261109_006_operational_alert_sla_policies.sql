@@ -21,6 +21,10 @@ CREATE TABLE organization_operational_alert_sla_policies (
  CONSTRAINT "CK_operational_alert_sla_response" CHECK (
   "criticalResponseMinutes" BETWEEN 1 AND 10080 AND "highResponseMinutes" BETWEEN 1 AND 10080
   AND "mediumResponseMinutes" BETWEEN 1 AND 10080 AND "lowResponseMinutes" BETWEEN 1 AND 10080
+  AND "criticalResolutionHours"*60 > "criticalResponseMinutes"
+  AND "highResolutionHours"*60 > "highResponseMinutes"
+  AND "mediumResolutionHours"*60 > "mediumResponseMinutes"
+  AND "lowResolutionHours"*60 > "lowResponseMinutes"
  ),
  CONSTRAINT "CK_operational_alert_sla_resolution" CHECK (
   "criticalResolutionHours" BETWEEN 1 AND 720 AND "highResolutionHours" BETWEEN 1 AND 720
