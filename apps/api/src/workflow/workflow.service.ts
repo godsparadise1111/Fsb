@@ -765,12 +765,12 @@ export class WorkflowService {
       await this.dataSource.query(
         `INSERT INTO organization_operational_alerts ("tenantId","organizationId","alertKey",type,severity,title,description,"resourceId","dueAt","firstDetectedAt","lastDetectedAt")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),now())
-         ON CONFLICT ("tenantId","organizationId","alertKey") DO UPDATE SET severity=EXCLUDED.severity,title=EXCLUDED.title,description=EXCLUDED.description,"dueAt"=EXCLUDED."dueAt","lastDetectedAt"=now(),"updatedAt"=now()`,
+         ON CONFLICT ("tenantId","organizationId","alertKey") DO UPDATE SET severity=EXCLUDED.severity,title=EXCLUDED.title,description=EXCLUDED.description,"dueAt"=EXCLUDED."dueAt","lastDetectedAt"=now(),status=CASE WHEN organization_operational_alerts.status='RESOLVED' AND organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN 'OPEN' ELSE organization_operational_alerts.status END,"resolvedAt"=CASE WHEN organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN NULL ELSE organization_operational_alerts."resolvedAt" END,"resolvedByUserId"=CASE WHEN organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN NULL ELSE organization_operational_alerts."resolvedByUserId" END,"resolutionNote"=CASE WHEN organization_operational_alerts."resolutionNote"='__AUTO_RESOLVED__' THEN NULL ELSE organization_operational_alerts."resolutionNote" END,"updatedAt"=now()`,
         [tenantId,organizationId,row.id,row.type,row.severity,row.title,row.description,row.resourceId,row.dueAt],
       );
     }
     await this.dataSource.query(
-      `UPDATE organization_operational_alerts SET status='RESOLVED',"resolvedAt"=now(),"resolutionNote"='شرط هشدار دیگر در بررسی‌های اخیر مشاهده نشد.',"updatedAt"=now()
+      `UPDATE organization_operational_alerts SET status='RESOLVED',"resolvedAt"=now(),"resolutionNote"='__AUTO_RESOLVED__',"updatedAt"=now()
         WHERE "tenantId"=$1 AND "organizationId"=$2 AND status NOT IN ('RESOLVED','IGNORED') AND "lastDetectedAt" < now()-interval '2 minutes'`,
       [tenantId,organizationId],
     );
