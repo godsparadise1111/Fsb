@@ -55,3 +55,34 @@ SELECT o.id AS "outboxId", o."tenantId", o.recipient,
  WHERE o."eventType"='workflow.task.assigned'
    AND o.status IN ('PENDING','PROCESSING')
    AND o."payloadCiphertext" IS NULL;
+
+
+-- 8. A terminal process must never retain active tasks after recovery.
+SELECT pi.id AS "processInstanceId", pi.status AS "processStatus", wt.id AS "taskId", wt.status AS "taskStatus"
+  FROM process_instances pi
+  JOIN workflow_tasks wt ON wt."processInstanceId"=pi.id
+ WHERE pi.status IN ('COMPLETED','CANCELLED')
+   AND wt.status IN ('OPEN','IN_PROGRESS');
+
+-- 9. RUNNING processes with no active task or multiple active tasks require
+-- an explicit recovery-review lifecycle event; the worker must not guess a step.
+SELECT pi.id AS "processInstanceId", pi."tenantId",
+       count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS')) AS "activeTaskCount"
+  FROM process_instances pi
+  LEFT JOIN workflow_tasks wt ON wt."processInstanceId"=pi.id
+ WHERE pi.status='RUNNING'
+ GROUP BY pi.id, pi."tenantId"
+HAVING count(wt.id) FILTER (WHERE wt.status IN ('OPEN','IN_PROGRESS')) <> 1;
+
+-- 10. No pending assignments may remain on terminal tasks after recovery.
+SELECT wt.id AS "taskId", ta."userId", wt.status
+  FROM workflow_tasks wt
+  JOIN task_assignees ta ON ta."taskId"=wt.id AND ta.status='PENDING'
+ WHERE wt.status IN ('COMPLETED','CANCELLED','RETURNED');
+
+-- 11. Expired notification leases must be reclaimable; this query is diagnostic
+-- and may return rows only while a worker is down or before the next poll.
+SELECT id, "tenantId", attempts, "lockedAt", "lockedBy"
+  FROM notification_outbox
+ WHERE status='PROCESSING' AND "lockedAt" < now() - interval '2 minutes';
+
