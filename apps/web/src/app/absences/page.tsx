@@ -277,6 +277,7 @@ export default function AbsencesPage() {
 
   const selectedSubstituteLoad = workload.find(row => row.userId === form.substituteUserId);
   const selectedSubstituteAtLimit = Boolean(policy.enforceLimit && selectedSubstituteLoad && selectedSubstituteLoad.openTaskCount >= policy.maxOpenTasksPerSubstitute);
+  const selectedSubstituteWarning = Boolean(policy.configured && selectedSubstituteLoad && selectedSubstituteLoad.openTaskCount >= policy.maxOpenTasksPerSubstitute * policy.warningThresholdPercent / 100 && !selectedSubstituteAtLimit);
 
   const statusOf = (item: Absence) => {
     if (item.cancelledAt) return { label: 'لغوشده', cls: 'absence-pill cancelled' };
@@ -327,6 +328,7 @@ export default function AbsencesPage() {
           <label>شروع غیبت<input type="datetime-local" required value={form.startsAt} onChange={e => setForm(v => ({ ...v, startsAt: e.target.value }))} /></label>
           <label>پایان غیبت<input type="datetime-local" required min={form.startsAt} value={form.endsAt} onChange={e => setForm(v => ({ ...v, endsAt: e.target.value }))} /></label>
           <label className="absence-full">علت / توضیحات<textarea required minLength={5} maxLength={1000} rows={3} value={form.reason} onChange={e => setForm(v => ({ ...v, reason: e.target.value }))} placeholder="علت غیبت یا توضیح لازم برای ثبت در سوابق…" /></label>
+          {selectedSubstituteWarning && <div className="absence-alert error absence-full"><strong>بار کاری جانشین به آستانه هشدار رسیده است</strong><span>برآورد بار این جانشین در زمان شروع {selectedSubstituteLoad?.openTaskCount ?? 0} از {policy.maxOpenTasksPerSubstitute} وظیفه است. سیاست سازمان هشدار را از {policy.warningThresholdPercent}٪ فعال می‌کند؛ ثبت همچنان مجاز است مگر اینکه سقف سخت‌گیرانه فعال شود.</span></div>}
           {selectedSubstituteAtLimit && <div className="absence-conflict absence-full"><strong>ظرفیت جانشین تکمیل است</strong><span>این جانشین {selectedSubstituteLoad?.openTaskCount ?? 0} وظیفه باز دارد و سقف سازمان {policy.maxOpenTasksPerSubstitute} است. با فعال بودن محدودیت ظرفیت، ثبت در سمت سرور نیز رد خواهد شد.</span></div>}
           <div className="absence-form-note absence-full">بار کاری جانشین بر اساس وظایف باز مستقیم و وظایف تحت پوشش جانشینی فعال محاسبه می‌شود. تعداد وظایف باز و پیش‌بینی پوشش کارمند غایب برای جانشین انتخاب‌شده: {workload.find(row => row.userId === form.substituteUserId)?.openTaskCount ?? 0} (از جمله {workload.find(row => row.userId === form.substituteUserId)?.substitutionCoverageCount ?? 0} جانشینی و {workload.find(row => row.userId === form.substituteUserId)?.delegatedTaskCount ?? 0} واگذاری). هر دو نفر باید عضو فعال همین مشتری و دارای پست معتبر در سازمان انتخاب‌شده باشند. حداکثر مدت هر غیبت ۹۰ روز است.</div>
           {conflicts.length > 0 && <div className="absence-conflict absence-full"><strong>تداخل زمانی شناسایی شد</strong><span>این بازه با {conflicts.length.toLocaleString('fa-IR')} سابقهٔ فعال تداخل دارد. اگر فرد غایب از قبل جانشینی هم‌پوشان داشته باشد، ثبت توسط سرور رد می‌شود؛ حضور جانشین در چند جانشینی هم‌زمان نیز نیازمند بررسی مدیریتی است.</span></div>}
@@ -353,7 +355,7 @@ export default function AbsencesPage() {
               <span>{personName(users.find(u => u.id === person.userId))}</span>
               <span>{person.openTaskCount.toLocaleString('fa-IR')} / {policy.maxOpenTasksPerSubstitute.toLocaleString('fa-IR')} وظیفه</span>
               <div className="absence-workload-track"><i style={{ width: `${Math.min(100, percent)}%` }} /></div>
-              <small>{person.substitutionCoverageCount.toLocaleString('fa-IR')} جانشینی · {person.delegatedTaskCount.toLocaleString('fa-IR')} واگذاری · {warning ? 'نیازمند توجه' : 'ظرفیت مناسب'}</small>
+              <small>{person.substitutionCoverageCount.toLocaleString('fa-IR')} جانشینی · {person.delegatedTaskCount.toLocaleString('fa-IR')} واگذاری · {person.prospectiveCoverageCount.toLocaleString('fa-IR')} وظیفهٔ کارمند غایب · {warning ? 'نیازمند توجه' : 'ظرفیت مناسب'}</small>
             </div>;
           })}
         </div>
