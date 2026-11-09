@@ -42,7 +42,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
   private async enqueueDueSchedules() {
     const due = await this.dataSource.transaction(async manager => {
       const rows = await manager.query(
-        'SELECT * FROM tenant_report_schedules WHERE "isActive"=true AND "nextRunAt"<=now() ORDER BY "nextRunAt" FOR UPDATE SKIP LOCKED LIMIT 20',
+        'SELECT * FROM tenant_report_schedules WHERE "isActive"=true AND "nextRunAt"<=now() ORDER BY "nextRunAt" LIMIT 20 FOR UPDATE SKIP LOCKED',
       );
       const created: Array<{ id: string; tenantId: string; ownerUserId: string; scheduleId: string }> = [];
       for (const schedule of rows) {
@@ -77,7 +77,7 @@ export class ReportBuilderWorker implements OnModuleInit, OnModuleDestroy {
         'UPDATE tenant_report_jobs SET status=CASE WHEN attempts>=5 THEN \'FAILED\' ELSE \'PENDING\' END,"lockedBy"=NULL,"lockedAt"=NULL,error=COALESCE(error,\'Worker lease expired\'),"updatedAt"=now() WHERE status=\'PROCESSING\' AND "lockedAt"<now()-interval \'5 minutes\'',
       );
       return manager.query(
-        'WITH candidates AS (SELECT id FROM tenant_report_jobs WHERE status=\'PENDING\' AND "availableAt"<=now() AND attempts<5 ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 2) UPDATE tenant_report_jobs j SET status=\'PROCESSING\',"lockedBy"=$1,"lockedAt"=now(),"startedAt"=COALESCE(j."startedAt",now()),attempts=j.attempts+1,"updatedAt"=now() FROM candidates c WHERE j.id=c.id RETURNING j.*',
+        'WITH candidates AS (SELECT id FROM tenant_report_jobs WHERE status=\'PENDING\' AND "availableAt"<=now() AND attempts<5 ORDER BY "createdAt" LIMIT 2 FOR UPDATE SKIP LOCKED) UPDATE tenant_report_jobs j SET status=\'PROCESSING\',"lockedBy"=$1,"lockedAt"=now(),"startedAt"=COALESCE(j."startedAt",now()),attempts=j.attempts+1,"updatedAt"=now() FROM candidates c WHERE j.id=c.id RETURNING j.*',
         [this.workerId],
       );
     });
