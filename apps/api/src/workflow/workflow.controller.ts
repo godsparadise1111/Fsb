@@ -57,6 +57,22 @@ export class WorkflowController {
     return this.workflow.createOrganizationAbsence(user.sub, dto, user.tenantId);
   }
   @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/workload-policy')
+  organizationWorkloadPolicy(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.getOrganizationWorkloadPolicy(organizationId, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
+  @Post('organizations/:organizationId/workload-policy')
+  updateOrganizationWorkloadPolicy(
+    @Param('organizationId') organizationId: string,
+    @Body() dto: { maxOpenTasksPerSubstitute: number; warningThresholdPercent: number; enforceLimit: boolean },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.workflow.updateOrganizationWorkloadPolicy(organizationId, user.tenantId, user.sub, dto);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/workload')
   organizationWorkload(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.getOrganizationWorkload(organizationId, user.tenantId);
