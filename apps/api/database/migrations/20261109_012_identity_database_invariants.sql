@@ -8,6 +8,7 @@ BEGIN;
 CREATE OR REPLACE FUNCTION fsb_prevent_last_tenant_admin_removal() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE scoped_tenant uuid;
 DECLARE removing_admin boolean := false;
+DECLARE tenant_status varchar(20);
 BEGIN
   IF TG_OP = 'DELETE' THEN
     scoped_tenant := OLD."tenantId";
@@ -19,8 +20,8 @@ BEGIN
   END IF;
 
   IF removing_admin THEN
-    PERFORM id FROM tenants WHERE id = scoped_tenant FOR UPDATE;
-    IF NOT EXISTS (
+    SELECT status INTO tenant_status FROM tenants WHERE id = scoped_tenant FOR UPDATE;
+    IF tenant_status = 'ACTIVE' AND NOT EXISTS (
       SELECT 1
         FROM tenant_memberships tm
         INNER JOIN users u ON u.id = tm."userId" AND u."isActive" = true
@@ -180,6 +181,7 @@ CREATE TRIGGER "AAA_user_roles_active_identity_guard"
 -- assignments through migration 008), but must never silently remove the last admin.
 CREATE OR REPLACE FUNCTION fsb_guard_user_deactivation_admin() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE membership_row record;
+DECLARE tenant_status varchar(20);
 BEGIN
   IF OLD."isActive" = true AND NEW."isActive" = false THEN
     FOR membership_row IN
@@ -189,8 +191,8 @@ BEGIN
        ORDER BY tm."tenantId"
     LOOP
       IF membership_row."isTenantAdmin" THEN
-        PERFORM id FROM tenants WHERE id = membership_row."tenantId" FOR UPDATE;
-        IF NOT EXISTS (
+        SELECT status INTO tenant_status FROM tenants WHERE id = membership_row."tenantId" FOR UPDATE;
+        IF tenant_status = 'ACTIVE' AND NOT EXISTS (
           SELECT 1
             FROM tenant_memberships tm
             INNER JOIN users u ON u.id = tm."userId" AND u."isActive" = true
