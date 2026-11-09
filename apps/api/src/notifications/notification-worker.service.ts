@@ -76,11 +76,6 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     for (const alert of candidates) {
       await this.dataSource.transaction(async manager => {
         const dedupeKey = `alert-sla:${alert.id}:${alert.stage}`;
-        const [queued] = await manager.query(
-          `SELECT id FROM notification_outbox WHERE "tenantId"=$1 AND "dedupeKey"=$2`,
-          [alert.tenantId,dedupeKey],
-        );
-        if (queued) return;
         await this.outbox.enqueue(manager, {
           tenantId: alert.tenantId,
           eventType: 'organization.alert.sla.breached',
