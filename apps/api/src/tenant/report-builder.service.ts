@@ -85,7 +85,7 @@ export class ReportBuilderService {
 
   async accessibleOrganizations(tenantId: string, userId: string) {
     return this.dataSource.query(
-      \`SELECT DISTINCT o.id,o.name,o.code
+      `SELECT DISTINCT o.id,o.name,o.code
          FROM user_roles ur
          JOIN roles r ON r.id=ur."roleId" AND r."isActive"=true AND r.scope='ORGANIZATION'
          JOIN role_permissions rp ON rp."roleId"=r.id
@@ -93,7 +93,7 @@ export class ReportBuilderService {
          JOIN organizations o ON o.id=ur."organizationId" AND o."tenantId"=ur."tenantId" AND o."isActive"=true
          JOIN tenant_memberships tm ON tm."tenantId"=ur."tenantId" AND tm."userId"=ur."userId" AND tm."isActive"=true
         WHERE ur."tenantId"=$1 AND ur."userId"=$2 AND ur."isActive"=true
-        ORDER BY o.name\`, [tenantId, userId]);
+        ORDER BY o.name`, [tenantId, userId]);
   }
 
   private async sourceFor(tenantId: string, spec: ReportSpec, organizationIds: string[] = []) {
@@ -102,13 +102,13 @@ export class ReportBuilderService {
     const source: Source = { ...base, fields: { ...base.fields } };
     if (spec.source !== 'submissions') return source;
     const versions = await this.dataSource.query(
-      \`SELECT fv.id AS "versionId",fv."versionNumber",fv.schema,fd.name AS "formName"
+      `SELECT fv.id AS "versionId",fv."versionNumber",fv.schema,fd.name AS "formName"
          FROM form_versions fv
          JOIN form_definitions fd ON fd.id=fv."definitionId"
          JOIN organizations o ON o.id=fd."organizationId" AND o."tenantId"=$1 AND o."isActive"=true
         WHERE fv.status='PUBLISHED' AND ($2::uuid[] IS NULL OR fd."organizationId"=ANY($2::uuid[]))
           AND ($3::uuid IS NULL OR fd."organizationId"=$3)
-        ORDER BY fd.name,fv."versionNumber" DESC LIMIT 500\`,
+        ORDER BY fd.name,fv."versionNumber" DESC LIMIT 500`,
       [tenantId, organizationIds.length ? organizationIds : null, spec.organizationId ?? null],
     ) as Array<{ versionId: string; versionNumber: number; schema: unknown; formName: string }>;
     const seen = new Set<string>();
@@ -130,7 +130,7 @@ export class ReportBuilderService {
           seen.add(key);
           const json = "fs.data ->> '" + fieldId + "'";
           let expression = json;
-          if (type === 'number') expression = "CASE WHEN COALESCE(" + json + ",'') ~ '^-?[0-9]+(\\\\.[0-9]+)?$' THEN (" + json + ")::numeric END";
+          if (type === 'number') expression = "CASE WHEN COALESCE(" + json + ",'') ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (" + json + ")::numeric END";
           if (type === 'date') expression = "CASE WHEN COALESCE(" + json + ",'') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (" + json + ")::date END";
           source.fields[key] = {
             label: version.formName + ' · v' + version.versionNumber + ' · ' + label,
@@ -404,10 +404,10 @@ export class ReportBuilderService {
   csv(result: ReportResult) {
     const quote = (value: unknown) => {
       let text = value === null || value === undefined ? '' : String(value);
-      if (/^[\\s]*[=+@\\-]/.test(text)) text = "'" + text;
+      if (/^[\s]*[=+@\\-]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g, '""') + '"';
     };
     const rows = [[result.groupLabel ?? 'گروه', result.measureLabel], ...result.rows.map(row => [row.dimension ?? 'همه', row.value])];
-    return '\\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\\r\\n');
+    return '\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n');
   }
 }
