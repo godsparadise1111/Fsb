@@ -37,7 +37,7 @@ export default function AbsencesPage() {
     total: number;
     truncated: boolean;
     counts: { critical: number; high: number; medium: number };
-    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null; status: string; assignedToUserId: string | null; acknowledgedAt: string | null; resolvedAt: string | null; resolutionNote: string | null }>;
+    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null; status: string; assignedToUserId: string | null; acknowledgedAt: string | null; resolvedAt: string | null; resolutionNote: string | null; responseDueAt: string | null; resolutionDueAt: string | null; slaStatus: string }>;
     generatedAt: string;
   } | null>(null);
   const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
