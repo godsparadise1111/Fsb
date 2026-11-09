@@ -688,7 +688,7 @@ export class WorkflowService {
         await manager.query(`UPDATE organization_operational_alerts SET status='ACKNOWLEDGED',"acknowledgedByUserId"=$4,"acknowledgedAt"=$5,"updatedAt"=$5 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,actorUserId,now]);
       } else if (action === 'ASSIGN') {
         if (['RESOLVED','IGNORED'].includes(current.status)) throw new ConflictException('Closed alerts cannot be assigned');
-        await manager.query(`UPDATE organization_operational_alerts SET "assignedToUserId"=$4,status='IN_PROGRESS',"updatedAt"=$5 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,assignedToUserId,now]);
+        await manager.query(`UPDATE organization_operational_alerts SET "assignedToUserId"=$4,status='IN_PROGRESS',"acknowledgedByUserId"=COALESCE("acknowledgedByUserId",$5),"acknowledgedAt"=COALESCE("acknowledgedAt",$6),"updatedAt"=$6 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,assignedToUserId,actorUserId,now]);
       } else if (action === 'RESOLVE') {
         if (['RESOLVED','IGNORED'].includes(current.status)) throw new ConflictException('Alert is already closed');
         await manager.query(`UPDATE organization_operational_alerts SET status='RESOLVED',"resolvedByUserId"=$4,"resolvedAt"=$5,"resolutionNote"=$6,"updatedAt"=$5 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,actorUserId,now,note!.trim()]);
