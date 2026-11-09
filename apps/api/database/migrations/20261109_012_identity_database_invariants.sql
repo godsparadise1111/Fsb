@@ -61,6 +61,7 @@ BEGIN
   IF EXISTS (
     SELECT tm."tenantId"
       FROM tenant_memberships tm
+      INNER JOIN tenants t ON t.id = tm."tenantId" AND t.status = 'ACTIVE'
       LEFT JOIN users u ON u.id = tm."userId" AND u."isActive" = true
      WHERE tm."isActive" = true AND tm."isTenantAdmin" = true
      GROUP BY tm."tenantId"
