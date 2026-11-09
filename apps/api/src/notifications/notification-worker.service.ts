@@ -69,6 +69,34 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
       await this.outbox.markDead(item.id, this.workerId, 'Tenant is not active; notification was not sent');
       return false;
     }
+    if (item.eventType === 'organization.alert.sla.breached') {
+      const alertId = String(item.payload.alertId ?? '');
+      const userId = String(item.payload.userId ?? '');
+      const [valid] = await this.dataSource.query(
+        `SELECT a.id FROM organization_operational_alerts a
+          JOIN users u ON u.id=$3 AND u."isActive"=true AND lower(u.email)=lower($4)
+          JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
+         WHERE a.id=$1 AND a."tenantId"=$2 AND a."assignedToUserId"=u.id
+           AND a.status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
+        [alertId,item.tenantId,userId,item.recipient],
+      );
+      if (!valid) {
+        await this.outbox.markDead(item.id,this.workerId,'Alert is closed or assigned recipient is no longer an active tenant member');
+        return false;
+      }
+      const title=String(item.payload.title ?? 'Operational alert');
+      const stage=String(item.payload.stage ?? 'SLA');
+      const due=String(stage==='RESPONSE' ? item.payload.responseDueAt : item.payload.resolutionDueAt);
+      const safeTitle=this.escapeHtml(title), safeDue=this.escapeHtml(due);
+      const subject=(item.subject ?? 'Operational alert SLA breached').replaceAll('\\r',' ').replaceAll('\\n',' ').slice(0,160);
+      await this.transporter.sendMail({
+        from:process.env.FSB_EMAIL_FROM,to:item.recipient,subject,
+        text:`The operational alert "${title}" has breached its ${stage.toLowerCase()} deadline. Deadline: ${due}`,
+        html:`<p>The operational alert <strong>${safeTitle}</strong> has breached its ${stage.toLowerCase()} deadline.</p><p>Deadline: ${safeDue}</p>`,
+        messageId:`<fsb-${item.id}@${new URL(process.env.FSB_PUBLIC_APP_URL!).hostname}>`,
+      });
+      return true;
+    }
     if (item.eventType === 'workflow.sla.overdue') {
       const taskId = String(item.payload.taskId ?? '');
       const userId = String(item.payload.userId ?? '');
@@ -142,6 +170,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     try {
       try {
         await this.enqueueOverdueEscalations();
+        await this.enqueueOperationalAlertSlaEscalations();
       } catch (error) {
         this.logger.warn(`SLA escalation scan failed: ${String(error).slice(0, 400)}`);
       }
@@ -220,6 +249,55 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
           });
         }
       });
+    }
+  }
+
+  private async enqueueOperationalAlertSlaEscalations() {
+    const candidates = await this.dataSource.query(
+      `SELECT a.id,a."tenantId",a."organizationId",a.title,a.severity,a.status,
+              a."assignedToUserId",a."responseDueAt",a."resolutionDueAt",
+              u.email,u."firstName",u."lastName",
+              CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE'
+                   WHEN a."resolutionDueAt" <= now() THEN 'RESOLUTION' END AS stage
+         FROM organization_operational_alerts a
+         JOIN tenants t ON t.id=a."tenantId" AND t.status='ACTIVE'
+         JOIN users u ON u.id=a."assignedToUserId" AND u."isActive"=true
+         JOIN tenant_memberships tm ON tm."userId"=u.id AND tm."tenantId"=a."tenantId" AND tm."isActive"=true
+        WHERE a.status IN ('ACKNOWLEDGED','IN_PROGRESS','OPEN')
+          AND a."assignedToUserId" IS NOT NULL AND u.email IS NOT NULL
+          AND ((a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now())
+            OR a."resolutionDueAt" <= now())
+          AND NOT EXISTS (
+            SELECT 1 FROM notification_outbox n
+             WHERE n."tenantId"=a."tenantId"
+               AND n."dedupeKey"='alert-sla:'||a.id::text||':'||
+                 CASE WHEN a."acknowledgedAt" IS NULL AND a."responseDueAt" <= now() THEN 'RESPONSE' ELSE 'RESOLUTION' END
+          )
+        ORDER BY a."resolutionDueAt" ASC LIMIT 100`,
+    ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;status:string;assignedToUserId:string;responseDueAt:Date;resolutionDueAt:Date;email:string;firstName:string;lastName:string;stage:string}>;
+    for (const alert of candidates) {
+      await this.dataSource.transaction(async manager => {
+        await this.outbox.enqueue(manager, {
+          tenantId: alert.tenantId,
+          eventType: 'organization.alert.sla.breached',
+          recipient: alert.email,
+          subject: `Operational alert SLA breached: ${alert.title}`,
+          dedupeKey: `alert-sla:${alert.id}:${alert.stage}`,
+          payload: {
+            alertId: alert.id, organizationId: alert.organizationId, title: alert.title,
+            severity: alert.severity, stage: alert.stage, userId: alert.assignedToUserId,
+            responseDueAt: new Date(alert.responseDueAt).toISOString(),
+            resolutionDueAt: new Date(alert.resolutionDueAt).toISOString(),
+          },
+        });
+      });
+      await this.dataSource.query(
+        `UPDATE organization_operational_alerts SET "escalatedAt"=COALESCE("escalatedAt",now()),
+           "escalationLevel"=GREATEST("escalationLevel",CASE WHEN $2='RESPONSE' THEN 1 ELSE 2 END),
+           "updatedAt"=now()
+          WHERE id=$1 AND "tenantId"=$3 AND status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS')`,
+        [alert.id, alert.stage, alert.tenantId],
+      );
     }
   }
 
