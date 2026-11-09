@@ -1,6 +1,8 @@
 import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserRole } from '../identity/entities/user-role.entity';
+import { ForbiddenException } from '@nestjs/common';
 import { Organization } from './entities/organization.entity';
 import { OrganizationUnit } from './entities/organization-unit.entity';
 import { Position } from './entities/position.entity';
@@ -10,7 +12,7 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
 @Injectable()
 export class OrganizationService {
-  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>) {}
+  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>, @InjectRepository(UserRole) private readonly userRoles: Repository<UserRole>) {}
   async createOrganization(dto: CreateOrganizationDto) {
     if (!dto.tenantId) throw new BadRequestException('A tenant must be explicitly selected or derived from the authenticated tenant context');
     const tenant = await this.tenants.findOne({ where: { id: dto.tenantId } });
@@ -19,6 +21,28 @@ export class OrganizationService {
     return this.organizations.save(this.organizations.create({ ...dto, tenant }));
   }
   listOrganizations(tenantId?: string | null) { return this.organizations.find({ where: tenantId ? { tenantId, isActive: true } : { isActive: true }, order: { name: 'ASC' } }); }
+  async listAccessibleOrganizations(userId: string, tenantId?: string | null, isTenantAdmin = false) {
+    if (isTenantAdmin) {
+      if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+      return this.listOrganizations(tenantId);
+    }
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const grants = await this.userRoles.find({
+      where: { userId, isActive: true },
+      relations: { role: { permissions: true }, organization: true },
+    });
+    const organizationIds = [...new Set(grants
+      .filter(grant => grant.role?.isActive && grant.role.scope === 'ORGANIZATION' &&
+        grant.organization?.isActive && grant.organization.tenantId === tenantId &&
+        (grant.role.permissions ?? []).some(permission => permission.code === 'organization.read'))
+      .map(grant => grant.organizationId)
+      .filter((id): id is string => Boolean(id)))];
+    if (!organizationIds.length) return [];
+    return this.organizations.find({
+      where: organizationIds.map(id => ({ id, tenantId, isActive: true })),
+      order: { name: 'ASC' },
+    });
+  }
   async createUnit(dto: CreateUnitDto) {
     const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true } });
     if (!organization) throw new NotFoundException('Organization not found');
