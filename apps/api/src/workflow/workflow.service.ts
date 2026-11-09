@@ -255,7 +255,12 @@ export class WorkflowService {
             [tenantId, taskIds],
           )
         : [];
-      return { ...instance, tasks, actionLogs, lifecycleEvents };
+      const reassignments = taskIds.length
+        ? await manager.find(WorkflowTaskReassignment, {
+            where: { tenantId, taskId: In(taskIds) }, order: { createdAt: 'ASC' },
+          })
+        : [];
+      return { ...instance, tasks, actionLogs, lifecycleEvents, reassignments };
     });
   }
 
