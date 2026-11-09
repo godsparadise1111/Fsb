@@ -21,7 +21,7 @@ export class TenantApiCredentialService {
     }
     return this.dataSource.transaction(async manager => {
       const [tenant] = await manager.query(
-        `SELECT t.id FROM tenants t
+        `SELECT t.id,p.features FROM tenants t
           JOIN tenant_subscriptions s ON s."tenantId"=t.id
           JOIN commercial_plans p ON p.code=s."planCode"
          WHERE t.id=$1 AND t.status='ACTIVE'
@@ -33,6 +33,10 @@ export class TenantApiCredentialService {
         [tenantId],
       );
       if (!tenant) throw new ForbiddenException('API access is not enabled for this active tenant subscription');
+      const requiredFeatures = scopes.map(scope => scope === 'reports.read' ? 'standard_reports' : 'api_access');
+      if (!requiredFeatures.every(feature => tenant.features?.[feature] === true)) {
+        throw new ForbiddenException('One or more requested API scopes are not included in the active subscription');
+      }
       const prefix = 'fsb_live_' + randomBytes(5).toString('hex');
       const secret = randomBytes(32).toString('base64url');
       const fullKey = prefix + '.' + secret;
