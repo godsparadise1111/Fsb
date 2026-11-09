@@ -223,8 +223,12 @@ export class TenantReportsService {
     const [summary] = await this.dataSource.query(
       `SELECT count(*)::int AS "totalAlerts",
         count(*) FILTER (WHERE "acknowledgedAt" IS NOT NULL AND "responseDueAt" IS NOT NULL)::int AS "responded",
+        count(*) FILTER (WHERE "responseDueAt" IS NOT NULL AND ("acknowledgedAt" IS NOT NULL OR "responseDueAt"<now()))::int AS "responseEligible",
+        count(*) FILTER (WHERE "responseDueAt" IS NOT NULL AND "acknowledgedAt" IS NOT NULL AND "acknowledgedAt"<="responseDueAt")::int AS "responseMet",
         count(*) FILTER (WHERE ("acknowledgedAt" IS NULL AND "responseDueAt"<now()) OR "acknowledgedAt">"responseDueAt")::int AS "responseBreached",
         count(*) FILTER (WHERE "resolvedAt" IS NOT NULL AND "resolutionDueAt" IS NOT NULL)::int AS "resolved",
+        count(*) FILTER (WHERE "resolutionDueAt" IS NOT NULL AND ("resolvedAt" IS NOT NULL OR "resolutionDueAt"<now()))::int AS "resolutionEligible",
+        count(*) FILTER (WHERE "resolutionDueAt" IS NOT NULL AND "resolvedAt" IS NOT NULL AND "resolvedAt"<="resolutionDueAt")::int AS "resolutionMet",
         count(*) FILTER (WHERE ("resolvedAt" IS NULL AND "resolutionDueAt"<now()) OR "resolvedAt">"resolutionDueAt")::int AS "resolutionBreached",
         round(avg(EXTRACT(EPOCH FROM ("acknowledgedAt"-"firstDetectedAt"))/60) FILTER (WHERE "acknowledgedAt">="firstDetectedAt")::numeric,2) AS "averageResponseMinutes",
         round(avg(EXTRACT(EPOCH FROM ("resolvedAt"-"firstDetectedAt"))/3600) FILTER (WHERE "resolvedAt">="firstDetectedAt")::numeric,2) AS "averageResolutionHours",
@@ -262,13 +266,13 @@ export class TenantReportsService {
       [tenantId,from,to,organizationId],
     );
     const numeric = (row: any) => Object.fromEntries(Object.entries(row ?? {}).map(([key,value]) => [key,value == null ? null : typeof value === 'string' && /^-?\\d+(\\.\\d+)?$/.test(value) ? Number(value) : value]));
-    const responded=Number(summary?.responded ?? 0), responseBreached=Number(summary?.responseBreached ?? 0);
-    const resolved=Number(summary?.resolved ?? 0), resolutionBreached=Number(summary?.resolutionBreached ?? 0);
+    const responseEligible=Number(summary?.responseEligible ?? 0), responseMet=Number(summary?.responseMet ?? 0);
+    const resolutionEligible=Number(summary?.resolutionEligible ?? 0), resolutionMet=Number(summary?.resolutionMet ?? 0);
     return {
       tenant:{id:tenant.id,name:tenant.name},period:{from:from.toISOString(),to:to.toISOString()},filters:{organizationId},
       summary:numeric(summary),
-      responseCompliancePercent:responded ? Number((((responded-responseBreached)/responded)*100).toFixed(2)) : null,
-      resolutionCompliancePercent:resolved ? Number((((resolved-resolutionBreached)/resolved)*100).toFixed(2)) : null,
+      responseCompliancePercent:responseEligible ? Number(((responseMet/responseEligible)*100).toFixed(2)) : null,
+      resolutionCompliancePercent:resolutionEligible ? Number(((resolutionMet/resolutionEligible)*100).toFixed(2)) : null,
       bySeverity:bySeverity.map(numeric),byOrganization:byOrganization.map(numeric),generatedAt:new Date().toISOString(),
     };
   }
