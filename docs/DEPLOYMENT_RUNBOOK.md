@@ -39,7 +39,15 @@ sh scripts/ops/preflight.sh
 docker compose --env-file .env -f compose.production.yaml build
 ```
 
-Dockerfileها فعلاً برای نصب از `npm install` استفاده می‌کنند، زیرا در ریشه monorepo فایل lockfile ثبت‌شده وجود ندارد. پیش از عرضه Production باید یک `package-lock.json` واحد در ریشه تولید، بازبینی و commit شود؛ پس از آن Dockerfileها باید به `npm ci` تغییر کنند تا Build تکرارپذیر باشد.
+در وضعیت فعلی lockfile ریشه ثبت نشده است. پیش از Production از ریشه مخزن اجرا کنید:
+
+```sh
+sh scripts/ops/prepare-lockfile.sh
+git add package-lock.json
+git commit -m "build: add root npm workspace lockfile"
+```
+
+اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند. Dockerfileها در صورت وجود lockfile از `npm ci` استفاده می‌کنند؛ در غیر این صورت فقط برای Buildهای موقت به `npm install` fallback می‌کنند. Preflight تولید بدون lockfile commitشده عمداً متوقف می‌شود.
 
 ## 4. Migration و Backup
 
