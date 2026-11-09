@@ -638,7 +638,7 @@ export class WorkflowService {
              COALESCE(aggregated."prospectiveCoverageCount", 0)::int AS "prospectiveCoverageCount"
         FROM active_people people
         LEFT JOIN aggregated ON aggregated."userId" = people.id
-       ORDER BY COALESCE(aggregated."openTaskCount", 0) DESC, people."lastName", people."firstName"`,
+       ORDER BY (COALESCE(aggregated."openTaskCount", 0) + COALESCE(aggregated."prospectiveCoverageCount", 0)) DESC, people."lastName", people."firstName"`,
       [tenantId, organizationId, asOf, substituteUserId ?? null, absentUserId ?? null],
     );
     const activeIds = new Set(rows.map((row: any) => String(row.userId)));
