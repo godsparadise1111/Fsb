@@ -97,7 +97,7 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
         ) as Array<{userId:string;email:string;audience:'ASSIGNEE'|'MANAGER'}>;
         for (const recipient of recipients) {
           const dedupeKey = recipient.audience === 'ASSIGNEE'
-            ? `alert-sla:${alert.id}:${stage}`
+            ? `alert-sla:${alert.id}:${stage}:${recipient.userId}`
             : `alert-sla-manager:${alert.id}:${stage}:${recipient.userId}`;
           await this.outbox.enqueue(manager, {
             tenantId: alert.tenantId,
