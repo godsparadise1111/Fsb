@@ -127,6 +127,19 @@ export class WorkflowService {
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Task is no longer actionable');
       let assignment = await manager.findOne(TaskAssignee, { where: { taskId, userId }, lock: { mode: 'pessimistic_write' } });
+      if (assignment) {
+        const activePosition = await manager.createQueryBuilder(UserPosition, 'membership')
+          .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
+          .innerJoin('tenant_memberships', 'tm',
+            'tm."userId"=membership."userId" AND tm."tenantId"=:tenantId AND tm."isActive"=true', { tenantId })
+          .where('membership.userId=:userId AND unit.organizationId=:organizationId', {
+            userId, organizationId: task.processInstance.organizationId,
+          })
+          .andWhere('membership.isActive=true AND position.isActive=true AND unit.isActive=true')
+          .andWhere('membership.validFrom<=CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil>=CURRENT_TIMESTAMP)')
+          .getCount();
+        if (!activePosition) throw new ForbiddenException('An active position in the task organization is required to act on a direct assignment');
+      }
       let actingDelegation: TaskDelegation | null = null;
       let actingSubstitution: OrganizationSubstitution | null = null;
       if (!assignment) {
