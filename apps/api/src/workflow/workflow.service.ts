@@ -454,6 +454,7 @@ export class WorkflowService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, actorUserId, task.processInstance.organizationId);
       const delegation = await manager.findOne(TaskDelegation, {
         where: { id: delegationId, taskId, tenantId }, lock: { mode: 'pessimistic_write' },
       });
@@ -591,6 +592,7 @@ export class WorkflowService {
         where: { id: substitutionId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
       });
       if (!substitution) throw new NotFoundException('Substitution not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, actorUserId, organizationId);
       if (substitution.revokedAt) throw new ConflictException('Substitution is already revoked');
       substitution.revokedAt = new Date();
       substitution.revokedByUserId = actorUserId;
@@ -1236,6 +1238,7 @@ export class WorkflowService {
         where: { id: absenceId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
       });
       if (!absence) throw new NotFoundException('Absence not found');
+      await this.assertActiveWorkflowMember(manager, tenantId, actorUserId, organizationId);
       if (absence.cancelledAt) throw new ConflictException('Absence is already cancelled');
       absence.cancelledAt = new Date();
       absence.cancelledByUserId = actorUserId;
