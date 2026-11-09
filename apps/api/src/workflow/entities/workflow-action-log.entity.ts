@@ -14,5 +14,6 @@ export class WorkflowActionLog {
   @JoinColumn({ name: 'userId' }) user: User;
   @Column({ length: 30 }) action: string;
   @Column({ type: 'text', nullable: true }) comment: string | null;
+  @Column({ type: 'integer', nullable: true }) returnToStepIndex: number | null;
   @CreateDateColumn() createdAt: Date;
 }
