@@ -88,11 +88,26 @@ export class ProcessService {
       if (configuredSteps !== undefined && !Array.isArray(configuredSteps)) {
         throw new BadRequestException('Process schema steps must be an array');
       }
+      const hasExplicitTransitions = version.schema?.transitions !== undefined;
+      if ((configuredSteps ?? []).length > 100) throw new BadRequestException('A process version cannot contain more than 100 steps');
       for (const [index, step] of (configuredSteps ?? []).entries()) {
         if (!step || typeof step !== 'object' || Array.isArray(step)) {
           throw new BadRequestException(`Process step ${index + 1} must be an object`);
         }
         const config = step as Record<string, unknown>;
+        if (config.assignmentPolicy !== undefined && !['ANY_ASSIGNEE', 'ALL_ASSIGNEES'].includes(String(config.assignmentPolicy))) {
+          throw new BadRequestException(`Process step ${index + 1} assignmentPolicy must be ANY_ASSIGNEE or ALL_ASSIGNEES`);
+        }
+        if (index > 0 || hasExplicitTransitions) {
+          const assigneeIds = config.assigneeUserIds;
+          if (!Array.isArray(assigneeIds) || assigneeIds.length < 1 || assigneeIds.length > 50 ||
+              assigneeIds.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+            throw new BadRequestException(`Process step ${index + 1} must define between 1 and 50 valid assigneeUserIds`);
+          }
+          if (new Set(assigneeIds).size !== assigneeIds.length) {
+            throw new BadRequestException(`Process step ${index + 1} assigneeUserIds cannot contain duplicates`);
+          }
+        }
         const dueInHours = config.dueInHours;
         if (dueInHours !== undefined && dueInHours !== null &&
             (typeof dueInHours !== 'number' || !Number.isFinite(dueInHours) || dueInHours <= 0 || dueInHours > 8760)) {
@@ -138,6 +153,60 @@ export class ProcessService {
         }
         if (config.reassignOnInactiveAssignee === true && config.reassignUserIds === undefined) {
           throw new BadRequestException(`Process step ${index + 1} inactive-assignee reassignment requires reassignUserIds`);
+        }
+      }
+      if (hasExplicitTransitions) {
+        const transitions = version.schema?.transitions;
+        if (!Array.isArray(transitions) || transitions.length < 1 || transitions.length > 300) {
+          throw new BadRequestException('Explicit transitions must contain between 1 and 300 transition rules');
+        }
+        const keys = new Set<string>();
+        const reachable = new Set<number>([0]);
+        for (const [index, raw] of transitions.entries()) {
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+            throw new BadRequestException(`Transition ${index + 1} must be an object`);
+          }
+          const edge = raw as Record<string, unknown>;
+          const from = edge.fromStepIndex;
+          const to = edge.toStepIndex;
+          const action = edge.action;
+          if (!Number.isInteger(from) || Number(from) < 0 || Number(from) >= (configuredSteps ?? []).length) {
+            throw new BadRequestException(`Transition ${index + 1} has an invalid fromStepIndex`);
+          }
+          if (!['APPROVED', 'REJECTED', 'RETURNED'].includes(String(action))) {
+            throw new BadRequestException(`Transition ${index + 1} action must be APPROVED, REJECTED or RETURNED`);
+          }
+          if (to !== null && (!Number.isInteger(to) || Number(to) < 0 || Number(to) >= (configuredSteps ?? []).length || Number(to) === Number(from))) {
+            throw new BadRequestException(`Transition ${index + 1} has an invalid toStepIndex`);
+          }
+          if (action === 'RETURNED' && (to === null || Number(to) >= Number(from))) {
+            throw new BadRequestException(`Transition ${index + 1} RETURNED target must be an earlier step`);
+          }
+          const key = String(from) + ':' + String(action);
+          if (keys.has(key)) throw new BadRequestException('Only one transition per step and action is allowed');
+          keys.add(key);
+          if (to !== null) reachable.add(Number(to));
+        }
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const raw of transitions as Array<Record<string, unknown>>) {
+            if (reachable.has(Number(raw.fromStepIndex)) && raw.toStepIndex !== null && !reachable.has(Number(raw.toStepIndex))) {
+              reachable.add(Number(raw.toStepIndex));
+              changed = true;
+            }
+          }
+        }
+        if (reachable.size !== (configuredSteps ?? []).length) {
+          throw new BadRequestException('Every process step must be reachable from the first step in the transition graph');
+        }
+        if (!(transitions as Array<Record<string, unknown>>).some(edge => edge.toStepIndex === null)) {
+          throw new BadRequestException('The transition graph must define at least one terminal transition with toStepIndex=null');
+        }
+        for (let index = 0; index < (configuredSteps ?? []).length; index++) {
+          if (!keys.has(index + ':APPROVED')) {
+            throw new BadRequestException(`Process step ${index + 1} must define an APPROVED transition`);
+          }
         }
       }
       const usesSla = (configuredSteps ?? []).some((step: unknown) => {
