@@ -14,7 +14,7 @@ echo "[3/5] Migration ledger and required baseline"
 ledger=$("${COMPOSE[@]}" exec -T postgres psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM fsb_schema_migrations WHERE filename='20261107_000_core_schema_baseline.sql';" | tr -d '\r')
 [[ "$ledger" == "1" ]] || { echo "Core baseline is not recorded in migration ledger" >&2; exit 1; }
 echo "[4/5] API health"
-curl --fail --silent --show-error "$API_BASE_URL/health"
+curl --fail --silent --show-error "$API_BASE_URL/health/ready"
 echo
 echo "[5/5] Web response"
 curl --fail --silent --show-error --output /dev/null --write-out 'HTTP %{http_code}\n' "$WEB_BASE_URL/"
