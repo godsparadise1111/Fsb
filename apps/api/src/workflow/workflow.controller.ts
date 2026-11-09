@@ -73,6 +73,12 @@ export class WorkflowController {
   }
 
   @RequirePermissions('workflow.substitutions.manage')
+  @Get('organizations/:organizationId/operations-overview')
+  organizationOperationsOverview(@Param('organizationId') organizationId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.workflow.getOrganizationOperationsOverview(organizationId, user.tenantId);
+  }
+
+  @RequirePermissions('workflow.substitutions.manage')
   @Get('organizations/:organizationId/workload')
   organizationWorkload(@Param('organizationId') organizationId: string, @Query('at') at: string, @Query('absentUserId') absentUserId: string, @Query('substituteUserId') substituteUserId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.workflow.getOrganizationWorkload(organizationId, user.tenantId, at, absentUserId, substituteUserId);
