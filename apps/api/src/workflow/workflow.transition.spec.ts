@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { WorkflowService } from './workflow.service';
+import { isAssignmentPolicySatisfied } from './workflow-assignment-policy';
 
 const service = Object.create(WorkflowService.prototype) as WorkflowService;
 const resolve = (service as any).resolveTransitionTarget.bind(service) as (
@@ -103,4 +104,39 @@ test('inactive or cross-organization position assignment is rejected', async () 
     ),
     BadRequestException,
   );
+});
+
+test('ANY_ASSIGNEE completes after the first approval', () => {
+  assert.equal(isAssignmentPolicySatisfied('ANY_ASSIGNEE', [
+    { status: 'APPROVED' }, { status: 'PENDING' }, { status: 'PENDING' },
+  ]), true);
+});
+
+test('ALL_ASSIGNEES waits until every active assignee approves', () => {
+  assert.equal(isAssignmentPolicySatisfied('ALL_ASSIGNEES', [
+    { status: 'APPROVED' }, { status: 'PENDING' },
+  ]), false);
+  assert.equal(isAssignmentPolicySatisfied('ALL_ASSIGNEES', [
+    { status: 'APPROVED' }, { status: 'APPROVED' },
+  ]), true);
+});
+
+test('reassigned historical rows do not block an ALL_ASSIGNEES quorum', () => {
+  assert.equal(isAssignmentPolicySatisfied('ALL_ASSIGNEES', [
+    { status: 'APPROVED' }, { status: 'REASSIGNED' },
+  ]), true);
+});
+
+test('empty active assignment sets never complete a task', () => {
+  assert.equal(isAssignmentPolicySatisfied('ALL_ASSIGNEES', [{ status: 'REASSIGNED' }]), false);
+  assert.equal(isAssignmentPolicySatisfied('ANY_ASSIGNEE', [{ status: 'REASSIGNED' }]), false);
+});
+
+test('a rejection never counts as approval for either assignment policy', () => {
+  assert.equal(isAssignmentPolicySatisfied('ANY_ASSIGNEE', [
+    { status: 'REJECTED' }, { status: 'PENDING' },
+  ]), false);
+  assert.equal(isAssignmentPolicySatisfied('ALL_ASSIGNEES', [
+    { status: 'APPROVED' }, { status: 'REJECTED' },
+  ]), false);
 });
