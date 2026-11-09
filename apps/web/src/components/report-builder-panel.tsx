@@ -32,6 +32,7 @@ export default function ReportBuilderPanel() {
   const [description,setDescription] = useState('');
   const [isShared,setIsShared] = useState(false);
   const [loadedId,setLoadedId] = useState('');
+  const [canEdit,setCanEdit] = useState(true);
   const [result,setResult] = useState<Result|null>(null);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
@@ -100,7 +101,7 @@ export default function ReportBuilderPanel() {
     try {
       const payload={title,description,isShared,config:makeSpec()};
       const data=await request(loadedId?('/tenant/report-builder/saved/'+loadedId):'/tenant/report-builder/saved',{method:loadedId?'PATCH':'POST',body:JSON.stringify(payload)});
-      setLoadedId(data.id);await refreshSaved();
+      setLoadedId(data.id);setCanEdit(true);await refreshSaved();
     } catch(error){setError(error instanceof Error?error.message:'ذخیره گزارش ناموفق بود');}
     finally{setBusy(false);}
   }
@@ -110,7 +111,7 @@ export default function ReportBuilderPanel() {
     try {
       const data=await request('/tenant/report-builder/saved/'+id);
       const config=data.config as Spec;
-      setLoadedId(data.id);setTitle(data.title);setDescription(data.description||'');setIsShared(data.isShared);
+      setLoadedId(data.id);setCanEdit(data.isOwner===true);setTitle(data.title);setDescription(data.description||'');setIsShared(data.isShared);
       setSourceKey(config.source);setFrom(config.from||monthAgo());setTo(config.to||today());setGroupBy(config.groupBy||'');
       setAggregate(config.aggregate);setMeasure(config.measure||'');
       setFilters((config.filters||[]).map((filter:any)=>({field:filter.field,operator:filter.operator,value:Array.isArray(filter.value)?filter.value.join(','):String(filter.value)})));
@@ -123,7 +124,7 @@ export default function ReportBuilderPanel() {
   async function removeSaved(id:string) {
     if (!window.confirm('این گزارش ذخیره‌شده حذف شود؟')) return;
     setBusy(true);setError('');
-    try {await request('/tenant/report-builder/saved/'+id,{method:'DELETE'});if(loadedId===id){setLoadedId('');setTitle('');}await refreshSaved();}
+    try {await request('/tenant/report-builder/saved/'+id,{method:'DELETE'});if(loadedId===id){setLoadedId('');setCanEdit(true);setTitle('');}await refreshSaved();}
     catch(error){setError(error instanceof Error?error.message:'حذف گزارش ناموفق بود');}
     finally{setBusy(false);}
   }
@@ -162,7 +163,7 @@ export default function ReportBuilderPanel() {
         <button type="button" style={button} onClick={()=>setFilters(current=>current.filter((_,i)=>i!==index))}>حذف شرط</button>
       </div>)}
     </div>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18}}><button type="button" style={button} disabled={busy||!sourceKey||(aggregate!=='count'&&!measure)} onClick={()=>void run()}>{busy?'در حال پردازش…':'اجرای گزارش'}</button><button type="button" style={button} onClick={()=>{setLoadedId('');setTitle('');setDescription('');setIsShared(false);setResult(null);setFilters([]);setGroupBy('');setAggregate('count');setMeasure('')}}>گزارش جدید</button></div>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:18}}><button type="button" style={button} disabled={busy||!sourceKey||(aggregate!=='count'&&!measure)} onClick={()=>void run()}>{busy?'در حال پردازش…':'اجرای گزارش'}</button><button type="button" style={button} onClick={()=>{setLoadedId('');setCanEdit(true);setTitle('');setDescription('');setIsShared(false);setResult(null);setFilters([]);setGroupBy('');setAggregate('count');setMeasure('')}}>گزارش جدید</button></div>
     <div style={{borderTop:'1px solid var(--border, #e5e7eb)',marginTop:20,paddingTop:18}}>
       <h3 style={{marginTop:0}}>ذخیره و اشتراک گزارش</h3>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,220px),1fr))',gap:10}}>
@@ -170,7 +171,7 @@ export default function ReportBuilderPanel() {
         <label style={{display:'grid',gap:5}}>توضیحات<input style={control} value={description} onChange={e=>setDescription(e.target.value)} maxLength={1000}/></label>
       </div>
       <label style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}><input type="checkbox" checked={isShared} onChange={e=>setIsShared(e.target.checked)}/>اشتراک با اعضای مجاز همین مشتری</label>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}><button style={button} type="button" disabled={busy||!title.trim()} onClick={()=>void save()}>{loadedId?'به‌روزرسانی گزارش':'ذخیره گزارش'}</button><button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportCsv()}>خروجی CSV</button></div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>{(!loadedId||canEdit)&&<button style={button} type="button" disabled={busy||!title.trim()} onClick={()=>void save()}>{loadedId?'به‌روزرسانی گزارش':'ذخیره گزارش'}</button>}<button style={button} type="button" disabled={busy||!loadedId} onClick={()=>void exportCsv()}>خروجی CSV</button></div>
     </div>
     <div style={{borderTop:'1px solid var(--border, #e5e7eb)',marginTop:20,paddingTop:18}}>
       <h3 style={{marginTop:0}}>گزارش‌های ذخیره‌شده</h3>
