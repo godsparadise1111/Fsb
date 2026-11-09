@@ -51,4 +51,4 @@ WHERE s.status IN ('ACTIVE','TRIALING')
 SELECT c.id, c."tenantId", t.status
 FROM tenant_api_credentials c
 JOIN tenants t ON t.id=c."tenantId"
-WHERE c.status='ACTIVE' AND t.status <> 'ACTIVE';
+WHERE c.status='ACTIVE' AND t.status='CLOSED';
