@@ -19,3 +19,7 @@ export class CreateTenantInvoiceDto {
 export class TransitionInvoiceDto {
   @IsIn(['PAID','VOID']) status: 'PAID'|'VOID';
 }
+
+export class RenewTenantSubscriptionDto {
+  @IsString() @Length(36,36) invoiceId: string;
+}
