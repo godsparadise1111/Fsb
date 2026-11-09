@@ -75,12 +75,18 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
     ) as Array<{id:string;tenantId:string;organizationId:string;title:string;severity:string;assignedToUserId:string;responseDueAt:Date;resolutionDueAt:Date;email:string;stage:string}>;
     for (const alert of candidates) {
       await this.dataSource.transaction(async manager => {
+        const dedupeKey = `alert-sla:${alert.id}:${alert.stage}`;
+        const [queued] = await manager.query(
+          `SELECT id FROM notification_outbox WHERE "tenantId"=$1 AND "dedupeKey"=$2`,
+          [alert.tenantId,dedupeKey],
+        );
+        if (queued) return;
         await this.outbox.enqueue(manager, {
           tenantId: alert.tenantId,
           eventType: 'organization.alert.sla.breached',
           recipient: alert.email,
           subject: `Operational alert SLA breached: ${alert.title}`,
-          dedupeKey: `alert-sla:${alert.id}:${alert.stage}`,
+          dedupeKey,
           payload: {
             alertId: alert.id, organizationId: alert.organizationId, title: alert.title,
             severity: alert.severity, stage: alert.stage, userId: alert.assignedToUserId,
@@ -88,6 +94,12 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
             resolutionDueAt: new Date(alert.resolutionDueAt).toISOString(),
           },
         });
+        await manager.query(
+          `INSERT INTO organization_operational_alert_events ("tenantId","organizationId","alertId","actorUserId","eventType","fromStatus","toStatus","note","dedupeKey")
+           VALUES ($1,$2,$3,NULL,$4,$5,$5,$6,$7) ON CONFLICT ("tenantId","dedupeKey") DO NOTHING`,
+          [alert.tenantId,alert.organizationId,alert.id,alert.stage === 'RESPONSE' ? 'SLA_RESPONSE_BREACH' : 'SLA_RESOLUTION_BREACH',alert.status,
+           alert.stage === 'RESPONSE' ? 'مهلت پاسخ هشدار نقض شد.' : 'مهلت حل هشدار نقض شد.',dedupeKey],
+        );
       });
       await this.dataSource.query(
         `UPDATE organization_operational_alerts
