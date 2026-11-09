@@ -353,7 +353,7 @@ export class ReportBuilderService {
   async update(tenantId: string, userId: string, id: string, input: { title?: string; description?: string; isShared?: boolean; config?: ReportSpec }, organizationId?: string, tenantWide = true) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('اطلاعات ویرایش گزارش نامعتبر است');
     const current = await this.dataSource.query(
-      'SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\\'organizationId\\'=$4::text) AND ($5::boolean OR config->>\\'organizationId\\' IS NOT NULL)',
+      'SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\'organizationId\'=$4::text) AND ($5::boolean OR config->>\'organizationId\' IS NOT NULL)',
       [id, tenantId, userId, organizationId ?? null, tenantWide],
     );
     if (!current.length) throw new NotFoundException('گزارش متعلق به کاربر جاری پیدا نشد');
@@ -379,7 +379,7 @@ export class ReportBuilderService {
     params.push(organizationId ?? null);
     const tenantWideParameter = params.length + 1;
     params.push(tenantWide);
-    const scopeWhere = ' AND ($' + organizationParameter + '::uuid IS NULL OR config->>\\'organizationId\\'=$' + organizationParameter + '::text) AND ($' + tenantWideParameter + '::boolean OR config->>\\'organizationId\\' IS NOT NULL)';
+    const scopeWhere = ' AND ($' + organizationParameter + '::uuid IS NULL OR config->>\'organizationId\'=$' + organizationParameter + '::text) AND ($' + tenantWideParameter + '::boolean OR config->>\'organizationId\' IS NOT NULL)';
     const [row] = await this.dataSource.query(
       'UPDATE tenant_saved_reports SET ' + sets.join(',') + ' WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3' + scopeWhere + ' RETURNING id,title,description,"isShared","createdAt","updatedAt"',
       params,
@@ -389,7 +389,7 @@ export class ReportBuilderService {
 
   async remove(tenantId: string, userId: string, id: string, organizationId?: string, tenantWide = true) {
     const rows = await this.dataSource.query(
-      'DELETE FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\\'organizationId\\'=$4::text) AND ($5::boolean OR config->>\\'organizationId\\' IS NOT NULL) RETURNING id',
+      'DELETE FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3 AND ($4::uuid IS NULL OR config->>\'organizationId\'=$4::text) AND ($5::boolean OR config->>\'organizationId\' IS NOT NULL) RETURNING id',
       [id, tenantId, userId, organizationId ?? null, tenantWide],
     );
     if (!rows.length) throw new NotFoundException('گزارش متعلق به کاربر جاری پیدا نشد');
