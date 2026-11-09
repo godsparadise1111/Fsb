@@ -133,7 +133,13 @@ export class ReportBuilderService {
       'SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur."roleId" AND r.scope=\'PLATFORM\' AND r."isActive"=true JOIN role_permissions rp ON rp."roleId"=r.id JOIN permissions p ON p.id=rp."permissionId" AND p.code IN (\'tenant.reports.read\',\'*\') WHERE ur."userId"=$1 AND ur."isActive"=true LIMIT 1',
       [userId],
     );
-    if (membership.isTenantAdmin === true || platform) return { tenantWide: true, organizationIds: [] };
+    if (membership.isTenantAdmin === true || platform) {
+      if (organizationId) {
+        const [organization] = await this.dataSource.query('SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true', [organizationId,tenantId]);
+        if (!organization) throw new ForbiddenException('سازمان انتخاب‌شده متعلق به مشتری فعال نیست');
+      }
+      return { tenantWide: true, organizationIds: [] };
+    }
     const organizations = await this.accessibleOrganizations(tenantId, userId);
     const ids = organizations.map((item: { id: string }) => item.id);
     if (organizationId) {
