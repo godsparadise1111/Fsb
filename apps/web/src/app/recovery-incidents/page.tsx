@@ -27,6 +27,7 @@ export default function RecoveryIncidentsPage() {
   const [items, setItems] = useState<Incident[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [organizationId, setOrganizationId] = useState('');
+  const [processInstanceId, setProcessInstanceId] = useState('');
   const [incidentType, setIncidentType] = useState('');
   const [severity, setSeverity] = useState('');
   const [status, setStatus] = useState('ACTIVE');
@@ -55,6 +56,7 @@ export default function RecoveryIncidentsPage() {
     try {
       const params = new URLSearchParams({ status, limit: '50', offset: '0' });
       if (organizationId) params.set('organizationId', organizationId);
+      if (processInstanceId.trim()) params.set('processInstanceId', processInstanceId.trim());
       if (incidentType) params.set('incidentType', incidentType);
       if (severity) params.set('severity', severity);
       const result = await request('/workflow/recovery-incidents?' + params.toString());
@@ -66,7 +68,7 @@ export default function RecoveryIncidentsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'دریافت رخدادها ناموفق بود');
     } finally { setBusy(false); }
-  }, [token, request, status, organizationId, incidentType, severity, detail]);
+  }, [token, request, status, organizationId, processInstanceId, incidentType, severity, detail]);
 
   const openDetail = async (id: string) => {
     setBusy(true); setError('');
@@ -132,6 +134,7 @@ export default function RecoveryIncidentsPage() {
       <div className="absence-panel-heading"><div><h2>فیلتر رخدادها</h2><p>فهرست به‌صورت پیش‌فرض رخدادهای باز و در حال رسیدگی را نشان می‌دهد.</p></div><span className="absence-step">{items.length.toLocaleString('fa-IR')} رخداد</span></div>
       <div className="absence-toolbar" style={{ flexWrap: 'wrap' }}>
         <select aria-label="سازمان" value={organizationId} onChange={e => setOrganizationId(e.target.value)}><option value="">همه سازمان‌های قابل دسترس</option>{organizations.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
+        <input aria-label="شناسه فرایند" placeholder="شناسه فرایند" value={processInstanceId} onChange={e => setProcessInstanceId(e.target.value)} style={{ minWidth: 220, border: "1px solid #dce2ec", borderRadius: 9, padding: 11, font: "inherit" }} />
         <select aria-label="نوع رخداد" value={incidentType} onChange={e => setIncidentType(e.target.value)}><option value="">همه انواع رخداد</option><option value="RUNNING_PROCESS_TASK_COUNT_MISMATCH">ناهماهنگی تعداد وظایف</option><option value="TERMINAL_PROCESS_HAS_ACTIVE_TASKS">وظیفه فعال در فرایند خاتمه‌یافته</option></select>
         <select aria-label="شدت" value={severity} onChange={e => setSeverity(e.target.value)}><option value="">همه شدت‌ها</option><option value="CRITICAL">بحرانی</option><option value="HIGH">زیاد</option><option value="MEDIUM">متوسط</option></select>
         <select aria-label="وضعیت" value={status} onChange={e => setStatus(e.target.value)}><option value="ACTIVE">باز و در حال رسیدگی</option><option value="OPEN">فقط باز</option><option value="ACKNOWLEDGED">در حال رسیدگی</option><option value="RESOLVED">بسته‌شده</option></select>
