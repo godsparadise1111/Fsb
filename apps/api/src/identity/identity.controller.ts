@@ -15,7 +15,9 @@ class GrantRoleDto { @IsUUID() userId: string; @IsUUID() roleId: string; @IsOpti
 export class IdentityController {
   constructor(private readonly identity: IdentityService) {}
   @RequirePermissions('users.manage')
-  @Post('users') createUser(@Body() dto: CreateUserDto) { return this.identity.createUser(dto); }
+  @Post('users') createUser(@Body() dto: CreateUserDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.identity.createUser(dto, user.tenantId);
+  }
   @RequirePermissions('users.read')
   @Get('users') listUsers(@CurrentUser() user: AuthenticatedUser) { return this.identity.listUsers(user.tenantId); }
   @RequirePermissions('organization.read')
