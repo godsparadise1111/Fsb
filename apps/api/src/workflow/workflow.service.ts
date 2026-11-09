@@ -291,14 +291,38 @@ export class WorkflowService {
       const hasRequestTargets = [
         dto.initialAssigneeUserIds, dto.initialAssigneePositionIds, dto.initialAssigneeUnitIds,
       ].some(values => Array.isArray(values) && values.length > 0);
-      const firstStepTargets: Record<string, unknown> = hasRequestTargets
-        ? {
-            assigneeUserIds: dto.initialAssigneeUserIds ?? [],
-            assigneePositionIds: dto.initialAssigneePositionIds ?? [],
-            assigneeUnitIds: dto.initialAssigneeUnitIds ?? [],
-          }
-        : firstStep;
-      const uniqueIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, firstStepTargets);
+      const schemaHasTargets = ['assigneeUserIds', 'assigneePositionIds', 'assigneeUnitIds']
+        .some(field => Array.isArray(firstStep[field]) && (firstStep[field] as unknown[]).length > 0);
+      const schemaUserIds = schemaHasTargets
+        ? await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, firstStep)
+        : [];
+      let uniqueIds = schemaUserIds;
+      if (hasRequestTargets) {
+        const requestTargets: Record<string, unknown> = {
+          assigneeUserIds: dto.initialAssigneeUserIds ?? [],
+          assigneePositionIds: dto.initialAssigneePositionIds ?? [],
+          assigneeUnitIds: dto.initialAssigneeUnitIds ?? [],
+        };
+        const requestedUserIds = await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, requestTargets);
+        if (schemaHasTargets && (
+          requestedUserIds.length !== schemaUserIds.length ||
+          requestedUserIds.some(userId => !schemaUserIds.includes(userId))
+        )) {
+          throw new BadRequestException('Initial assignees must match the targets published in the process version');
+        }
+        uniqueIds = requestedUserIds;
+      } else if (!schemaHasTargets) {
+        throw new BadRequestException('Initial assignees must be configured in the process version or supplied at process start');
+      }
+      const configuredPolicy = firstStep.assignmentPolicy;
+      if (configuredPolicy !== undefined && dto.assignmentPolicy !== undefined && dto.assignmentPolicy !== configuredPolicy) {
+        throw new BadRequestException('Initial assignmentPolicy cannot override the published process version');
+      }
+      const firstAssignmentPolicy = configuredPolicy === 'ANY_ASSIGNEE'
+        ? 'ANY_ASSIGNEE'
+        : configuredPolicy === 'ALL_ASSIGNEES'
+          ? 'ALL_ASSIGNEES'
+          : dto.assignmentPolicy ?? 'ALL_ASSIGNEES';
       const starterPosition = await manager.query(
         `SELECT 1 FROM user_positions up
            JOIN positions p ON p.id=up."positionId" AND p."isActive"=true
@@ -319,7 +343,7 @@ export class WorkflowService {
         processInstanceId: instance.id,
         title: dto.firstTaskTitle ?? (typeof firstStep.title === 'string' ? firstStep.title : 'بررسی و اقدام اولیه'),
         instructions: typeof firstStep.instructions === 'string' ? firstStep.instructions : null,
-        assignmentPolicy: dto.assignmentPolicy ?? (firstStep.assignmentPolicy === 'ANY_ASSIGNEE' ? 'ANY_ASSIGNEE' : 'ALL_ASSIGNEES'),
+        assignmentPolicy: firstAssignmentPolicy,
         status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
