@@ -18,12 +18,13 @@ import { WorkflowAutomationWorker } from './workflow-automation.worker';
 import { WorkflowRecoveryWorker } from './workflow-recovery.worker';
 import { WorkflowRecoveryIncidentController } from './workflow-recovery-incident.controller';
 import { WorkflowRecoveryIncidentService } from './workflow-recovery-incident.service';
+import { WorkflowRecoveryReplayRegistry } from './workflow-recovery-replay.registry';
 import { TenantModule } from '../tenant/tenant.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ProcessVersion, Organization, User, ProcessInstance, WorkflowTask, TaskAssignee, WorkflowActionLog, TaskDelegation, TaskDeferralRequest, OrganizationSubstitution, OrganizationAbsence, WorkflowTaskReassignment ]), TenantModule, NotificationsModule],
   controllers: [WorkflowController, WorkflowRecoveryIncidentController],
-  providers: [WorkflowService, WorkflowAutomationWorker, WorkflowRecoveryWorker, WorkflowRecoveryIncidentService],
+  providers: [WorkflowService, WorkflowAutomationWorker, WorkflowRecoveryWorker, WorkflowRecoveryIncidentService, WorkflowRecoveryReplayRegistry],
 })
 export class WorkflowModule {}
