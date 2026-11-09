@@ -387,11 +387,26 @@ export class WorkflowService {
           metadata: { processInstanceId: instance.id, fromStepIndex, toStepIndex: targetIndex, newTaskId: returnedTask.id },
         });
       } else if (rejected) {
+        for (const pending of all.filter(item => item.status === 'PENDING')) {
+          pending.status = 'REASSIGNED';
+          pending.comment = 'Closed because another assignee rejected the task';
+          pending.actedAt = new Date();
+        }
+        await manager.save(TaskAssignee, all);
         task.status = 'CANCELLED';
+        task.completedAt = new Date();
         const instance = await manager.findOneByOrFail(ProcessInstance, { id: task.processInstanceId });
         instance.status = 'CANCELLED';
         await manager.save(instance);
       } else if (completed) {
+        if (task.assignmentPolicy === 'ANY_ASSIGNEE') {
+          for (const pending of all.filter(item => item.status === 'PENDING')) {
+            pending.status = 'REASSIGNED';
+            pending.comment = 'Closed because another assignee completed the task under ANY_ASSIGNEE policy';
+            pending.actedAt = new Date();
+          }
+          await manager.save(TaskAssignee, all);
+        }
         task.status = 'COMPLETED';
         task.completedAt = new Date();
         const instance = await manager.findOne({ where: { id: task.processInstanceId }, relations: { processVersion: true } });
