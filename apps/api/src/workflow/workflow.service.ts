@@ -669,6 +669,85 @@ export class WorkflowService {
     };
   }
 
+  async listOrganizationOperationalAlerts(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    const rows = await this.dataSource.query(
+      `WITH scoped_tasks AS (
+         SELECT wt.id, wt.title, wt."dueAt", wt."createdAt"
+           FROM workflow_tasks wt
+           JOIN process_instances pi ON pi.id = wt."processInstanceId"
+          WHERE wt."tenantId" = $1 AND pi."organizationId" = $2
+            AND wt.status IN ('OPEN', 'IN_PROGRESS')
+       ), alerts AS (
+         SELECT 'TASK_UNASSIGNED:' || st.id AS id, 'CRITICAL' AS severity,
+                'TASK_UNASSIGNED' AS type, st.title AS title,
+                'وظیفهٔ باز فاقد ارجاع‌گیرنده با وضعیت در انتظار اقدام است.' AS description,
+                st.id AS "resourceId", st."createdAt" AS "occurredAt", st."dueAt" AS "dueAt"
+           FROM scoped_tasks st
+          WHERE NOT EXISTS (SELECT 1 FROM task_assignees ta WHERE ta."taskId" = st.id AND ta.status = 'PENDING')
+         UNION ALL
+         SELECT 'TASK_OVERDUE:' || st.id, 'HIGH', 'TASK_OVERDUE', st.title,
+                'مهلت انجام وظیفه سپری شده و وظیفه هنوز باز است.',
+                st.id, st."dueAt", st."dueAt"
+           FROM scoped_tasks st
+          WHERE st."dueAt" IS NOT NULL AND st."dueAt" < now()
+         UNION ALL
+         SELECT 'ABSENCE_COVERAGE:' || oa.id, 'CRITICAL', 'ABSENCE_COVERAGE_GAP',
+                'شکاف پوشش غیبت',
+                'غیبت فعال است اما جانشینی متناظر در حال حاضر معتبر و فعال نیست.',
+                oa.id, oa."startsAt", oa."endsAt"
+           FROM organization_absences oa
+           JOIN organization_substitutions os ON os.id = oa."substitutionId"
+          WHERE oa."tenantId" = $1 AND oa."organizationId" = $2
+            AND oa."cancelledAt" IS NULL AND oa."startsAt" <= now() AND oa."endsAt" > now()
+            AND (os."revokedAt" IS NOT NULL OR os."startsAt" > now() OR os."endsAt" <= now())
+         UNION ALL
+         SELECT 'SUBSTITUTION_ENDING:' || os.id, 'MEDIUM', 'SUBSTITUTION_ENDING',
+                'پایان نزدیک جانشینی',
+                'جانشینی سازمانی طی ۴۸ ساعت آینده پایان می‌یابد؛ در صورت نیاز، پوشش را تمدید یا جایگزین کنید.',
+                os.id, os."startsAt", os."endsAt"
+           FROM organization_substitutions os
+          WHERE os."tenantId" = $1 AND os."organizationId" = $2
+            AND os."revokedAt" IS NULL AND os."startsAt" <= now()
+            AND os."endsAt" > now() AND os."endsAt" <= now() + interval '48 hours'
+         UNION ALL
+         SELECT 'DEFERRAL_PENDING:' || request.id, 'MEDIUM', 'DEFERRAL_REVIEW',
+                'درخواست تغییر مهلت در انتظار بررسی',
+                'یک درخواست تغییر مهلت برای تصمیم مدیر در انتظار بررسی است.',
+                request.id, request."createdAt", request."proposedDueAt"
+           FROM task_deferral_requests request
+           JOIN scoped_tasks st ON st.id = request."taskId"
+          WHERE request."tenantId" = $1 AND request.status = 'PENDING'
+       )
+       SELECT id, severity, type, title, description, "resourceId", "occurredAt", "dueAt"
+         FROM alerts
+        ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,
+                 "occurredAt" ASC NULLS LAST
+        LIMIT 100`,
+      [tenantId, organizationId],
+    );
+    const counts = rows.reduce((result: Record<string, number>, row: any) => {
+      result[row.severity] = (result[row.severity] || 0) + 1;
+      return result;
+    }, {});
+    return {
+      organizationId,
+      generatedAt: new Date().toISOString(),
+      total: rows.length,
+      truncated: rows.length === 100,
+      counts: { critical: counts.CRITICAL || 0, high: counts.HIGH || 0, medium: counts.MEDIUM || 0 },
+      items: rows.map((row: any) => ({
+        id: row.id, severity: row.severity, type: row.type, title: row.title,
+        description: row.description, resourceId: row.resourceId,
+        occurredAt: row.occurredAt ? new Date(row.occurredAt).toISOString() : null,
+        dueAt: row.dueAt ? new Date(row.dueAt).toISOString() : null,
+      })),
+    };
+  }
+
   async getOrganizationOperationsOverview(organizationId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
