@@ -141,3 +141,17 @@ Migration 015 وضعیت `CANCELLED` را برای درخواست تعویق ا�
 
 
 - گزارش `GET /api/tenant/reports/overview` و خروجی `overview.csv` نیز شاخص‌های رخدادهای بازیابی را در بازهٔ انتخابی و فیلتر سازمانی ارائه می‌کنند: تعداد رخدادهای ایجادشده، وضعیت فعلی cohort، رخدادهای بسته‌شده در بازه، میانگین زمان رسیدگی، تفکیک دو نوع رخداد، تلاش‌های Worker، تأییدها، بستن‌ها و Replayهای ردشده.
+
+
+## Commercial lifecycle and versioned tenant API (migrations 021–023)
+
+- Migration 021 creates the commercial plan catalog, one subscription per tenant and tenant-bound invoice ledger. Existing tenants are backfilled from their legacy plan/status; closed tenants are mapped to CANCELLED subscriptions.
+- New tenants receive a TRIALING subscription. The 14-day trial clock starts only when the platform activates the tenant and assigns its initial Tenant Admin.
+- Feature access is evaluated server-side by the global entitlement guard. User, active organization and process-definition limits are checked in the write transaction under tenant/subscription locks.
+- Migration 022 stores only a SHA-256 hash of a tenant-scoped API key, its visible prefix, limited scopes, expiry and revocation state. Key identity/scope cannot be edited and hard deletion is blocked.
+- The versioned public API currently exposes only read endpoints under `/api/v1`; scopes are `tenant.read` and `reports.read`. Both require an active API-access entitlement.
+- Migration 023 adds a one-time renewal receipt to paid invoices. A PAID invoice can extend a subscription only once; the receipt and period extension commit in the same transaction.
+- Tenant closure cancels the subscription and revokes all active API credentials. Tenant suspension blocks API access through tenant-state validation; credentials are preserved for possible reactivation.
+- SSO, external connectors, webhooks, automatic payment collection and SaaS activation are intentionally not enabled. Do not set those feature flags true until their implementations and security acceptance are complete.
+
+Migrations 021–023 are versioned SQL files only. Apply them through the checksum-verifying migration runner after taking a restorable backup; no database migration has been executed from this development session.
