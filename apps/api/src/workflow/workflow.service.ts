@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { ProcessVersion } from '../process/entities/process-version.entity';
 import { Organization } from '../organization/entities/organization.entity';
 import { User } from '../identity/entities/user.entity';
@@ -323,7 +323,7 @@ export class WorkflowService {
       const schemaHasTargets = ['assigneeUserIds', 'assigneePositionIds', 'assigneeUnitIds']
         .some(field => Array.isArray(firstStep[field]) && (firstStep[field] as unknown[]).length > 0);
       const schemaUserIds = schemaHasTargets
-        ? await this.resolveStepAssignees(manager, dto.organizationId, organization.tenantId, firstStep)
+        ? await this.resolveStepAssignees(manager, dto.organizationId, organization.tenant.id, firstStep)
         : [];
       let uniqueIds = schemaUserIds;
       if (hasRequestTargets) {
@@ -360,7 +360,7 @@ export class WorkflowService {
            JOIN users u ON u.id=up."userId" AND u."isActive"=true
           WHERE up."userId"=$3 AND up."isActive"=true AND up."validFrom"<=now()
             AND (up."validUntil" IS NULL OR up."validUntil">=now()) LIMIT 1`,
-        [dto.organizationId, organization.tenantId, dto.startedByUserId],
+        [dto.organizationId, organization.tenant.id, dto.startedByUserId],
       );
       if (!starterPosition.length) throw new BadRequestException('The process starter must have an active tenant membership and position in the selected organization');
       const firstDueAt = this.deadlineFromHours(configuredSteps[0]?.dueInHours);
@@ -378,9 +378,9 @@ export class WorkflowService {
         status: 'OPEN', createdByUserId: dto.startedByUserId, dueAt: firstDueAt,
       }));
       await manager.save(TaskAssignee, uniqueIds.map(userId => manager.create(TaskAssignee, { taskId: task.id, userId, status: 'PENDING' })));
-      await this.enqueueTaskAssignmentNotifications(manager, organization.tenantId, task.id, uniqueIds);
+      await this.enqueueTaskAssignmentNotifications(manager, organization.tenant.id, task.id, uniqueIds);
       await this.tenantAudit.record(manager, {
-        tenantId: organization.tenantId, actorUserId: dto.startedByUserId,
+        tenantId: organization.tenant.id, actorUserId: dto.startedByUserId,
         action: 'workflow.process.started', resourceType: 'PROCESS_INSTANCE', resourceId: instance.id,
         metadata: { organizationId: dto.organizationId, processVersionId: version.id, initialTaskId: task.id, assigneeCount: uniqueIds.length, assignmentPolicy: task.assignmentPolicy },
       });
@@ -520,7 +520,7 @@ export class WorkflowService {
       }
       if (!assignment) {
         const delegations = await manager.find(TaskDelegation, {
-          where: { taskId, tenantId, toUserId: userId, revokedAt: null },
+          where: { taskId, tenantId, toUserId: userId, revokedAt: IsNull() },
           lock: { mode: 'pessimistic_write' },
         });
         const active = delegations.filter(item => item.startsAt <= new Date() && item.endsAt > new Date());
@@ -667,7 +667,7 @@ export class WorkflowService {
         }
         task.status = 'COMPLETED';
         task.completedAt = new Date();
-        const instance = await manager.findOne({ where: { id: task.processInstanceId }, relations: { processVersion: true } });
+        const instance = await manager.findOne(ProcessInstance, { where: { id: task.processInstanceId }, relations: { processVersion: true } });
         if (!instance) throw new NotFoundException('Process instance not found');
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
@@ -692,7 +692,7 @@ export class WorkflowService {
       } else {
         task.status = 'IN_PROGRESS';
       }
-      const remainingDelegations = await manager.find(TaskDelegation, { where: { taskId, tenantId, revokedAt: null } });
+      const remainingDelegations = await manager.find(TaskDelegation, { where: { taskId, tenantId, revokedAt: IsNull() } });
       for (const delegation of remainingDelegations) {
         if (task.status === 'COMPLETED' || task.status === 'CANCELLED' || task.status === 'RETURNED' || delegation.fromUserId === userId) {
           delegation.revokedAt = new Date();
@@ -829,7 +829,7 @@ export class WorkflowService {
       });
       if (!ownAssignment) throw new ForbiddenException('Only the original pending assignee may delegate their assignment');
       const existing = await manager.findOne(TaskDelegation, {
-        where: { taskId, fromUserId: actorUserId, revokedAt: null },
+        where: { taskId, fromUserId: actorUserId, revokedAt: IsNull() },
         lock: { mode: 'pessimistic_write' },
       });
       if (existing && existing.endsAt > now) throw new ConflictException('An active delegation already exists for this assignment');
