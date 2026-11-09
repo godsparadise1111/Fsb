@@ -172,7 +172,7 @@ export class WorkflowService {
       if (!participant) throw new ForbiddenException('You are not a participant in this process instance');
       const tasks = await manager.find(WorkflowTask, {
         where: { processInstanceId: instance.id },
-        relations: { assignees: { user: true } },
+        relations: { assignees: true },
         order: { createdAt: 'ASC' },
       });
       return { ...instance, tasks };
