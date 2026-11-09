@@ -88,6 +88,22 @@ export class WorkflowRecoveryWorker implements OnModuleInit, OnModuleDestroy {
        ON CONFLICT ("tenantId","processInstanceId","incidentType",fingerprint) DO NOTHING`,
       [tenantId, processInstanceId, incidentType, fingerprint, JSON.stringify(details)],
     );
+    const [incident] = await manager.query(
+      `SELECT id,status FROM workflow_recovery_incidents
+        WHERE "tenantId"=$1 AND "processInstanceId"=$2 AND "incidentType"=$3 AND fingerprint=$4`,
+      [tenantId, processInstanceId, incidentType, fingerprint],
+    );
+    if (incident && incident.status !== 'RESOLVED') {
+      const minuteBucket = Math.floor(Date.now() / 60000);
+      await manager.query(
+        `INSERT INTO workflow_recovery_incident_events
+          ("tenantId","incidentId","eventType","eventKey",metadata)
+         VALUES ($1,$2,'WORKER_SCAN',$3,$4::jsonb)
+         ON CONFLICT ("incidentId","eventKey") DO NOTHING`,
+        [tenantId, incident.id, `worker-scan:${this.workerId}:${minuteBucket}`,
+         JSON.stringify({ workerId: this.workerId, observedAt: new Date().toISOString(), fingerprint })],
+      );
+    }
   }
 
   private async reconcileInstance(instanceId: string) {
