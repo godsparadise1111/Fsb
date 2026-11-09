@@ -241,12 +241,12 @@
 
 - GET /api/tenant/dashboard برای مدیر مشتری، شاخص‌های کل Tenant را نمایش می‌دهد.
 - GET /api/tenant/dashboard/organization?organizationId=... برای مدیر دارای مجوز workflow.substitutions.manage شاخص‌های همان سازمان را ارائه می‌کند؛ صفحه /organization-dashboard سازمان‌های قابل دسترس را فهرست می‌کند.
-- GET /api/tenant/dashboard/me برای عضو عادی، فقط شمارش وظایف قابل اقدام شخصی، مهلت‌ها، تکمیل‌ها، فرایندهای آغازشده و بازگشت‌های ثبت‌شده خودش را ارائه می‌کند. مسیر در PermissionsGuard فقط با tenantId و userId استخراج‌شده از JWT محدود است.
+- GET /api/tenant/dashboard/me برای عضو عادی، فقط شمارش وظایف قابل اقدام شخصی، مهلت‌ها، تکمیل‌ها، فرایندهای آغازشده و بازگشت‌های ثبت‌شده خودش را ارائه می‌کند. مسیر در PermissionsGuard فقط با tenantId و userId استخراج‌شده از JWT محدود است. صفحه /tasks کارتابل اقدام را با انتخاب مرحله مقصد و ثبت دلیل بازگشت ارائه می‌کند.
 - صفحه /dashboard در صورت نداشتن دسترسی داشبورد کل مشتری به نمای شخصی سقوط می‌کند. همه نماها داده را در بازه ۳۰ ثانیه تازه می‌کنند.
 
 ## پذیرش استقرار Staging
 
 - scripts/smoke-onprem.sh سلامت PostgreSQL، ثبت baseline در migration ledger، endpoint سلامت API و پاسخ وب را بررسی می‌کند.
 - docs/STAGING_ACCEPTANCE.md سناریوهای آزمون دو Tenant، بازگشت فرایند، نقش‌ها، worker و بازیابی backup را مشخص می‌کند.
-- docker-compose.onprem.yml healthcheck برای API و وب دارد.
+- docker-compose.onprem.yml healthcheck برای API و وب دارد. migration 20261109_010_file_attachment_immutability.sql تغییر مالکیت، submission و metadata فایل پس از بارگذاری را در سطح دیتابیس ممنوع می‌کند.
 - اجرای واقعی staging، restore، آزمون integration و ثبت RPO/RTO هنوز انجام نشده است؛ این موارد باید در محیط staging تحت کنترل اپراتور اجرا شوند.
