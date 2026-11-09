@@ -1,0 +1,173 @@
+name: fsb
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$${POSTGRES_USER}\" -d \"$$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SYNCHRONIZE: "false"
+      FSB_FILE_STORAGE_PATH: /app/apps/api/var/private-files
+      FSB_NOTIFICATION_WORKER_ENABLED: "false"
+      FSB_WORKFLOW_AUTOMATION_ENABLED: "false"
+      FSB_WORKFLOW_RECOVERY_ENABLED: "false"
+      FSB_REPORT_WORKER_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${API_PORT:-3001}:3001"
+    volumes:
+      - private_files:/app/apps/api/var/private-files
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+  report-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    working_dir: /app
+    command: ["npm", "run", "worker:reports", "--workspace", "@fsb/api"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SYNCHRONIZE: "false"
+      FSB_REPORT_WORKER_ENABLED: "true"
+      FSB_NOTIFICATION_WORKER_ENABLED: "false"
+      FSB_WORKFLOW_AUTOMATION_ENABLED: "false"
+      FSB_WORKFLOW_RECOVERY_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - private_files:/app/apps/api/var/private-files
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+  notification-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    working_dir: /app
+    command: ["npm", "run", "worker:notifications", "--workspace", "@fsb/api"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SYNCHRONIZE: "false"
+      FSB_NOTIFICATION_WORKER_ENABLED: "true"
+      FSB_REPORT_WORKER_ENABLED: "false"
+      FSB_WORKFLOW_AUTOMATION_ENABLED: "false"
+      FSB_WORKFLOW_RECOVERY_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+  workflow-automation-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    working_dir: /app
+    command: ["npm", "run", "worker:workflow", "--workspace", "@fsb/api"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SYNCHRONIZE: "false"
+      FSB_WORKFLOW_AUTOMATION_ENABLED: "true"
+      FSB_NOTIFICATION_WORKER_ENABLED: "false"
+      FSB_REPORT_WORKER_ENABLED: "false"
+      FSB_WORKFLOW_RECOVERY_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+  workflow-recovery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    working_dir: /app
+    command: ["npm", "run", "worker:recovery", "--workspace", "@fsb/api"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_SYNCHRONIZE: "false"
+      FSB_WORKFLOW_RECOVERY_ENABLED: "true"
+      FSB_NOTIFICATION_WORKER_ENABLED: "false"
+      FSB_REPORT_WORKER_ENABLED: "false"
+      FSB_WORKFLOW_AUTOMATION_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [private]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  postgres_data:
+  private_files:
+
+networks:
+  private:
+    driver: bridge
