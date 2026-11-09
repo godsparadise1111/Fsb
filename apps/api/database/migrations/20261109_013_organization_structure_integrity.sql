@@ -9,7 +9,7 @@ BEGIN
     LEFT JOIN organizations o ON o.id = ou."organizationId"
     LEFT JOIN tenants t ON t.id = o."tenantId"
     WHERE ou."isActive" = true
-      AND (o.id IS NULL OR o."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE')
+      AND (o.id IS NULL OR o."isActive" = false OR t.id IS NULL)
   ) THEN
     RAISE EXCEPTION 'Active organization units exist under inactive or tenantless organizations; reconcile before migration 013';
   END IF;
@@ -42,9 +42,9 @@ BEGIN
     LEFT JOIN organizations o ON o.id = ou."organizationId"
     LEFT JOIN tenants t ON t.id = o."tenantId"
     WHERE p."isActive" = true
-      AND (ou.id IS NULL OR ou."isActive" = false OR o."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE')
+      AND (ou.id IS NULL OR ou."isActive" = false OR o.id IS NULL OR o."isActive" = false OR t.id IS NULL)
   ) THEN
-    RAISE EXCEPTION 'Active positions exist under inactive organization units, organizations or tenants; reconcile before migration 013';
+    RAISE EXCEPTION 'Active positions exist under inactive organization units or organizations; reconcile before migration 013';
   END IF;
 END $$;
 
