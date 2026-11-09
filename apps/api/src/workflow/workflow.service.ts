@@ -36,6 +36,11 @@ export class WorkflowService {
     private readonly tenantAudit: TenantAuditService,
   ) {}
 
+  private async lockActiveTenant(manager: EntityManager, tenantId: string) {
+    const rows = await manager.query(`SELECT id FROM tenants WHERE id=$1 AND status='ACTIVE' FOR SHARE`, [tenantId]);
+    if (!rows.length) throw new ForbiddenException('The tenant is not active');
+  }
+
   private async assertActiveWorkflowMember(manager: EntityManager, tenantId: string, userId: string, organizationId: string) {
     const rows = await manager.query(
       `SELECT 1 FROM tenants t
@@ -156,6 +161,7 @@ export class WorkflowService {
       throw new BadRequestException('A return reason of at least 3 characters is required');
     }
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
       const task = await manager.findOne(WorkflowTask, { where: { id: taskId }, relations: { processInstance: { organization: true } }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('Task not found');
       if (task.processInstance.organization?.tenantId !== tenantId) throw new ForbiddenException('Task is outside the active tenant');
@@ -377,6 +383,7 @@ export class WorkflowService {
     }
     if (dto.toUserId === actorUserId) throw new BadRequestException('A task cannot be delegated to the same user');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId },
         relations: { processInstance: { organization: true } },
@@ -449,6 +456,7 @@ export class WorkflowService {
   async revokeTaskDelegation(taskId: string, delegationId: string, actorUserId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId }, relations: { processInstance: { organization: true } },
         lock: { mode: 'pessimistic_write' },
