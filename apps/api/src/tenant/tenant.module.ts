@@ -24,11 +24,13 @@ import { TenantReportsService } from './tenant-reports.service';
 import { TenantReportsController } from './tenant-reports.controller';
 import { TenantDashboardService } from './tenant-dashboard.service';
 import { TenantDashboardController } from './tenant-dashboard.controller';
+import { PlatformWorkflowHealthController } from './platform-workflow-health.controller';
+import { PlatformWorkflowHealthService } from './platform-workflow-health.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant, TenantMembership, TenantInvitation, TenantAuditLog, NotificationOutbox, User]), NotificationsModule],
-  controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController, TenantDashboardController],
-  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, TenantDashboardService],
+  controllers: [TenantController, TenantMembershipController, TenantSelfServiceController, TenantInvitationController, TenantAuditController, TenantUsageController, TenantNotificationController, TenantReportsController, TenantDashboardController, PlatformWorkflowHealthController],
+  providers: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService, TenantUsageService, TenantNotificationService, TenantReportsService, TenantDashboardService, PlatformWorkflowHealthService],
   exports: [TenantService, TenantMembershipService, TenantInvitationService, TenantAuditService],
 })
 export class TenantModule {}
