@@ -75,6 +75,8 @@ export default function ReportBuilderPanel() {
     const accessToken = localStorage.getItem('fsb.accessToken') || '';
     const activeTenant = localStorage.getItem('fsb.tenantId') || '';
     setToken(accessToken); setTenantId(activeTenant);
+    const requestedJob = new URLSearchParams(window.location.search).get('jobId');
+    if(requestedJob) setJobId(requestedJob);
   },[]);
 
   useEffect(()=>{
@@ -217,6 +219,18 @@ export default function ReportBuilderPanel() {
     } catch(error){setError(error instanceof Error?error.message:'تغییر زمان‌بندی ناموفق بود');}
     finally{setBusy(false);}
   }
+
+  useEffect(()=>{
+    if(!token||!organizationId||!jobId)return;
+    let active=true;
+    request(scopedPath('/tenant/report-builder/jobs/'+jobId)).then(job=>{
+      if(!active)return;
+      setJobStatus(job.status||'');
+      if(job.result)setResult(job.result);
+      if(job.error)setError(job.error);
+    }).catch(error=>{if(active)setError(error instanceof Error?error.message:'بازیابی گزارش زمان‌بندی‌شده ناموفق بود')});
+    return ()=>{active=false};
+  },[token,organizationId,jobId,request,scopedPath]);
 
   const maxValue=Math.max(1,...(result?.rows||[]).map(row=>Math.abs(row.value||0)));
   return <section style={panel} dir="rtl">
