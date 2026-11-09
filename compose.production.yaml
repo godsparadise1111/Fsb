@@ -59,10 +59,10 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env}
     restart: unless-stopped
-    env_file: .env
     environment:
       NODE_ENV: production
       PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env}
     depends_on:
       api:
         condition: service_healthy
