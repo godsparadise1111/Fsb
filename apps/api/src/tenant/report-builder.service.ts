@@ -426,6 +426,8 @@ export class ReportBuilderService {
     const source = await this.sourceFor(tenantId, spec, scope.organizationIds);
     this.validate(spec, source);
     if (!scope.tenantWide && (!spec.organizationId || !scope.organizationIds.includes(spec.organizationId))) throw new ForbiddenException('سازمان گزارش باید مشخص و مجاز باشد');
+    const [pending] = await this.dataSource.query('SELECT count(*)::int AS count FROM tenant_report_jobs WHERE \"tenantId\"=$1 AND \"ownerUserId\"=$2 AND status IN (\'PENDING\',\'PROCESSING\') AND \"createdAt\">now()-interval \'1 day\'', [tenantId,userId]);
+    if (Number(pending?.count ?? 0) >= 10) throw new BadRequestException('حداکثر ۱۰ گزارش پس‌زمینه فعال یا در صف برای هر کاربر مجاز است');
     const [job] = await this.dataSource.query(
       'INSERT INTO tenant_report_jobs ("tenantId","ownerUserId","organizationId",config,"scopeOrganizationIds","isTenantWide",status) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,\'PENDING\') RETURNING id,status,"createdAt"',
       [tenantId, userId, spec.organizationId ?? null, JSON.stringify(spec), JSON.stringify(scope.organizationIds), scope.tenantWide],
@@ -456,6 +458,8 @@ export class ReportBuilderService {
     if (!scope.tenantWide && (!input.config.organizationId || !scope.organizationIds.includes(input.config.organizationId))) throw new ForbiddenException('سازمان گزارش باید مشخص و مجاز باشد');
     const [recipient] = await this.dataSource.query('SELECT u.email FROM tenant_memberships tm JOIN users u ON u.id=tm.\"userId\" AND u.\"isActive\"=true WHERE tm.\"tenantId\"=$1 AND tm.\"userId\"=$2 AND tm.\"isActive\"=true AND u.email IS NOT NULL', [tenantId,userId]);
     if (!recipient?.email) throw new BadRequestException('برای زمان‌بندی گزارش، حساب کاربر باید ایمیل فعال داشته باشد');
+    const [activeSchedules] = await this.dataSource.query('SELECT count(*)::int AS count FROM tenant_report_schedules WHERE \"tenantId\"=$1 AND \"ownerUserId\"=$2 AND \"isActive\"=true', [tenantId,userId]);
+    if (Number(activeSchedules?.count ?? 0) >= 20) throw new BadRequestException('حداکثر ۲۰ زمان‌بندی فعال برای هر کاربر مجاز است');
     const [row] = await this.dataSource.query(
       'INSERT INTO tenant_report_schedules ("tenantId","ownerUserId","organizationId",config,"scopeOrganizationIds","isTenantWide",frequency,weekday,"timeOfDay",timezone,"nextRunAt") VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7,$8,$9::time,$10,$11) RETURNING id,frequency,weekday,"timeOfDay",timezone,"nextRunAt","isActive"',
       [tenantId, userId, input.config.organizationId ?? null, JSON.stringify(input.config), JSON.stringify(scope.organizationIds), scope.tenantWide, input.frequency, input.frequency === 'WEEKLY' ? input.weekday : null, input.timeOfDay, input.timezone, nextRunAt],
