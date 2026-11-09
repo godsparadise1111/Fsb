@@ -476,6 +476,63 @@ export class WorkflowService {
     });
   }
 
+  async getOrganizationWorkload(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    const rows = await this.dataSource.query(
+      `WITH active_people AS (
+        SELECT DISTINCT u.id, u."firstName", u."lastName", u.username
+          FROM users u
+          JOIN tenant_memberships tm ON tm."userId" = u.id AND tm."tenantId" = $1 AND tm."isActive" = true
+          JOIN user_positions up ON up."userId" = u.id AND up."isActive" = true
+          JOIN positions p ON p.id = up."positionId" AND p."isActive" = true
+          JOIN organization_units ou ON ou.id = p."organizationUnitId" AND ou."organizationId" = $2 AND ou."isActive" = true
+         WHERE u."isActive" = true AND up."validFrom" <= CURRENT_TIMESTAMP
+           AND (up."validUntil" IS NULL OR up."validUntil" >= CURRENT_TIMESTAMP)
+      ), task_load AS (
+        SELECT ta."userId", wt.id AS "taskId", false AS "isSubstitution"
+          FROM task_assignees ta
+          JOIN workflow_tasks wt ON wt.id = ta."taskId" AND wt.status IN ('OPEN', 'IN_PROGRESS')
+          JOIN process_instances pi ON pi.id = wt."processInstanceId" AND pi."organizationId" = $2
+         WHERE ta.status = 'PENDING'
+        UNION ALL
+        SELECT substitution."substituteUserId", wt.id, true
+          FROM organization_substitutions substitution
+          JOIN workflow_tasks wt ON wt.status IN ('OPEN', 'IN_PROGRESS')
+          JOIN process_instances pi ON pi.id = wt."processInstanceId"
+             AND pi."organizationId" = substitution."organizationId"
+          JOIN task_assignees original ON original."taskId" = wt.id
+             AND original."userId" = substitution."originalUserId" AND original.status = 'PENDING'
+         WHERE substitution."tenantId" = $1 AND substitution."organizationId" = $2
+           AND substitution."revokedAt" IS NULL
+           AND substitution."startsAt" <= CURRENT_TIMESTAMP AND substitution."endsAt" > CURRENT_TIMESTAMP
+      ), aggregated AS (
+        SELECT "userId", COUNT(DISTINCT "taskId")::int AS "openTaskCount",
+               COUNT(DISTINCT "taskId") FILTER (WHERE "isSubstitution")::int AS "substitutionCoverageCount"
+          FROM task_load GROUP BY "userId"
+      )
+      SELECT people.id AS "userId", people."firstName", people."lastName", people.username,
+             COALESCE(aggregated."openTaskCount", 0)::int AS "openTaskCount",
+             COALESCE(aggregated."substitutionCoverageCount", 0)::int AS "substitutionCoverageCount"
+        FROM active_people people
+        LEFT JOIN aggregated ON aggregated."userId" = people.id
+       ORDER BY COALESCE(aggregated."openTaskCount", 0) DESC, people."lastName", people."firstName"`,
+      [tenantId, organizationId],
+    );
+    return {
+      organizationId,
+      items: rows.map((row: any) => ({
+        userId: row.userId,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        username: row.username,
+        openTaskCount: Number(row.openTaskCount ?? 0),
+        substitutionCoverageCount: Number(row.substitutionCoverageCount ?? 0),
+      })),
+    };
+  }
+
   async listOrganizationAbsences(
     organizationId: string, tenantId?: string | null, limitValue?: string, offsetValue?: string,
     fromValue?: string, toValue?: string, statusValue?: string,
