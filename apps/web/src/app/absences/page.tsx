@@ -260,6 +260,28 @@ export default function AbsencesPage() {
     finally { setPolicySaving(false); }
   }
 
+  async function addOperationalAlertNote(alertId: string) {
+    const note = window.prompt('یادداشت پیگیری را وارد کنید:');
+    if (!note || note.trim().length < 3) return;
+    try {
+      await request(`/organizations/${organizationId}/operational-alerts/${alertId}/notes`, { method: 'POST', body: JSON.stringify({ note }) });
+      setNotice('یادداشت در تاریخچه هشدار ثبت شد');
+      await loadData();
+    } catch (e) { setError(e instanceof Error ? e.message : 'ثبت یادداشت ناموفق بود'); }
+  }
+
+  async function showOperationalAlertHistory(alertId: string) {
+    try {
+      const history = await request(`/organizations/${organizationId}/operational-alerts/${alertId}/history`);
+      const lines = (history.items || []).map((event: any) => {
+        const actor = [event.actorFirstName, event.actorLastName].filter(Boolean).join(' ') || 'سامانه';
+        const action = event.eventType === 'COMMENT' ? 'یادداشت' : event.eventType === 'ACKNOWLEDGE' ? 'تأیید مشاهده' : event.eventType === 'ASSIGN' ? 'تخصیص مسئول' : event.eventType === 'RESOLVE' ? 'حل هشدار' : 'بازگشایی';
+        return `${new Date(event.createdAt).toLocaleString('fa-IR')} | ${actor} | ${action}${event.note ? '\\n' + event.note : ''}`;
+      });
+      window.alert(lines.length ? lines.join('\\n\\n') : 'هنوز رویدادی برای این هشدار ثبت نشده است.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'دریافت تاریخچه ناموفق بود'); }
+  }
+
   async function manageOperationalAlert(alertId: string, action: 'acknowledge' | 'assign' | 'resolve' | 'reopen', assignedToUserId?: string) {
     try {
       let body: string | undefined;
@@ -411,6 +433,10 @@ export default function AbsencesPage() {
                 {!['RESOLVED','IGNORED'].includes(alert.status) && <button type="button" className="absence-button" onClick={() => void manageOperationalAlert(alert.id, 'resolve')}>ثبت حل هشدار</button>}
                 {alert.status === 'RESOLVED' && <button type="button" className="absence-button secondary" onClick={() => void manageOperationalAlert(alert.id, 'reopen')}>بازگشایی</button>}
               </div>
+            </div>
+            <div className="absence-actions">
+              {!['RESOLVED','IGNORED'].includes(alert.status) && <button type="button" className="absence-button secondary" onClick={() => void addOperationalAlertNote(alert.id)}>افزودن یادداشت</button>}
+              <button type="button" className="absence-button secondary" onClick={() => void showOperationalAlertHistory(alert.id)}>تاریخچه پیگیری</button>
             </div>
             {alert.resolutionNote && alert.resolutionNote !== '__AUTO_RESOLVED__' && <small>شرح حل: {alert.resolutionNote}</small>}
           </article>)}</div>}
