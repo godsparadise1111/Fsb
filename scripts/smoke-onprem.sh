@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ -f .env ]] || { echo "Missing .env" >&2; exit 1; }
 set -a; source .env; set +a
+: "${FSB_METRICS_TOKEN:?Set FSB_METRICS_TOKEN in .env}"
 API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:${API_PORT:-3001}/api}"
 WEB_BASE_URL="${WEB_BASE_URL:-http://127.0.0.1:${WEB_PORT:-3000}}"
 COMPOSE=(docker compose --env-file .env -f docker-compose.onprem.yml)
