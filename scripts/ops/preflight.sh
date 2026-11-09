@@ -39,7 +39,7 @@ if (required('JWT_SECRET') === 'replace_with_a_long_random_secret_at_least_32_ch
 if (required('BOOTSTRAP_TOKEN') === 'replace_with_a_separate_one_time_secret' || values.BOOTSTRAP_TOKEN.length < 32) fail('Replace BOOTSTRAP_TOKEN with at least 32 random characters.');
 const corsOrigins = required('CORS_ORIGINS');
 if (corsOrigins.includes('*')) fail('CORS_ORIGINS must not contain wildcard origins.');
-if (/localhost|127\\.0\\.0\\.1/i.test(corsOrigins)) fail('CORS_ORIGINS must not contain local development origins in Production.');
+if (/localhost|127\.0\.0\.1/i.test(corsOrigins)) fail('CORS_ORIGINS must not contain local development origins in Production.');
 const publicUrl = required('FSB_PUBLIC_APP_URL');
 if (!publicUrl.startsWith('https://')) fail('FSB_PUBLIC_APP_URL must use HTTPS.');
 const apiUrl = required('NEXT_PUBLIC_API_URL');
