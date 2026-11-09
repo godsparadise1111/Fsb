@@ -522,23 +522,7 @@ export class WorkflowService {
           if (configuredTarget !== targetIndex) throw new BadRequestException('RETURNED destination does not match the published transition graph');
         }
         const target = steps[targetIndex];
-        const targetUserIds = [...new Set(target.assigneeUserIds ?? [])];
-        if (!targetUserIds.length) throw new BadRequestException('The return target step must have at least one configured assignee');
-        const targetUsers = await manager.find(User, { where: { id: In(targetUserIds), isActive: true } });
-        if (targetUsers.length !== targetUserIds.length) throw new BadRequestException('Every return-step assignee must be an active user');
-        const targetMembershipCount = await manager.createQueryBuilder(UserPosition, 'membership')
-          .innerJoin('membership.position', 'position').innerJoin('position.unit', 'unit')
-          .innerJoin('tenant_memberships', 'tenantMembership',
-            'tenantMembership."userId" = membership."userId" AND tenantMembership."tenantId" = :tenantId AND tenantMembership."isActive" = true',
-            { tenantId })
-          .where('membership.userId IN (:...userIds)', { userIds: targetUserIds })
-          .andWhere('unit.organizationId = :organizationId', { organizationId: instance.organizationId })
-          .andWhere('membership.isActive = true AND position.isActive = true AND unit.isActive = true')
-          .andWhere('membership.validFrom <= CURRENT_TIMESTAMP AND (membership.validUntil IS NULL OR membership.validUntil >= CURRENT_TIMESTAMP)')
-          .select('COUNT(DISTINCT membership.userId)', 'count').getRawOne();
-        if (Number(targetMembershipCount?.count ?? 0) !== targetUserIds.length) {
-          throw new BadRequestException('Every return-step assignee must have an active position in the process organization');
-        }
+        const targetUserIds = await this.resolveStepAssignees(manager, instance.organizationId, tenantId, target);
         for (const pending of all.filter(item => item.status === 'PENDING')) {
           if (pending.id !== assignment.id) pending.status = 'REASSIGNED';
         }
