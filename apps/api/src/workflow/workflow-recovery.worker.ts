@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 /**
  * Conservative crash-recovery worker.
@@ -66,7 +66,7 @@ export class WorkflowRecoveryWorker implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async recordReview(manager: any, tenantId: string, taskId: string, eventType: string, details: Record<string, unknown>) {
+  private async recordReview(manager: EntityManager, tenantId: string, taskId: string, eventType: string, details: Record<string, unknown>) {
     const fingerprint = createHash('sha256').update(JSON.stringify(details)).digest('hex');
     await manager.query(
       `INSERT INTO workflow_task_lifecycle_events ("tenantId","taskId","eventType","details")
