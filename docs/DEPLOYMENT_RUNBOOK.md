@@ -47,13 +47,19 @@ Dockerfileها فعلاً برای نصب از `npm install` استفاده می
 - ابتدا یک Staging هم‌نسخه با Production بسازید و Backup دیتابیس و volume فایل خصوصی تهیه کنید.
 - ابتدا تمام Migrationهای پایه و دامنه را با runner/ledger رسمی همان نسخه اعمال کنید؛ فایل‌های Migration را با اجرای دستی خارج از ledger دوباره اجرا نکنید.
 - Migrationهای گزارش‌ساز `20261109_024_tenant_saved_reports.sql` و `20261109_025_report_jobs_cache_schedules.sql` پس از وجود Tenant، عضویت، نقش/مجوز و جدول‌های پایه لازم اجرا می‌شوند.
-- برای این دو Migration، اسکریپت `scripts/ops/apply-report-migrations.sh` یک ledger مستقل checksumدار ایجاد می‌کند و هر Migration را به‌همراه ثبت checksum در یک تراکنش اجرا می‌کند. اجرا فقط در Staging و با Backup معتبر مجاز است:
+- اسکریپت `scripts/ops/migrate.sh` تمام فایل‌های SQL را به ترتیب نام اجرا می‌کند؛ Migrationهای 024 و 025 نیز در همین ledger/checksum ثبت می‌شوند. هر Migration و ثبت checksum آن در یک تراکنش با قفل advisory انجام می‌شود:
 
 ```sh
-DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-migration.dump' sh scripts/ops/apply-report-migrations.sh
+DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-migration.dump' sh scripts/ops/migrate.sh
 ```
 
-- اگر اشیای Migration از قبل وجود داشته باشند اما در ledger این اسکریپت ثبت نشده باشند، اسکریپت عمداً متوقف می‌شود؛ وضعیت را دستی reconcile کنید و اسکریپت را دور نزنید.
+- برای دیتابیس تازه، baseline تعیین نکنید تا همه Migrationها اجرا شوند. برای دیتابیس موجودی که Migrationهای قدیمی آن قبلاً اجرا شده‌اند اما ledger جدید ندارد، ابتدا آخرین Migration واقعاً اعمال‌شده را از روی شواهد دیتابیس مشخص کنید؛ سپس فقط با تأیید اپراتور آن را baseline کنید:
+
+```sh
+DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-migration.dump' FSB_MIGRATION_BASELINE='نام-فایل-آخرین-migration.sql' FSB_CONFIRM_BASELINE=YES sh scripts/ops/migrate.sh
+```
+
+- baseline فقط checksum فایل‌های قبل و شامل آن نقطه را ثبت می‌کند و آن‌ها را اجرا نمی‌کند؛ هرگز نام baseline را حدس نزنید. Migrationهای بعدی از جمله 024 و 025 اجرا خواهند شد. اگر اشیای گزارش‌ساز از قبل وجود دارند اما Migrationهای مربوطه در ledger ثبت نشده‌اند، اجرای مجدد را دور نزنید؛ وضعیت را دستی reconcile کنید.
 - قبل و بعد از Migration، ledger/checksum، جدول‌ها، قیود FK و ایندکس‌ها را ثبت و بررسی کنید.
 - اسکریپت Backup زیر به `age` و کلید عمومی گیرنده نیاز دارد و هم DB و هم فایل‌های خصوصی را رمزگذاری می‌کند:
 
