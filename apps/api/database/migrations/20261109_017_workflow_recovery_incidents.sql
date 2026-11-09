@@ -31,6 +31,9 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
 BEGIN
+  IF TG_OP='DELETE' THEN
+    RAISE EXCEPTION 'Workflow recovery incidents cannot be deleted';
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM process_instances pi
      WHERE pi.id=NEW."processInstanceId" AND pi."tenantId"=NEW."tenantId"
@@ -49,7 +52,7 @@ END;
 $function$;
 
 CREATE TRIGGER trg_validate_workflow_recovery_incident
-BEFORE INSERT OR UPDATE ON workflow_recovery_incidents
+BEFORE INSERT OR UPDATE OR DELETE ON workflow_recovery_incidents
 FOR EACH ROW EXECUTE FUNCTION fsb_validate_workflow_recovery_incident();
 
 COMMIT;
