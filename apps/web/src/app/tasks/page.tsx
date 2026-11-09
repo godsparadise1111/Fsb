@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 
 const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
 type Transition = { fromStepIndex: number; action: 'APPROVED' | 'REJECTED' | 'RETURNED'; toStepIndex: number | null };
@@ -157,8 +157,8 @@ export default function TasksPage() {
     return Array.from({ length: current }, (_, index) => index);
   }
 
-  const buttonStyle = { padding: '8px 14px', borderRadius: 8, border: '1px solid #d0d5dd', background: '#fff', cursor: 'pointer' };
-  const cardStyle = { background: '#fff', border: '1px solid #e4e8f0', borderRadius: 14, padding: 18 };
+  const buttonStyle: CSSProperties = { padding: '8px 14px', borderRadius: 8, border: '1px solid #d0d5dd', background: '#fff', cursor: 'pointer' };
+  const cardStyle: CSSProperties = { background: '#fff', border: '1px solid #e4e8f0', borderRadius: 14, padding: 18 };
 
   return (
     <main dir="rtl" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
