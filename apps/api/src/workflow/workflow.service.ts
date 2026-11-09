@@ -42,7 +42,7 @@ export class WorkflowService {
          JOIN organizations o ON o."tenantId"=t.id AND o.id=$3 AND o."isActive"=true
          JOIN tenant_memberships tm ON tm."tenantId"=t.id AND tm."userId"=$2 AND tm."isActive"=true
          JOIN users u ON u.id=tm."userId" AND u."isActive"=true
-        WHERE t.id=$1 AND t.status='ACTIVE' LIMIT 1`,
+        WHERE t.id=$1 AND t.status='ACTIVE' LIMIT 1 FOR SHARE OF t, o, tm, u`,
       [tenantId, userId, organizationId],
     );
     if (!rows.length) throw new ForbiddenException('An active account and tenant membership in an active organization are required');
