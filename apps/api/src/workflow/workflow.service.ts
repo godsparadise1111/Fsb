@@ -695,10 +695,65 @@ export class WorkflowService {
       } else {
         await manager.query(`UPDATE organization_operational_alerts SET status='OPEN',"acknowledgedByUserId"=NULL,"acknowledgedAt"=NULL,"resolvedByUserId"=NULL,"resolvedAt"=NULL,"resolutionNote"=NULL,"updatedAt"=$4 WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId,now]);
       }
+      await manager.query(
+        `INSERT INTO organization_operational_alert_events ("tenantId","organizationId","alertId","actorUserId","eventType","fromStatus","toStatus","note","assignedToUserId")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [tenantId, organizationId, alertId, actorUserId, action, current.status,
+          action === 'ACKNOWLEDGE' ? 'ACKNOWLEDGED' : action === 'ASSIGN' ? 'IN_PROGRESS' : action === 'RESOLVE' ? 'RESOLVED' : 'OPEN',
+          action === 'RESOLVE' ? note!.trim() : null, action === 'ASSIGN' ? assignedToUserId : null],
+      );
       await this.tenantAudit.record(manager, { tenantId, actorUserId, action: `organization.operational_alert.${action.toLowerCase()}`, resourceType: 'ORGANIZATION_OPERATIONAL_ALERT', resourceId: alertId, metadata: { organizationId, assignedToUserId: action === 'ASSIGN' ? assignedToUserId : undefined, note: action === 'RESOLVE' ? note!.trim() : undefined } });
       const result = await manager.query(`SELECT id,"alertKey",type,severity,title,description,"resourceId",status,"assignedToUserId","acknowledgedAt","resolvedAt","resolutionNote","firstDetectedAt","lastDetectedAt" FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`, [alertId,tenantId,organizationId]);
       return result[0];
     });
+  }
+
+  async addOperationalAlertNote(organizationId: string, alertId: string, actorUserId: string, tenantId: string | null | undefined, note: string) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const clean = typeof note === 'string' ? note.trim() : '';
+    if (clean.length < 3 || clean.length > 4000) throw new BadRequestException('Note must contain between 3 and 4000 characters');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    return this.dataSource.transaction(async manager => {
+      const rows = await manager.query(
+        `SELECT id,status FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3 FOR UPDATE`,
+        [alertId, tenantId, organizationId],
+      );
+      if (!rows.length) throw new NotFoundException('Operational alert not found');
+      if (['RESOLVED', 'IGNORED'].includes(rows[0].status)) throw new ConflictException('Notes cannot be added to a closed alert; reopen it first');
+      const result = await manager.query(
+        `INSERT INTO organization_operational_alert_events ("tenantId","organizationId","alertId","actorUserId","eventType","fromStatus","toStatus","note")
+         VALUES ($1,$2,$3,$4,'COMMENT',$5,$5,$6)
+         RETURNING id,"eventType",note,"createdAt"`,
+        [tenantId, organizationId, alertId, actorUserId, rows[0].status, clean],
+      );
+      await this.tenantAudit.record(manager, { tenantId, actorUserId, action: 'organization.operational_alert.comment', resourceType: 'ORGANIZATION_OPERATIONAL_ALERT', resourceId: alertId, metadata: { organizationId } });
+      return result[0];
+    });
+  }
+
+  async listOperationalAlertHistory(organizationId: string, alertId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: organizationId, tenantId, isActive: true } });
+    if (!organization) throw new NotFoundException('Organization not found');
+    const rows = await this.dataSource.query(
+      `SELECT e.id,e."eventType",e."fromStatus",e."toStatus",e.note,e."assignedToUserId",e."createdAt",
+              u."firstName" AS "actorFirstName",u."lastName" AS "actorLastName"
+         FROM organization_operational_alert_events e
+         JOIN organization_operational_alerts a ON a.id=e."alertId" AND a."tenantId"=e."tenantId" AND a."organizationId"=e."organizationId"
+         LEFT JOIN users u ON u.id=e."actorUserId"
+        WHERE e."tenantId"=$1 AND e."organizationId"=$2 AND e."alertId"=$3
+        ORDER BY e."createdAt" DESC LIMIT 200`,
+      [tenantId, organizationId, alertId],
+    );
+    if (!rows.length) {
+      const exists = await this.dataSource.query(
+        `SELECT 1 FROM organization_operational_alerts WHERE id=$1 AND "tenantId"=$2 AND "organizationId"=$3`,
+        [alertId, tenantId, organizationId],
+      );
+      if (!exists.length) throw new NotFoundException('Operational alert not found');
+    }
+    return { organizationId, alertId, total: rows.length, items: rows };
   }
 
   async listOrganizationOperationalAlerts(organizationId: string, tenantId?: string | null) {
