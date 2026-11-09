@@ -209,7 +209,7 @@ export class IdentityService {
       if (!organizationId) throw new BadRequestException('Organization roles must be assigned to an organization');
       const organization = await this.organizations.findOne({ where: { id: organizationId, isActive: true }, relations: { tenant: true } });
       if (!organization || !organization.tenant || organization.tenant.status !== 'ACTIVE') throw new NotFoundException('Active organization not found');
-      const tenantMember = await this.users.manager.getRepository(TenantMembership).exist({ where: { tenantId: organization.tenantId, userId, isActive: true } });
+      const tenantMember = await this.users.manager.getRepository(TenantMembership).exist({ where: { tenantId: organization.tenant.id, userId, isActive: true } });
       if (!tenantMember) throw new ForbiddenException('Role recipient must be an active member of the organization tenant');
     }
 
