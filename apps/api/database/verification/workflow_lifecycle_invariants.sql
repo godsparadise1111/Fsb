@@ -10,6 +10,13 @@ SELECT wt.id, wt."tenantId", pi."organizationId", o."isActive", t.status
  WHERE wt.status IN ('OPEN','IN_PROGRESS')
    AND (o."isActive" = false OR t.status = 'CLOSED');
 
+-- Running process instances must not remain under inactive organizations or closed tenants.
+SELECT pi.id, pi."tenantId", pi."organizationId"
+  FROM process_instances pi
+  JOIN organizations o ON o.id=pi."organizationId"
+  JOIN tenants t ON t.id=pi."tenantId"
+ WHERE pi.status='RUNNING' AND (o."isActive"=false OR t.status='CLOSED');
+
 -- Pending assignees must remain active users and active members of the task tenant.
 -- A non-empty result after the automation worker settles indicates unresolved access revocation.
 SELECT ta.id, ta."tenantId", ta."taskId", ta."userId"
