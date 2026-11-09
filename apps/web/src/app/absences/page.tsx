@@ -278,7 +278,7 @@ export default function AbsencesPage() {
   const substituteCandidates = useMemo(() => users
     .filter(user => user.id !== form.userId)
     .map(user => ({ user, load: workload.find(row => row.userId === user.id) }))
-    .sort((a, b) => (a.load?.openTaskCount ?? Number.MAX_SAFE_INTEGER) - (b.load?.openTaskCount ?? Number.MAX_SAFE_INTEGER)
+    .sort((a, b) => ((a.load ? a.load.openTaskCount + a.load.prospectiveCoverageCount : Number.MAX_SAFE_INTEGER) - (b.load ? b.load.openTaskCount + b.load.prospectiveCoverageCount : Number.MAX_SAFE_INTEGER))
       || personName(a.user).localeCompare(personName(b.user), 'fa')),
   [users, workload, form.userId]);
   const selectedSubstituteLoad = workload.find(row => row.userId === form.substituteUserId);
