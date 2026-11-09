@@ -64,16 +64,19 @@ export class FileAttachmentsService {
     const path = this.getStoragePath(storageKey);
     try {
       const saved = await this.dataSource.transaction(async manager => {
+        const [activeTenant] = await manager.query(
+          `SELECT id FROM tenants WHERE id=$1 AND status='ACTIVE' FOR UPDATE`,
+          [tenantId],
+        );
+        if (!activeTenant) throw new ForbiddenException('Tenant is not active');
         const [entitlement] = await manager.query(
           `SELECT p.limits,s.status,s."currentPeriodEnd",s."trialEndsAt"
-             FROM tenants t
-             JOIN tenant_subscriptions s ON s."tenantId"=t.id
+             FROM tenant_subscriptions s
              JOIN commercial_plans p ON p.code=s."planCode"
-            WHERE t.id=$1 AND t.status='ACTIVE'
-              AND s.status IN ('ACTIVE','TRIALING')
+            WHERE s."tenantId"=$1 AND s.status IN ('ACTIVE','TRIALING')
               AND (s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd">now())
               AND (s.status<>'TRIALING' OR s."trialEndsAt" IS NULL OR s."trialEndsAt">now())
-            FOR UPDATE OF t,s`,
+            FOR UPDATE OF s`,
           [tenantId],
         );
         if (!entitlement) throw new ForbiddenException('Tenant subscription is not eligible for file uploads');
