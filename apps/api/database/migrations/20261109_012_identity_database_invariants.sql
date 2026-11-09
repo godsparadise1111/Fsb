@@ -37,8 +37,25 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- Every active tenant must have at least one active administrator account.
+-- Existing tenants without one must be reconciled before this migration is applied.
+DO $
+BEGIN
+  IF EXISTS (
+    SELECT t.id
+      FROM tenants t
+      LEFT JOIN tenant_memberships tm ON tm."tenantId" = t.id AND tm."isActive" = true AND tm."isTenantAdmin" = true
+      LEFT JOIN users u ON u.id = tm."userId" AND u."isActive" = true
+     WHERE t.status = 'ACTIVE'
+     GROUP BY t.id
+    HAVING COUNT(u.id) = 0
+  ) THEN
+    RAISE EXCEPTION 'Identity invariant migration blocked: one or more active tenants have no active administrator; appoint one before migration 012';
+  END IF;
+END $;
+
 -- Refuse unsafe cleanup if an inactive account is currently the sole admin.
-DO $$
+DO $
 BEGIN
   IF EXISTS (
     SELECT tm."tenantId"
@@ -263,5 +280,42 @@ END $$;
 CREATE TRIGGER "ZZZ_roles_revoke_assignments"
   AFTER UPDATE OF "isActive" ON roles
   FOR EACH ROW EXECUTE FUNCTION fsb_revoke_inactive_role_assignments();
+
+
+-- Deferred checks permit tenant activation and initial-admin membership creation
+-- in one transaction, while making an active tenant without an active admin impossible.
+CREATE OR REPLACE FUNCTION fsb_assert_tenant_has_active_admin() RETURNS trigger LANGUAGE plpgsql AS $
+DECLARE scoped_tenant uuid;
+DECLARE scoped_status varchar(20);
+BEGIN
+  IF TG_TABLE_NAME = 'tenants' THEN
+    scoped_tenant := NEW.id;
+    scoped_status := NEW.status;
+  ELSE
+    scoped_tenant := NEW."tenantId";
+    SELECT status INTO scoped_status FROM tenants WHERE id = scoped_tenant;
+  END IF;
+
+  IF scoped_status = 'ACTIVE' AND NOT EXISTS (
+    SELECT 1
+      FROM tenant_memberships tm
+      INNER JOIN users u ON u.id = tm."userId" AND u."isActive" = true
+     WHERE tm."tenantId" = scoped_tenant
+       AND tm."isActive" = true AND tm."isTenantAdmin" = true
+  ) THEN
+    RAISE EXCEPTION 'An active tenant must retain at least one active administrator account';
+  END IF;
+  RETURN NULL;
+END $;
+
+CREATE CONSTRAINT TRIGGER "CT_tenants_require_active_admin"
+  AFTER INSERT OR UPDATE ON tenants
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION fsb_assert_tenant_has_active_admin();
+
+CREATE CONSTRAINT TRIGGER "CT_tenant_memberships_require_active_admin"
+  AFTER INSERT OR UPDATE ON tenant_memberships
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION fsb_assert_tenant_has_active_admin();
 
 COMMIT;
