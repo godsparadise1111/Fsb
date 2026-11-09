@@ -82,7 +82,11 @@ export class OrganizationService {
       const parent = await this.units.findOne({ where: { id: dto.parentId, organizationId: dto.organizationId, isActive: true } });
       if (!parent) throw new BadRequestException('Parent unit must belong to the same organization');
     }
-    if (await this.units.findOne({ where: { organizationId: dto.organizationId, parentId: dto.parentId ?? null, code: dto.code } })) throw new ConflictException('Unit code already exists under this parent');
+    const duplicate = await this.units.createQueryBuilder('unit')
+      .where('unit.organizationId = :organizationId AND unit.code = :code', { organizationId: dto.organizationId, code: dto.code })
+      .andWhere('unit.parentId IS NOT DISTINCT FROM :parentId', { parentId: dto.parentId ?? null })
+      .getOne();
+    if (duplicate) throw new ConflictException('Unit code already exists under this parent');
     return this.units.save(this.units.create({ ...dto, parentId: dto.parentId ?? null }));
   }
   async listUnits(organizationId: string) {
