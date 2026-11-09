@@ -1275,12 +1275,21 @@ export class WorkflowService {
       if (!task || task.processInstance.organization?.tenantId !== tenantId) throw new NotFoundException('Task not found');
       await this.assertActiveWorkflowMember(manager, tenantId, requesterId, task.processInstance.organizationId);
       if (!['OPEN', 'IN_PROGRESS'].includes(task.status)) throw new ConflictException('Only open tasks can be deferred');
-      const direct = await manager.getRepository(TaskAssignee).exist({ where: { taskId, userId: requesterId, status: 'PENDING' } });
+      const directAssignment = await manager.getRepository(TaskAssignee).exist({ where: { taskId, userId: requesterId, status: 'PENDING' } });
+      const directPosition = await manager.createQueryBuilder(UserPosition, 'up')
+        .innerJoin('up.position', 'position').innerJoin('position.unit', 'unit')
+        .where('up.userId = :requesterId AND unit.organizationId = :organizationId', { requesterId, organizationId: task.processInstance.organizationId })
+        .andWhere('up.isActive = true AND position.isActive = true AND unit.isActive = true')
+        .andWhere('up.validFrom <= now() AND (up.validUntil IS NULL OR up.validUntil >= now())')
+        .getCount() > 0;
+      const direct = directAssignment && directPosition;
       const delegated = await manager.createQueryBuilder(TaskDelegation, 'delegation')
         .where('delegation.taskId = :taskId AND delegation.tenantId = :tenantId', { taskId, tenantId })
         .andWhere('delegation.toUserId = :requesterId AND delegation."revokedAt" IS NULL', { requesterId })
         .andWhere('delegation."startsAt" <= :now AND delegation."endsAt" > :now', { now })
         .andWhere(`EXISTS (SELECT 1 FROM task_assignees a WHERE a."taskId" = delegation."taskId" AND a."userId" = delegation."fromUserId" AND a.status = 'PENDING')`)
+        .andWhere(`EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=delegation."tenantId" AND tm."userId"=delegation."fromUserId" AND tm."isActive"=true)`)
+        .andWhere(`EXISTS (SELECT 1 FROM user_positions up JOIN positions p ON p.id=up."positionId" JOIN organization_units ou ON ou.id=p."organizationUnitId" WHERE up."userId"=delegation."toUserId" AND ou."organizationId" = :organizationId AND up."isActive"=true AND p."isActive"=true AND ou."isActive"=true AND up."validFrom"<=now() AND (up."validUntil" IS NULL OR up."validUntil">=now()))`, { organizationId: task.processInstance.organizationId })
         .getCount() > 0;
       if (!direct && !delegated) throw new ForbiddenException('Only a pending assignee or active delegate may request a deadline change');
 
