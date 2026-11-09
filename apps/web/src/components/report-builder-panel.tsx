@@ -8,7 +8,7 @@ type Source = { key: string; label: string; fields: Field[]; aggregates: string[
 type Filter = { field: string; operator: string; value: string };
 type Spec = { source: string; from: string; to: string; groupBy?: string; aggregate: string; measure?: string; filters: Array<{field:string;operator:string;value:unknown}>; limit: number };
 type Result = { sourceLabel: string; groupLabel: string | null; measureLabel: string; period: {from:string;to:string}; rows: Array<{dimension:string|null;value:number|null}>; rowCount:number; generatedAt:string };
-type Saved = { id:string; title:string; description:string|null; isShared:boolean; ownerUserId:string };
+type Saved = { id:string; title:string; description:string|null; isShared:boolean; ownerUserId:string; isOwner:boolean };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const monthAgo = () => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
@@ -178,7 +178,7 @@ export default function ReportBuilderPanel() {
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,230px),1fr))',gap:8}}>
         {saved.map(item=><article key={item.id} style={{border:'1px solid var(--border, #e5e7eb)',borderRadius:10,padding:12,minWidth:0}}>
           <strong>{item.title}</strong><div style={{fontSize:12,opacity:.7,margin:'5px 0 10px'}}>{item.isShared?'اشتراکی برای مشتری':'خصوصی'}{item.description?' · '+item.description:''}</div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button type="button" style={button} disabled={busy} onClick={()=>void loadSaved(item.id)}>بازکردن و اجرا</button>{item.ownerUserId===undefined||item.ownerUserId===null?null:<button type="button" style={button} disabled={busy} onClick={()=>void removeSaved(item.id)}>حذف</button>}</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button type="button" style={button} disabled={busy} onClick={()=>void loadSaved(item.id)}>بازکردن و اجرا</button>{item.isOwner&&<button type="button" style={button} disabled={busy} onClick={()=>void removeSaved(item.id)}>حذف</button>}</div>
         </article>)}
       </div>
     </div>
