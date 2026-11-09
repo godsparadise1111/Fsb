@@ -122,6 +122,7 @@ export class ReportBuilderService {
     if (spec.groupBy && (!source.fields[spec.groupBy]?.groupable)) throw new BadRequestException('گروه‌بندی انتخاب‌شده مجاز نیست');
     if (spec.filters !== undefined && (!Array.isArray(spec.filters) || spec.filters.length > 10)) throw new BadRequestException('حداکثر ۱۰ شرط فیلتر مجاز است');
     for (const filter of spec.filters ?? []) {
+      if (!filter || typeof filter !== 'object' || Array.isArray(filter)) throw new BadRequestException('ساختار شرط فیلتر نامعتبر است');
       const field = source.fields[filter.field];
       if (!field || field.filterable === false) throw new BadRequestException('فیلد فیلتر مجاز نیست');
       if (!['eq', 'neq', 'contains', 'in', 'gte', 'lte'].includes(filter.operator)) throw new BadRequestException('عملگر فیلتر نامعتبر است');
@@ -135,7 +136,7 @@ export class ReportBuilderService {
       if (values.some(value => typeof value === 'string' && value.length > 200)) throw new BadRequestException('طول مقدار فیلتر بیش از حد مجاز است');
       if (field.type === 'text' && values.some(value => typeof value !== 'string')) throw new BadRequestException('مقدار فیلد متنی باید رشته باشد');
       if (field.type === 'number' && values.some(value => !Number.isFinite(Number(value)))) throw new BadRequestException('مقدار فیلد عددی معتبر نیست');
-      if (field.type === 'date' && values.some(value => typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value) || !Number.isFinite(new Date(value + 'T00:00:00.000Z').getTime()))) throw new BadRequestException('مقدار تاریخ فیلتر معتبر نیست');
+      if (field.type === 'date' && values.some(value => { if (typeof value !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)) return true; const parsed = new Date(value + 'T00:00:00.000Z'); return !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value; })) throw new BadRequestException('مقدار تاریخ فیلتر معتبر نیست');
     }
     const limit = spec.limit ?? 100;
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new BadRequestException('حداکثر ۲۰۰ ردیف برای گزارش مجاز است');
@@ -214,6 +215,7 @@ export class ReportBuilderService {
   }
 
   async save(tenantId: string, userId: string, input: { title: string; description?: string; isShared?: boolean; config: ReportSpec }) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('اطلاعات ذخیره گزارش نامعتبر است');
     const title = typeof input?.title === 'string' ? input.title.trim() : '';
     if (!title || title.length > 160) throw new BadRequestException('عنوان گزارش الزامی و حداکثر ۱۶۰ نویسه است');
     if (input.description !== undefined && (typeof input.description !== 'string' || input.description.length > 1000)) throw new BadRequestException('توضیحات گزارش نامعتبر است');
@@ -228,6 +230,7 @@ export class ReportBuilderService {
   }
 
   async update(tenantId: string, userId: string, id: string, input: { title?: string; description?: string; isShared?: boolean; config?: ReportSpec }) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('اطلاعات ویرایش گزارش نامعتبر است');
     const current = await this.dataSource.query(
       'SELECT id FROM tenant_saved_reports WHERE id=$1 AND "tenantId"=$2 AND "ownerUserId"=$3',
       [id, tenantId, userId],
