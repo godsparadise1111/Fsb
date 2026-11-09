@@ -624,6 +624,8 @@ export class WorkflowService {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
       await this.lockActiveTenant(manager, tenantId);
+      const activeOrganization = await manager.query(`SELECT id FROM organizations WHERE id=$1 AND "tenantId"=$2 AND "isActive"=true FOR SHARE`, [organizationId, tenantId]);
+      if (!activeOrganization.length) throw new ForbiddenException('The substitution organization is not active');
       const substitution = await manager.findOne(OrganizationSubstitution, {
         where: { id: substitutionId, tenantId, organizationId }, lock: { mode: 'pessimistic_write' },
       });
@@ -1325,7 +1327,7 @@ export class WorkflowService {
     if (reason.length < 5 || reason.length > 1000) throw new BadRequestException('A reason between 5 and 1000 characters is required');
 
     return this.dataSource.transaction(async manager => {
-      await this.lockActiveTenant(manager, tenantId);
+      await this.lockActiveTaskScope(manager, taskId, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId }, relations: { processInstance: { organization: true } },
         lock: { mode: 'pessimistic_write' },
@@ -1418,6 +1420,7 @@ export class WorkflowService {
   async reviewTaskDeferral(taskId: string, requestId: string, reviewerId: string, decision: 'APPROVED' | 'REJECTED', dto?: ReviewTaskDeferralDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTaskScope(manager, taskId, tenantId);
       const task = await manager.findOne(WorkflowTask, {
         where: { id: taskId }, relations: { processInstance: { organization: true } },
         lock: { mode: 'pessimistic_write' },
