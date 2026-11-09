@@ -74,3 +74,25 @@ SELECT ta.id, ta."tenantId", ta."taskId", ta."userId"
     ON tm."tenantId" = ta."tenantId" AND tm."userId" = ta."userId"
  WHERE ta.status = 'PENDING'
    AND (u.id IS NULL OR u."isActive" = false OR tm.id IS NULL OR tm."isActive" = false);
+-- Active units and positions must have active parents and active tenant ownership.
+SELECT ou.id, ou."organizationId"
+  FROM organization_units ou
+  LEFT JOIN organizations o ON o.id = ou."organizationId"
+  LEFT JOIN tenants t ON t.id = o."tenantId"
+ WHERE ou."isActive" = true
+   AND (o.id IS NULL OR o."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE');
+
+SELECT p.id, p."organizationUnitId"
+  FROM positions p
+  LEFT JOIN organization_units ou ON ou.id = p."organizationUnitId"
+  LEFT JOIN organizations o ON o.id = ou."organizationId"
+  LEFT JOIN tenants t ON t.id = o."tenantId"
+ WHERE p."isActive" = true
+   AND (ou.id IS NULL OR ou."isActive" = false OR o.id IS NULL
+     OR o."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE');
+
+-- Parent-child unit references must remain within one organization.
+SELECT child.id, child."parentId", child."organizationId", parent."organizationId" AS parent_org
+  FROM organization_units child
+  JOIN organization_units parent ON parent.id = child."parentId"
+ WHERE child."organizationId" <> parent."organizationId";
