@@ -73,8 +73,13 @@ DATABASE_URL='postgresql://...' FSB_MIGRATION_BACKUP_FILE='/secure/backups/pre-m
 - قبل و بعد از Migration، ledger/checksum، جدول‌ها، قیود FK و ایندکس‌ها را ثبت و بررسی کنید.
 - اسکریپت Backup زیر به `age` و کلید عمومی گیرنده نیاز دارد و هم DB و هم فایل‌های خصوصی را رمزگذاری می‌کند:
 
+ابتدا API و همه Workerها را متوقف کنید تا Snapshot دیتابیس و فایل‌های خصوصی با هم سازگار باشد؛ DB باید روشن بماند:
+
 ```sh
-AGE_RECIPIENT=age1... sh scripts/ops/backup-staging.sh
+docker compose --env-file .env -f compose.production.yaml stop api report-worker notification-worker workflow-automation-worker workflow-recovery-worker
+FSB_BACKUP_QUIESCE_CONFIRMED=YES AGE_RECIPIENT=age1... sh scripts/ops/backup-staging.sh
+# پس از موفقیت Backup سرویس‌ها را دوباره بالا بیاورید.
+docker compose --env-file .env -f compose.production.yaml up -d api report-worker notification-worker workflow-automation-worker workflow-recovery-worker
 ```
 
 فایل‌های رمزگذاری‌شده و checksum را به مقصدی خارج از میزبان Docker منتقل کنید. اسکریپت Migration وجود sidecar با پسوند `.sha256` را اجباری می‌کند و checksum را پیش از هر تغییری بررسی می‌کند؛ sidecar به‌صورت relocatable نوشته می‌شود. Backup روی همان دیسک تنها نسخه پشتیبان محسوب نمی‌شود.
