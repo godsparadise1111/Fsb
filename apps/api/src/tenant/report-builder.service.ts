@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 
 type Field = { label: string; expression: string; type: 'text' | 'date' | 'number'; groupable?: boolean; filterable?: boolean; whereExpression?: string };
 type Source = { label: string; from: string; dateExpression: string; tenantExpression?: string; organizationExpression?: string; fields: Record<string, Field> };
-export type ReportAccessScope = { tenantWide: boolean; organizationIds: string[] };
+export type ReportAccessScope = { tenantWide: boolean; organizationIds: string[]; executionTimeoutMs?: number };
 export type ReportFilter = { field: string; operator: 'eq' | 'neq' | 'contains' | 'in' | 'gte' | 'lte'; value: unknown };
 export type ReportSpec = { source: string; from?: string; to?: string; groupBy?: string; aggregate: 'count' | 'sum' | 'avg' | 'min' | 'max'; measure?: string; filters?: ReportFilter[]; limit?: number; organizationId?: string };
 export type ReportResult = { source: string; sourceLabel: string; groupBy: string | null; groupLabel: string | null; aggregate: string; measureLabel: string; period: { from: string; to: string }; rows: Array<{ dimension: string | null; value: number | null }>; rowCount: number; generatedAt: string; cached: boolean };
@@ -331,7 +331,8 @@ export class ReportBuilderService {
     const group = dimension ? ' GROUP BY ' + dimension.expression + ' ORDER BY "value" DESC NULLS LAST' : '';
     const sql = 'SELECT ' + select + ' FROM ' + source.from + ' WHERE ' + clauses.join(' AND ') + group + ' LIMIT ' + (spec.limit ?? 100);
     const rows = await this.dataSource.transaction(async manager => {
-      await manager.query("SET LOCAL statement_timeout='10s'");
+      const timeoutMs = Number.isInteger(scope.executionTimeoutMs) ? Math.min(60000, Math.max(1000, scope.executionTimeoutMs as number)) : 10000;
+      await manager.query("SELECT set_config('statement_timeout',$1,true)", [timeoutMs + 'ms']);
       return manager.query(sql, params);
     });
     const payload: ReportResult = {
