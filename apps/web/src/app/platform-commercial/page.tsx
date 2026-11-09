@@ -1,0 +1,55 @@
+"use client";
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+
+const API=(process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001/api').replace(/\/$/,'');
+type Plan={code:string;displayName:string;description:string;features:Record<string,boolean>;limits:Record<string,number>;monthlyPriceMinor:number|null;annualPriceMinor:number|null;currencyCode:string};
+type Subscription={tenantId:string;tenantName:string;tenantCode:string;tenantStatus:string;subscriptionId:string|null;subscriptionStatus:string|null;billingCycle:string|null;currentPeriodStart:string|null;currentPeriodEnd:string|null;trialEndsAt:string|null;cancelAtPeriodEnd:boolean;planCode:string|null;planName:string|null;features:Record<string,boolean>|null;limits:Record<string,number>|null};
+const fa=(v:unknown)=>v==null?'—':Number(v).toLocaleString('fa-IR');
+const date=(v:string|null)=>v?new Date(v).toLocaleDateString('fa-IR'):'بدون تاریخ پایان';
+export default function PlatformCommercialPage(){
+ const [token,setToken]=useState(''),[plans,setPlans]=useState<Plan[]>([]),[rows,setRows]=useState<Subscription[]>([]);
+ const [tenantId,setTenantId]=useState(''),[planCode,setPlanCode]=useState('CORE'),[status,setStatus]=useState('TRIALING'),[cycle,setCycle]=useState('MONTHLY'),[periodEnd,setPeriodEnd]=useState(''),[trialEnd,setTrialEnd]=useState('');
+ const [invoiceNumber,setInvoiceNumber]=useState(''),[currency,setCurrency]=useState('USD'),[subtotal,setSubtotal]=useState('0'),[tax,setTax]=useState('0'),[description,setDescription]=useState('اشتراک سامانه F-S'),[dueAt,setDueAt]=useState('');
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const request=useCallback(async(path:string,init:RequestInit={})=>{const res=await fetch(API+path,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...(init.headers||{})},cache:'no-store'});const data=await res.json().catch(()=>null);if(!res.ok)throw new Error(data?.message||'عملیات ناموفق بود');return data},[token]);
+ const load=useCallback(async()=>{if(!token)return;setBusy(true);setError('');try{const [p,s]=await Promise.all([request('/platform/commercial/plans'),request('/platform/commercial/subscriptions')]);setPlans(p);setRows(s);if(!tenantId&&s.length){setTenantId(s[0].tenantId);setPlanCode(s[0].planCode||'CORE');setStatus(s[0].subscriptionStatus||'TRIALING');setCycle(s[0].billingCycle||'MONTHLY')}}catch(e){setError(e instanceof Error?e.message:'دریافت اطلاعات ناموفق بود')}finally{setBusy(false)}},[token,request,tenantId]);
+ useEffect(()=>{setToken(localStorage.getItem('fsb.accessToken')||'')},[]);
+ useEffect(()=>{if(token)void load()},[token]);
+ const selected=rows.find(r=>r.tenantId===tenantId);
+ function selectTenant(id:string){setTenantId(id);const r=rows.find(x=>x.tenantId===id);if(r){setPlanCode(r.planCode||'CORE');setStatus(r.subscriptionStatus||'TRIALING');setCycle(r.billingCycle||'MONTHLY');setPeriodEnd(r.currentPeriodEnd?.slice(0,10)||'');setTrialEnd(r.trialEndsAt?.slice(0,10)||'')}}
+ async function saveSubscription(e:FormEvent){e.preventDefault();setBusy(true);setError('');setNotice('');try{await request('/platform/commercial/tenants/'+tenantId+'/subscription',{method:'PATCH',body:JSON.stringify({planCode,status,billingCycle:cycle,periodEnd:periodEnd?new Date(periodEnd+'T23:59:59').toISOString():null,trialEndsAt:trialEnd?new Date(trialEnd+'T23:59:59').toISOString():null})});setNotice('اشتراک با موفقیت به‌روزرسانی شد.');await load()}catch(e){setError(e instanceof Error?e.message:'ذخیره اشتراک ناموفق بود')}finally{setBusy(false)}}
+ async function createInvoice(e:FormEvent){e.preventDefault();setBusy(true);setError('');setNotice('');try{await request('/platform/commercial/tenants/'+tenantId+'/invoices',{method:'POST',body:JSON.stringify({invoiceNumber,currencyCode:currency,subtotalMinor:Number(subtotal),taxMinor:Number(tax),description,dueAt:dueAt?new Date(dueAt+'T23:59:59').toISOString():undefined})});setNotice('صورتحساب صادر شد.');setInvoiceNumber('');await load()}catch(e){setError(e instanceof Error?e.message:'صدور صورتحساب ناموفق بود')}finally{setBusy(false)}}
+ async function markInvoice(id:string,status:'PAID'|'VOID'){setBusy(true);setError('');try{await request('/platform/commercial/invoices/'+id+'/status',{method:'PATCH',body:JSON.stringify({status})});setNotice(status==='PAID'?'صورتحساب پرداخت‌شده ثبت شد.':'صورتحساب باطل شد.');await load()}catch(e){setError(e instanceof Error?e.message:'تغییر وضعیت صورتحساب ناموفق بود')}finally{setBusy(false)}}
+ if(!token)return <main dir="rtl" className="absence-shell"><div className="absence-alert error">نشست ورود پیدا نشد؛ ابتدا با حساب مدیر پلتفرم وارد شوید.</div></main>;
+ return <main dir="rtl" className="absence-shell">
+  <header className="absence-header"><a className="absence-brand" href="/">F-S <span>مدیریت تجاری پلتفرم</span></a><a className="absence-back" href="/">بازگشت</a></header>
+  <section className="absence-intro"><div><div className="absence-kicker">PLATFORM / COMMERCIAL OPERATIONS</div><h1>پلن‌ها، اشتراک و صورتحساب</h1><p>مدیریت قرارداد تجاری مشتریان از مسیر مجاز مدیر پلتفرم؛ هیچ درگاه پرداختی در این نسخه متصل نیست.</p></div><button className="absence-primary" onClick={()=>void load()} disabled={busy}>نوسازی</button></section>
+  {error&&<div className="absence-alert error" role="alert">{error}</div>}{notice&&<div className="absence-alert success" role="status">{notice}</div>}
+  <section className="absence-panel"><div className="absence-panel-heading"><div><h2>پلن‌های فعال</h2><p>قابلیت‌ها و سقف مصرفی که در Backend اعمال می‌شوند.</p></div></div><div className="fsb-module-grid">{plans.map(p=><article className="fsb-module-card" key={p.code}><div className="fsb-module-card-top"><span className="fsb-module-icon">◇</span><span className="fsb-module-index">{p.code}</span></div><h3>{p.displayName}</h3><p>{p.description}</p><div className="absence-form-note">کاربر: {fa(p.limits.maxUsers)} · سازمان: {fa(p.limits.maxOrganizations)} · فرایند: {fa(p.limits.maxProcesses)}</div><div className="absence-form-note">قابلیت‌ها: {Object.entries(p.features).filter(([,v])=>v).map(([k])=>k).join('، ')}</div></article>)}</div></section>
+  <section className="absence-panel"><div className="absence-panel-heading"><div><h2>مدیریت اشتراک مشتری</h2><p>تغییر پلن و وضعیت اشتراک؛ تغییرات در Audit مشتری ثبت می‌شود.</p></div></div>
+   <form onSubmit={saveSubscription} className="fsb-commercial-form">
+    <label>مشتری<select required value={tenantId} onChange={e=>selectTenant(e.target.value)}><option value="">انتخاب مشتری</option>{rows.map(r=><option key={r.tenantId} value={r.tenantId}>{r.tenantName} · {r.tenantCode}</option>)}</select></label>
+    <label>پلن<select value={planCode} onChange={e=>setPlanCode(e.target.value)}>{plans.map(p=><option key={p.code} value={p.code}>{p.displayName}</option>)}</select></label>
+    <label>وضعیت اشتراک<select value={status} onChange={e=>setStatus(e.target.value)}>{['TRIALING','ACTIVE','PAST_DUE','SUSPENDED','CANCELLED'].map(s=><option key={s} value={s}>{s}</option>)}</select></label>
+    <label>دوره پرداخت<select value={cycle} onChange={e=>setCycle(e.target.value)}><option value="MONTHLY">ماهانه</option><option value="ANNUAL">سالانه</option></select></label>
+    <label>پایان دوره<input type="date" value={periodEnd} onChange={e=>setPeriodEnd(e.target.value)}/></label>
+    <label>پایان آزمایشی<input type="date" value={trialEnd} onChange={e=>setTrialEnd(e.target.value)}/></label>
+    <button className="absence-primary" disabled={busy||!tenantId}>ذخیره اشتراک</button>
+   </form>
+   {selected&&<div className="absence-form-note">وضعیت Tenant: {selected.tenantStatus} · اشتراک: {selected.subscriptionStatus||'تعریف‌نشده'} · پایان دوره: {date(selected.currentPeriodEnd)}</div>}
+  </section>
+  <section className="absence-panel"><div className="absence-panel-heading"><div><h2>صدور صورتحساب دستی</h2><p>مبلغ‌ها در کوچک‌ترین واحد پول وارد می‌شوند؛ پرداخت از طریق درگاه انجام نمی‌شود.</p></div></div>
+   <form onSubmit={createInvoice} className="fsb-commercial-form">
+    <label>شماره صورتحساب<input required value={invoiceNumber} onChange={e=>setInvoiceNumber(e.target.value)} placeholder="FSB-2026-0001"/></label>
+    <label>ارز<input required maxLength={3} value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())}/></label>
+    <label>مبلغ پایه (واحد خرد)<input type="number" min="0" step="1" value={subtotal} onChange={e=>setSubtotal(e.target.value)}/></label>
+    <label>مالیات (واحد خرد)<input type="number" min="0" step="1" value={tax} onChange={e=>setTax(e.target.value)}/></label>
+    <label>سررسید<input type="date" value={dueAt} onChange={e=>setDueAt(e.target.value)}/></label>
+    <label>شرح<input required value={description} onChange={e=>setDescription(e.target.value)}/></label>
+    <button className="absence-primary" disabled={busy||!tenantId}>صدور صورتحساب</button>
+   </form>
+  </section>
+  <section className="absence-panel"><div className="absence-panel-heading"><div><h2>فهرست مشتریان و اشتراک‌ها</h2><p>نمای مدیریتی وضعیت قرارداد و قابلیت‌ها.</p></div><span className="absence-step">{fa(rows.length)} مشتری</span></div><div className="absence-table-wrap"><table className="absence-table" style={{minWidth:900}}><thead><tr><th>مشتری</th><th>وضعیت Tenant</th><th>پلن</th><th>اشتراک</th><th>دوره</th><th>پایان دوره</th><th>مدیریت</th></tr></thead><tbody>{rows.map(r=><tr key={r.tenantId}><td><strong>{r.tenantName}</strong><small>{r.tenantCode}</small></td><td>{r.tenantStatus}</td><td>{r.planName||r.planCode||'—'}</td><td>{r.subscriptionStatus||'—'}</td><td>{r.billingCycle||'—'}</td><td>{date(r.currentPeriodEnd)}</td><td><button onClick={()=>selectTenant(r.tenantId)}>انتخاب</button></td></tr>)}</tbody></table></div></section>
+  <footer className="absence-footer"><span>F-S · Commercial Operations</span><span>Platform permission required</span></footer>
+ </main>;
+}
