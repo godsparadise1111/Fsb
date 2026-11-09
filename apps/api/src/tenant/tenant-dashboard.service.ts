@@ -23,6 +23,14 @@ export class TenantDashboardService {
        WHERE o."tenantId"=$1 AND o."isActive"=true`,
       [tenantId],
     );
+    const [recovery] = await this.dataSource.query(
+      `SELECT count(*) FILTER (WHERE status IN ('OPEN','ACKNOWLEDGED'))::int AS "activeIncidents",
+              count(*) FILTER (WHERE status='RESOLVED' AND "resolvedAt">=now()-interval '24 hours')::int AS "resolvedLast24Hours",
+              (SELECT max(e."createdAt") FROM workflow_recovery_incident_events e
+                JOIN workflow_recovery_incidents ri ON ri.id=e."incidentId" AND ri."tenantId"=e."tenantId"
+               WHERE ri."tenantId"=$1 AND e."eventType"='WORKER_SCAN') AS "lastWorkerScanAt"
+         FROM workflow_recovery_incidents WHERE "tenantId"=$1`, [tenantId],
+    );
     const [alerts] = await this.dataSource.query(
       `SELECT count(*) FILTER (WHERE status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS'))::int AS "activeAlerts",
               count(*) FILTER (WHERE status IN ('OPEN','ACKNOWLEDGED','IN_PROGRESS') AND
@@ -43,6 +51,7 @@ export class TenantDashboardService {
       workflow: numeric(workflow),
       alerts: numeric(alerts),
       notifications: numeric(outbox),
+      recovery: { ...numeric(recovery), lastWorkerScanAt: recovery.lastWorkerScanAt ?? null },
       measuredAt: new Date().toISOString(),
       refreshAfterSeconds: 30,
     };
