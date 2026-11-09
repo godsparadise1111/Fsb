@@ -18,7 +18,7 @@ export class OrganizationController {
   @RequirePermissions('organization.read')
   @Get() list(@CurrentUser() user: AuthenticatedUser) { return this.service.listOrganizations(user.tenantId); }
   @RequirePermissions('organization.read')
-  @Get('accessible') accessible(@CurrentUser() user: AuthenticatedUser) { return this.service.listAccessibleOrganizations(user.sub, user.tenantId, user.isTenantAdmin); }
+  @Get('accessible') accessible(@CurrentUser() user: AuthenticatedUser) { return this.service.listAccessibleOrganizations(user.sub, user.tenantId); }
   @RequirePermissions('organization.manage')
   @Post('units') createUnit(@Body() dto: CreateUnitDto) { return this.service.createUnit(dto); }
   @RequirePermissions('organization.read')
