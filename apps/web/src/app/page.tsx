@@ -4,9 +4,10 @@ const modules = [
   { title: 'فرم‌ساز', description: 'تعریف فرم، نسخه‌بندی و ثبت اطلاعات', status: 'نسخه‌بندی و API' },
   { title: 'طراحی فرایند', description: 'تعریف فرایند و انتشار نسخه‌های مستقل', status: 'نسخه‌بندی و API' },
   { title: 'گردش کار', description: 'نمونه فرایند، کارتابل، ارجاع چندنفره و تاریخچه', status: 'هسته اجرایی اولیه' },
-  { title: 'داشبورد مدیریتی', description: 'شاخص‌های عملیاتی، وضعیت فرایندها، هشدارها و صف اعلان‌ها', status: 'نمای زنده مدیریتی', href: '/dashboard' },
+  { title: 'داشبورد مدیریتی مشتری', description: 'شاخص‌های کلان مشتری و وضعیت فرایندها، هشدارها و صف اعلان‌ها', status: 'نمای زنده مدیریتی', href: '/dashboard' },
+  { title: 'داشبورد مدیر سازمان', description: 'عملکرد سازمان، وظایف معوق، کارهای بدون مسئول و هشدارهای SLA', status: 'نمای تفکیکی سازمان', href: '/organization-dashboard' },
   { title: 'مدیریت صف اعلان‌ها', description: 'پایش Outbox، Dead Letter Queue و بازپردازش کنترل‌شده', status: 'پنل عملیاتی', href: '/notifications' },
-  { title: 'تحلیل گلوگاه فرایندها', description: 'زمان انتظار، چرخه، تأخیر و نرخ عدم تأیید مراحل', status: 'تحلیل عملیاتی', href: '/process-analytics' },
+  { title: 'تحلیل گلوگاه فرایندها', description: 'زمان انتظار، چرخه، تأخیر، نرخ رد و نرخ برگشت واقعی مراحل', status: 'تحلیل عملیاتی', href: '/process-analytics' },
   { title: 'گزارش‌ها و اعلان‌ها', description: 'گزارش عملکرد فرایندها، پایش SLA و تحلیل هشدارهای عملیاتی', status: 'گزارش مدیریتی فعال', href: '/reports' },
   { title: 'غیبت و جانشینی', description: 'ثبت غیبت کارکنان، تعیین جانشین موقت و حفظ پیوستگی گردش کار', status: 'پنل مدیریتی فعال', href: '/absences' },
 ];
