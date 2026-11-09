@@ -36,7 +36,7 @@ export default function AbsencesPage() {
     total: number;
     truncated: boolean;
     counts: { critical: number; high: number; medium: number };
-    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null }>;
+    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null; status: string; assignedToUserId: string | null; acknowledgedAt: string | null; resolvedAt: string | null; resolutionNote: string | null }>;
     generatedAt: string;
   } | null>(null);
   const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
@@ -260,6 +260,24 @@ export default function AbsencesPage() {
     finally { setPolicySaving(false); }
   }
 
+  async function manageOperationalAlert(alertId: string, action: 'acknowledge' | 'assign' | 'resolve' | 'reopen', assignedToUserId?: string) {
+    try {
+      let body: string | undefined;
+      if (action === 'assign') {
+        if (!assignedToUserId) throw new Error('ابتدا مسئول پیگیری را انتخاب کنید');
+        body = JSON.stringify({ assignedToUserId });
+      }
+      if (action === 'resolve') {
+        const note = window.prompt('شرح اقدام انجام‌شده و علت بستن هشدار را وارد کنید:');
+        if (!note || note.trim().length < 3) return;
+        body = JSON.stringify({ note });
+      }
+      await request(`/organizations/${organizationId}/operational-alerts/${alertId}/${action}`, { method: 'POST', ...(body ? { body } : {}) });
+      setNotice('وضعیت هشدار با موفقیت به‌روزرسانی شد');
+      await loadData();
+    } catch (e) { setError(e instanceof Error ? e.message : 'به‌روزرسانی هشدار ناموفق بود'); }
+  }
+
   async function createAbsence(event: FormEvent) {
     event.preventDefault(); setSaving(true); setError(''); setNotice('');
     try {
@@ -385,6 +403,16 @@ export default function AbsencesPage() {
             </div>
             <p>{alert.description}</p>
             <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
+            <div className="absence-alert-top">
+              <span className="absence-step">وضعیت: {alert.status === 'OPEN' ? 'باز' : alert.status === 'ACKNOWLEDGED' ? 'مشاهده و تأییدشده' : alert.status === 'IN_PROGRESS' ? 'در حال پیگیری' : 'حل‌شده'}{alert.assignedToUserId ? ` · مسئول: ${personName(userMap.get(alert.assignedToUserId))}` : ''}</span>
+              <div className="absence-actions">
+                {alert.status === 'OPEN' && <button type="button" className="absence-button secondary" onClick={() => void manageOperationalAlert(alert.id, 'acknowledge')}>تأیید مشاهده</button>}
+                {!['RESOLVED','IGNORED'].includes(alert.status) && <select aria-label="مسئول پیگیری هشدار" defaultValue={alert.assignedToUserId || ''} onChange={event => void manageOperationalAlert(alert.id, 'assign', event.target.value)}><option value="">انتخاب مسئول</option>{users.map(person => <option key={person.id} value={person.id}>{personName(person)}</option>)}</select>}
+                {!['RESOLVED','IGNORED'].includes(alert.status) && <button type="button" className="absence-button" onClick={() => void manageOperationalAlert(alert.id, 'resolve')}>ثبت حل هشدار</button>}
+                {alert.status === 'RESOLVED' && <button type="button" className="absence-button secondary" onClick={() => void manageOperationalAlert(alert.id, 'reopen')}>بازگشایی</button>}
+              </div>
+            </div>
+            {alert.resolutionNote && alert.resolutionNote !== '__AUTO_RESOLVED__' && <small>شرح حل: {alert.resolutionNote}</small>}
           </article>)}</div>}
         {alerts.truncated && <div className="absence-form-note">برای جلوگیری از بار زیاد، فقط ۱۰۰ هشدار نخست نمایش داده می‌شود.</div>}
       </section>}
