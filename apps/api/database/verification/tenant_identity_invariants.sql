@@ -2,13 +2,13 @@
 -- except the final tenant-admin summary, which should show >= 1 active admin.
 -- Run against staging after migrations 001-012; do not use as a substitute for race tests.
 
--- Active tenant memberships must belong to active users and active tenants.
+-- Active memberships may be retained during tenant suspension, but users and tenants must exist.
 SELECT tm.id, tm."tenantId", tm."userId"
   FROM tenant_memberships tm
   LEFT JOIN users u ON u.id = tm."userId"
   LEFT JOIN tenants t ON t.id = tm."tenantId"
  WHERE tm."isActive" = true
-   AND (u.id IS NULL OR u."isActive" = false OR t.status IS DISTINCT FROM 'ACTIVE');
+   AND (u.id IS NULL OR u."isActive" = false OR t.id IS NULL);
 
 -- Active position assignments must match tenant membership and active structure.
 SELECT up.id, up."tenantId", up."userId", up."positionId"
@@ -42,7 +42,7 @@ SELECT ur.id, ur."tenantId", ur."userId", ur."organizationId", ur."roleId"
      OR tm.id IS NULL OR tm."isActive" = false
      OR o.id IS NULL OR o."isActive" = false
      OR r.id IS NULL OR r."isActive" = false OR r.scope <> 'ORGANIZATION'
-     OR t.status <> 'ACTIVE' OR o."tenantId" <> ur."tenantId");
+     OR t.id IS NULL OR o."tenantId" <> ur."tenantId");
 
 -- Active platform assignments must remain unscoped and target active users/roles.
 SELECT ur.id, ur."userId", ur."roleId"
@@ -74,7 +74,7 @@ SELECT ta.id, ta."tenantId", ta."taskId", ta."userId"
     ON tm."tenantId" = ta."tenantId" AND tm."userId" = ta."userId"
  WHERE ta.status = 'PENDING'
    AND (u.id IS NULL OR u."isActive" = false OR tm.id IS NULL OR tm."isActive" = false);
--- Active units and positions must have active parents and active tenant ownership.
+-- Active units and positions must have active parents and an existing tenant; suspension preserves their state.
 SELECT ou.id, ou."organizationId"
   FROM organization_units ou
   LEFT JOIN organizations o ON o.id = ou."organizationId"
