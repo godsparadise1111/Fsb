@@ -69,6 +69,19 @@ BEGIN
   END IF;
 
   IF NEW."parentId" IS NOT NULL THEN
+    IF EXISTS (
+      WITH RECURSIVE ancestors(id, "parentId") AS (
+        SELECT id, "parentId" FROM organization_units WHERE id = NEW."parentId"
+        UNION ALL
+        SELECT parent.id, parent."parentId"
+          FROM organization_units parent
+          INNER JOIN ancestors a ON parent.id = a."parentId"
+      )
+      SELECT 1 FROM ancestors WHERE id = NEW.id
+    ) THEN
+      RAISE EXCEPTION 'Organization unit hierarchy cannot contain a cycle';
+    END IF;
+
     SELECT parent."organizationId", parent."isActive"
       INTO parent_organization, parent_active
       FROM organization_units parent
