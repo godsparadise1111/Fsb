@@ -14,6 +14,34 @@ export class TenantNotificationService {
     private readonly audit: TenantAuditService,
   ) {}
 
+  async queueOverview(tenantId: string) {
+    const tenant = await this.tenants.findOne({ where: { id: tenantId, status: 'ACTIVE' } });
+    if (!tenant) throw new NotFoundException('Active tenant not found');
+    const [row] = await this.dataSource.query(
+      `SELECT count(*) FILTER (WHERE status='PENDING')::int AS pending,
+              count(*) FILTER (WHERE status='PROCESSING')::int AS processing,
+              count(*) FILTER (WHERE status='DELIVERED')::int AS delivered,
+              count(*) FILTER (WHERE status='DEAD')::int AS dead,
+              count(*) FILTER (WHERE status='PENDING' AND "availableAt">now())::int AS scheduledRetries,
+              count(*) FILTER (WHERE status='PROCESSING' AND "lockedAt"<now()-interval '2 minutes')::int AS staleLeases,
+              max("updatedAt") AS "lastUpdated"
+         FROM notification_outbox WHERE "tenantId"=$1`, [tenantId]);
+    return { tenantId, ...Object.fromEntries(Object.entries(row).map(([k,v])=>[k,v==null?null:Number(v)])), measuredAt:new Date().toISOString() };
+  }
+
+  async listQueue(tenantId: string, status?: string, requestedLimit = 50) {
+    const tenant = await this.tenants.findOne({ where: { id: tenantId, status: 'ACTIVE' } });
+    if (!tenant) throw new NotFoundException('Active tenant not found');
+    const allowed = ['PENDING','PROCESSING','DELIVERED','DEAD'];
+    if (status && !allowed.includes(status)) throw new BadRequestException('Invalid notification status');
+    const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, Math.trunc(requestedLimit))) : 50;
+    const query = this.outbox.createQueryBuilder('n')
+      .select(['n.id','n.tenantId','n.eventType','n.recipient','n.subject','n.status','n.attempts','n.availableAt','n.lockedAt','n.deliveredAt','n.lastError','n.createdAt','n.updatedAt'])
+      .where('n.tenantId = :tenantId',{tenantId});
+    if(status) query.andWhere('n.status = :status',{status});
+    return query.orderBy('n.updatedAt','DESC').take(limit).getMany();
+  }
+
   async listDead(tenantId: string, requestedLimit = 50) {
     const tenant = await this.tenants.findOne({ where: { id: tenantId, status: 'ACTIVE' } });
     if (!tenant) throw new NotFoundException('Active tenant not found');
