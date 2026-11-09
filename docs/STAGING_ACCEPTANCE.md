@@ -177,3 +177,11 @@ Migration `20261109_015_workflow_access_revocation_lifecycle.sql` باید پس 
 - [ ] Restore database and private files into a clean isolated host; record actual RPO/RTO and verify workflow, attachment, Outbox and Tenant invariants.
 - [ ] Configure external alerts for API readiness, HTTP 5xx/latency, PostgreSQL availability/storage, worker heartbeat, notification DEAD queue, recovery incidents and backup age.
 - [ ] Obtain business approval for contractual SLA, support coverage, RPO/RTO and maintenance windows before production launch.
+
+
+### اجرای ابزارهای کمکی Staging
+
+- آزمون محدود tenant isolation: `FSB_STAGING_TESTS=true BASE_URL=https://staging.example.test TOKEN_TENANT_A=... TENANT_A_ID=... TENANT_B_ID=... TASK_B_ID=... bash scripts/staging-tenant-isolation.sh`
+- بارخوانی فقط‌خواندنی داشبورد با k6: `BASE_URL=https://staging.example.test ACCESS_TOKEN=... VUS=10 DURATION=2m k6 run tests/load/tenant-dashboard.k6.js`
+- هر دو ابزار عمداً برای محیط local/test/staging محدود شده‌اند. آن‌ها را روی Production اجرا نکنید.
+- ابزارهای بالا smoke محدود هستند و جایگزین مجموعه کامل cross-tenant برای فرم، پیوست، export، workflow action، reports، recovery incidents و API keys نیستند.
