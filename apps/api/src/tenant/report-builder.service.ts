@@ -112,6 +112,9 @@ export class ReportBuilderService {
 
   private validate(spec: ReportSpec) {
     if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new BadRequestException('تعریف گزارش نامعتبر است');
+    if (JSON.stringify(spec).length > 20000) throw new BadRequestException('حجم تعریف گزارش بیش از حد مجاز است');
+    const allowedKeys = new Set(['source', 'from', 'to', 'groupBy', 'aggregate', 'measure', 'filters', 'limit']);
+    if (Object.keys(spec).some(key => !allowedKeys.has(key))) throw new BadRequestException('فیلد اضافی در تعریف گزارش مجاز نیست');
     const source = SOURCES[spec.source];
     if (!source) throw new BadRequestException('منبع داده مجاز نیست');
     if (!['count', 'sum', 'avg', 'min', 'max'].includes(spec.aggregate)) throw new BadRequestException('عملگر تجمیع نامعتبر است');
@@ -123,6 +126,7 @@ export class ReportBuilderService {
     if (spec.filters !== undefined && (!Array.isArray(spec.filters) || spec.filters.length > 10)) throw new BadRequestException('حداکثر ۱۰ شرط فیلتر مجاز است');
     for (const filter of spec.filters ?? []) {
       if (!filter || typeof filter !== 'object' || Array.isArray(filter)) throw new BadRequestException('ساختار شرط فیلتر نامعتبر است');
+      if (Object.keys(filter).some(key => !['field', 'operator', 'value'].includes(key))) throw new BadRequestException('فیلد اضافی در شرط فیلتر مجاز نیست');
       const field = source.fields[filter.field];
       if (!field || field.filterable === false) throw new BadRequestException('فیلد فیلتر مجاز نیست');
       if (!['eq', 'neq', 'contains', 'in', 'gte', 'lte'].includes(filter.operator)) throw new BadRequestException('عملگر فیلتر نامعتبر است');
