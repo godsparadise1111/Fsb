@@ -297,12 +297,21 @@ export class WorkflowService {
     }
   }
 
-  async startProcess(dto: StartProcessDto & { startedByUserId: string }) {
+  async startProcess(dto: StartProcessDto & { startedByUserId: string }, tenantId: string | null | undefined) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
+      await this.lockActiveTenant(manager, tenantId);
+      const organizationScope = await manager.query(
+        `SELECT o.id FROM organizations o JOIN tenants t ON t.id=o.\"tenantId\"
+          WHERE o.id=$1 AND o.\"tenantId\"=$2 AND o.\"isActive\"=true AND t.status='ACTIVE'
+          FOR SHARE OF o,t`,
+        [dto.organizationId, tenantId],
+      );
+      if (!organizationScope.length) throw new NotFoundException('Active organization not found in the current tenant');
       const version = await manager.findOne(ProcessVersion, { where: { id: dto.processVersionId, status: 'PUBLISHED' }, relations: { definition: true } });
       if (!version) throw new NotFoundException('Published process version not found');
       if (version.definition.organizationId !== dto.organizationId) throw new BadRequestException('Process version does not belong to the selected organization');
-      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+      const organization = await manager.findOne(Organization, { where: { id: dto.organizationId, tenantId, isActive: true }, relations: { tenant: true } });
       if (!organization) throw new NotFoundException('Active organization not found');
       if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
       const configuredSteps = Array.isArray(version.schema?.steps) ? version.schema.steps as Array<Record<string, unknown>> : [];
