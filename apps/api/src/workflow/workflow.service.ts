@@ -509,6 +509,8 @@ export class WorkflowService {
            JOIN task_assignees original ON original."taskId"=wt.id AND original."userId"=s."originalUserId" AND original.status='PENDING'
           WHERE s."tenantId"=$1 AND s."organizationId"=$2 AND s."substituteUserId"=$3
             AND s."revokedAt" IS NULL AND s."startsAt"<=$4 AND s."endsAt">$4
+            AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=s."tenantId" AND tm."userId"=s."originalUserId" AND tm."isActive"=true)
+            AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=s."tenantId" AND tm."userId"=s."substituteUserId" AND tm."isActive"=true)
          UNION
          SELECT wt.id
            FROM task_assignees source
@@ -751,6 +753,8 @@ export class WorkflowService {
          WHERE substitution."tenantId" = $1 AND substitution."organizationId" = $2
            AND substitution."revokedAt" IS NULL
            AND substitution."startsAt" <= $3 AND substitution."endsAt" > $3
+           AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=substitution."tenantId" AND tm."userId"=substitution."originalUserId" AND tm."isActive"=true)
+           AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=substitution."tenantId" AND tm."userId"=substitution."substituteUserId" AND tm."isActive"=true)
         UNION ALL
         SELECT candidate.id, wt.id, false, false, true
           FROM active_people candidate
@@ -1017,7 +1021,9 @@ export class WorkflowService {
            JOIN organization_substitutions os ON os.id = oa."substitutionId"
           WHERE oa."tenantId" = $1 AND oa."organizationId" = $2
             AND oa."cancelledAt" IS NULL AND oa."startsAt" <= now() AND oa."endsAt" > now()
-            AND (os."revokedAt" IS NOT NULL OR os."startsAt" > now() OR os."endsAt" <= now())
+            AND (os."revokedAt" IS NOT NULL OR os."startsAt" > now() OR os."endsAt" <= now()
+              OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
+              OR NOT EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true))
          UNION ALL
          SELECT 'SUBSTITUTION_ENDING:' || os.id, 'MEDIUM', 'SUBSTITUTION_ENDING',
                 'پایان نزدیک جانشینی',
@@ -1027,6 +1033,8 @@ export class WorkflowService {
           WHERE os."tenantId" = $1 AND os."organizationId" = $2
             AND os."revokedAt" IS NULL AND os."startsAt" <= now()
             AND os."endsAt" > now() AND os."endsAt" <= now() + interval '48 hours'
+            AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
+            AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)
          UNION ALL
          SELECT 'DEFERRAL_PENDING:' || request.id, 'MEDIUM', 'DEFERRAL_REVIEW',
                 'درخواست تغییر مهلت در انتظار بررسی',
@@ -1136,7 +1144,9 @@ export class WorkflowService {
           WHERE td."tenantId" = $1 AND td."revokedAt" IS NULL AND td."startsAt" <= now() AND td."endsAt" > now()) AS "activeTaskDelegations",
          (SELECT COUNT(DISTINCT os.id)::int FROM organization_substitutions os
            WHERE os."tenantId" = $1 AND os."organizationId" = $2 AND os."revokedAt" IS NULL
-             AND os."startsAt" <= now() AND os."endsAt" > now()) AS "activeSubstitutions"`,
+             AND os."startsAt" <= now() AND os."endsAt" > now()
+             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."originalUserId" AND tm."isActive"=true)
+             AND EXISTS (SELECT 1 FROM tenant_memberships tm JOIN users u ON u.id=tm."userId" AND u."isActive"=true WHERE tm."tenantId"=os."tenantId" AND tm."userId"=os."substituteUserId" AND tm."isActive"=true)) AS "activeSubstitutions"`,
       [tenantId, organizationId],
     );
 
