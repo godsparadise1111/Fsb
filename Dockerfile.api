@@ -12,6 +12,7 @@ WORKDIR /app
 COPY package.json ./package.json
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
+COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --no-audit --no-fund --workspace @fsb/api --include-workspace-root=false
 COPY --from=build /app/apps/api/dist ./apps/api/dist
