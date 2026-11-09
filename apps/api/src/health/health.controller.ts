@@ -31,6 +31,7 @@ export class HealthController {
   @Public()
   @Get('metrics')
   @Header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
   metrics(@Headers('authorization') authorization?: string) {
     const expected = process.env.FSB_METRICS_TOKEN ?? '';
     if (expected.length < 32) throw new NotFoundException();
