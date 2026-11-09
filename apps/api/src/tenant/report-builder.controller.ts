@@ -20,6 +20,13 @@ export class ReportBuilderController {
   }
 
   @RequirePermissions('tenant.reports.read')
+  @Get('scope')
+  scope(@CurrentUser() user: AuthenticatedUser) {
+    const context = this.context(user);
+    return this.reports.reportAccessOptions(context.tenantId, context.userId);
+  }
+
+  @RequirePermissions('tenant.reports.read')
   @Get('organizations/accessible')
   accessibleOrganizations(@CurrentUser() user: AuthenticatedUser) {
     const context = this.context(user);
