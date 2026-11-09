@@ -53,4 +53,11 @@ CREATE TRIGGER trg_prevent_workflow_recovery_incident_event_truncate
 BEFORE TRUNCATE ON workflow_recovery_incident_events
 FOR EACH STATEMENT EXECUTE FUNCTION fsb_validate_workflow_recovery_incident_event();
 
+
+INSERT INTO permissions (code,name,description)
+VALUES
+  ('workflow.recovery.incidents.read','مشاهده رخدادهای بازیابی گردش‌کار','مشاهده رخدادهای بازیابی در سازمان‌های دارای مجوز'),
+  ('workflow.recovery.incidents.manage','مدیریت رخدادهای بازیابی گردش‌کار','تأیید رسیدگی و بستن رخدادهای بازیابی در سازمان‌های دارای مجوز')
+ON CONFLICT (code) DO NOTHING;
+
 COMMIT;
