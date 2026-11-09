@@ -1411,6 +1411,8 @@ export class WorkflowService {
     });
     const substituted = task ? await this.dataSource.getRepository(OrganizationSubstitution).createQueryBuilder('s')
       .innerJoin(TaskAssignee, 'original', 'original.taskId = :taskId AND original.userId = s.originalUserId', { taskId })
+      .innerJoin('tenant_memberships', 'originalMembership', 'originalMembership."tenantId" = s."tenantId" AND originalMembership."userId" = s."originalUserId" AND originalMembership."isActive" = true')
+      .innerJoin(User, 'originalUser', 'originalUser.id = s."originalUserId" AND originalUser.isActive = true')
       .where('s.tenantId = :tenantId AND s.organizationId = :organizationId AND s.substituteUserId = :requesterId', {
         tenantId, organizationId: task.processInstance.organizationId, requesterId,
       }).getCount() > 0 : false;
