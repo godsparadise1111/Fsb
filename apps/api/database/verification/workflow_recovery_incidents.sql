@@ -22,3 +22,42 @@ SELECT "tenantId","processInstanceId","incidentType",fingerprint,count(*)
   FROM workflow_recovery_incidents
  GROUP BY "tenantId","processInstanceId","incidentType",fingerprint
 HAVING count(*) > 1;
+
+
+-- Recovery event Tenant/incident identity mismatches must return zero rows.
+SELECT e.id, e."tenantId" AS "eventTenantId", i."tenantId" AS "incidentTenantId"
+  FROM workflow_recovery_incident_events e
+  JOIN workflow_recovery_incidents i ON i.id=e."incidentId"
+ WHERE e."tenantId" IS DISTINCT FROM i."tenantId";
+
+-- Manual incident actions must have an audit record in the same Tenant.
+SELECT e.id, e."eventType", e."tenantId", e."incidentId", e."actorUserId"
+  FROM workflow_recovery_incident_events e
+ WHERE e."eventType" IN ('ACKNOWLEDGE','RESOLVED','REPLAY_REJECTED')
+   AND NOT EXISTS (
+     SELECT 1 FROM tenant_audit_logs a
+      WHERE a."tenantId"=e."tenantId"
+        AND a."resourceType"='WORKFLOW_RECOVERY_INCIDENT'
+        AND a."resourceId"=e."incidentId"
+        AND a."actorUserId"=e."actorUserId"
+        AND a.action=CASE e."eventType"
+          WHEN 'ACKNOWLEDGE' THEN 'workflow.recovery_incident.acknowledge'
+          WHEN 'RESOLVED' THEN 'workflow.recovery_incident.resolve'
+          WHEN 'REPLAY_REJECTED' THEN 'workflow.recovery_incident.replay_rejected'
+        END
+   );
+
+-- A resolved incident must have a durable RESOLVED event.
+SELECT i.id, i."tenantId", i.status, i."resolvedAt"
+  FROM workflow_recovery_incidents i
+ WHERE i.status='RESOLVED'
+   AND NOT EXISTS (
+     SELECT 1 FROM workflow_recovery_incident_events e
+      WHERE e."tenantId"=i."tenantId" AND e."incidentId"=i.id AND e."eventType"='RESOLVED'
+   );
+
+-- Event keys must be unique per incident (also protected by a unique constraint).
+SELECT "incidentId","eventKey",count(*)
+  FROM workflow_recovery_incident_events
+ GROUP BY "incidentId","eventKey"
+HAVING count(*)>1;
