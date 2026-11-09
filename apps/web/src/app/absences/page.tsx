@@ -32,6 +32,13 @@ export default function AbsencesPage() {
     workloadPolicy: { maxOpenTasksPerSubstitute: number; warningThresholdPercent: number; enforceLimit: boolean };
     generatedAt: string;
   } | null>(null);
+  const [alerts, setAlerts] = useState<{
+    total: number;
+    truncated: boolean;
+    counts: { critical: number; high: number; medium: number };
+    items: Array<{ id: string; severity: string; type: string; title: string; description: string; resourceId: string; occurredAt: string | null; dueAt: string | null }>;
+    generatedAt: string;
+  } | null>(null);
   const [policy, setPolicy] = useState({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false });
   const [policySaving, setPolicySaving] = useState(false);
   const [workloadLoading, setWorkloadLoading] = useState(false);
@@ -86,16 +93,17 @@ export default function AbsencesPage() {
         setUsers([]); setItems([]); setTotal(0);
       }
       if (selectedOrg) {
-        const [people, result, workloadResult, operationsResult] = await Promise.all([
+        const [people, result, workloadResult, operationsResult, alertsResult] = await Promise.all([
           request(`/organizations/${selectedOrg}/users`),
           request(`/organizations/${selectedOrg}/absences?limit=${pageSize}&offset=${pageOffset}&status=${filter}`),
           request(`/organizations/${selectedOrg}/workload`),
           request(`/organizations/${selectedOrg}/operations-overview`),
+          request(`/organizations/${selectedOrg}/operational-alerts`),
         ]);
-        setUsers(people); setOperations(operationsResult); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
+        setUsers(people); setOperations(operationsResult); setAlerts(alertsResult); setWorkload(workloadResult.items || []); setPolicy(workloadResult.policy || { configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems(result.items || []); setTotal(result.total || 0);
         setSummary(result.summary || { total: result.total || 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       } else {
-        setUsers([]); setOperations(null); setWorkload([]); setPolicy({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems([]); setCalendarItems([]); setTotal(0);
+        setUsers([]); setOperations(null); setAlerts(null); setWorkload([]); setPolicy({ configured: false, maxOpenTasksPerSubstitute: 10, warningThresholdPercent: 80, enforceLimit: false }); setItems([]); setCalendarItems([]); setTotal(0);
         setSummary({ total: 0, active: 0, upcoming: 0, expired: 0, cancelled: 0 });
       }
     } catch (e) {
@@ -354,6 +362,31 @@ export default function AbsencesPage() {
           <span className={operations.metrics.employeesAtCapacity > 0 ? "absence-pill expired" : "absence-pill active"}>{operations.metrics.employeesAtCapacity.toLocaleString("fa-IR")} نفر در سقف ظرفیت</span>
         </div>
         {operations.employeesNearCapacity.length === 0 ? <div className="absence-form-note">در حال حاضر نیرویی به آستانه هشدار ظرفیت نرسیده است.</div> : <div className="absence-workload-list">{operations.employeesNearCapacity.map(person => <div className="absence-workload-row" key={person.userId}><span>{person.firstName} {person.lastName}</span><span>{person.projectedLoad.toLocaleString("fa-IR")} وظیفهٔ برآوردی</span><span className={person.atCapacity ? "absence-pill expired" : "absence-pill upcoming"}>{person.atCapacity ? "سقف تکمیل" : "نزدیک سقف"}</span></div>)}</div>}
+      </section>}
+
+      {alerts && <section className="absence-panel">
+        <div className="absence-panel-heading">
+          <div><h2>مرکز هشدارهای عملیاتی</h2><p>مواردی که نیازمند پیگیری مدیر یا مسئول گردش کار هستند.</p></div>
+          <span className="absence-step">آخرین بررسی: {new Date(alerts.generatedAt).toLocaleString("fa-IR")}</span>
+        </div>
+        <div className="absence-summary">
+          <article><span>بحرانی</span><strong>{alerts.counts.critical.toLocaleString("fa-IR")}</strong></article>
+          <article><span>زیاد</span><strong>{alerts.counts.high.toLocaleString("fa-IR")}</strong></article>
+          <article><span>متوسط</span><strong>{alerts.counts.medium.toLocaleString("fa-IR")}</strong></article>
+          <article><span>مجموع موارد نمایش‌داده‌شده</span><strong>{alerts.total.toLocaleString("fa-IR")}</strong></article>
+        </div>
+        {alerts.items.length === 0 ? <div className="absence-form-note">هشدار عملیاتی فعالی برای این سازمان شناسایی نشد.</div> :
+          <div className="absence-alert-list">{alerts.items.map(alert => <article className="absence-alert-item" key={alert.id}>
+            <div className="absence-alert-top">
+              <strong>{alert.title}</strong>
+              <span className={alert.severity === "CRITICAL" ? "absence-pill expired" : alert.severity === "HIGH" ? "absence-pill active" : "absence-pill upcoming"}>
+                {alert.severity === "CRITICAL" ? "بحرانی" : alert.severity === "HIGH" ? "زیاد" : "متوسط"}
+              </span>
+            </div>
+            <p>{alert.description}</p>
+            <small>شناسهٔ مورد: {alert.resourceId} {alert.dueAt ? ` · موعد: ${new Date(alert.dueAt).toLocaleString("fa-IR")}` : ""}</small>
+          </article>)}</div>}
+        {alerts.truncated && <div className="absence-form-note">برای جلوگیری از بار زیاد، فقط ۱۰۰ هشدار نخست نمایش داده می‌شود.</div>}
       </section>}
 
       {showForm && <section className="absence-panel">
