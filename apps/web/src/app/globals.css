@@ -440,3 +440,41 @@ html[data-theme="dark"] .fsb-highlight-grid article,html[data-theme="dark"] .fsb
   .fsb-module-card { padding:16px; }
   .fsb-home-footer { align-items:flex-start; flex-direction:column; margin-top:34px; }
 }
+
+
+/* Consistent controls and legacy module normalization */
+button:not(.fsb-theme-trigger):not(.fsb-theme-dismiss):not(.absence-back):not(.absence-logout):not(.absence-secondary):not(.absence-button.secondary):not(.absence-cancel) {
+  border: 1px solid transparent;
+  padding: 9px 14px;
+  background: var(--fsb-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+button:not(:disabled):not(.fsb-theme-trigger):hover { filter: brightness(.97); }
+button:not(:disabled):not(.fsb-theme-trigger):active { transform: translateY(1px); }
+.absence-secondary, .absence-back, .absence-logout, .absence-button.secondary {
+  border: 1px solid var(--fsb-border) !important;
+  background: var(--fsb-surface-muted) !important;
+  color: var(--fsb-text) !important;
+}
+.absence-primary, .absence-button { border: 1px solid transparent; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--fsb-primary); }
+fieldset { min-width: 0; border: 1px solid var(--fsb-border); border-radius: 12px; }
+legend { color: var(--fsb-text); }
+::selection { background: color-mix(in srgb,var(--fsb-primary) 22%,transparent); color: var(--fsb-text); }
+html[data-theme="dark"] button:not(.fsb-theme-trigger):not(.fsb-theme-dismiss):not(.absence-back):not(.absence-logout):not(.absence-secondary):not(.absence-button.secondary):not(.absence-cancel) {
+  color: #fff;
+}
+html[data-theme="dark"] .absence-secondary, html[data-theme="dark"] .absence-back,
+html[data-theme="dark"] .absence-logout, html[data-theme="dark"] .absence-button.secondary {
+  background: var(--fsb-surface-muted) !important;
+  color: var(--fsb-text) !important;
+  border-color: var(--fsb-border) !important;
+}
+@media(max-width:600px) {
+  .absence-intro button, .absence-toolbar button, .absence-header-actions button { min-height: 42px; }
+  .absence-toolbar { align-items: stretch; }
+  .absence-toolbar>* { max-width: 100%; }
+  .absence-summary article { overflow-wrap: anywhere; }
+}
