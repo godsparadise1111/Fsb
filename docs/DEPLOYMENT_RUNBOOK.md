@@ -43,8 +43,11 @@ Lockfile ریشه در `package-lock.json` ثبت شده است. برای باز
 
 ```sh
 sh scripts/ops/prepare-lockfile.sh
+git status --short
+git diff -- package-lock.json
+# فقط اگر lockfile نسبت به package manifests تغییر کرده است:
 git add package-lock.json
-git commit -m "build: add root npm workspace lockfile"
+git commit -m "build: refresh root npm workspace lockfile"
 ```
 
 اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند؛ GitHub Actions نیز در bootstrap اولیه lockfile را تولید و پس از Build و Docker build موفق در main ثبت کرده است. Dockerfileهای API و Web برای imageهای Production وجود lockfile را اجباری می‌کنند و فقط با `npm ci` نصب می‌کنند؛ Build بدون `package-lock.json` عمداً شکست می‌خورد. Preflight علاوه بر secrets، جداسازی پرچم Workerها و محدودبودن پورت API/Web به loopback را بررسی می‌کند.
