@@ -6,8 +6,9 @@ RUN test -s package-lock.json && npm ci --no-audit --no-fund && npm run build --
 FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates fonts-dejavu-core \
+ && apt-get install -y --no-install-recommends ca-certificates fonts-noto-core \
  && rm -rf /var/lib/apt/lists/*
+RUN test -s /usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf
 WORKDIR /app
 COPY package.json ./package.json
 COPY apps/api/package.json ./apps/api/package.json
@@ -18,7 +19,7 @@ RUN npm ci --omit=dev --no-audit --no-fund --workspace @fsb/api --include-worksp
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/database ./apps/api/database
 RUN mkdir -p /app/apps/api/var/private-files && chown -R node:node /app/apps/api/var
-ENV FSB_PDF_FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+ENV FSB_PDF_FONT_PATH=/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf
 WORKDIR /app
 USER node
 EXPOSE 3001

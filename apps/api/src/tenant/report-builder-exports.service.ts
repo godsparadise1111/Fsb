@@ -30,7 +30,7 @@ export class ReportBuilderExportsService {
   }
 
   async pdf(result: ReportResult): Promise<Buffer> {
-    const fontPath = process.env.FSB_PDF_FONT_PATH ?? '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+    const fontPath = process.env.FSB_PDF_FONT_PATH ?? '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf';
     if (!existsSync(fontPath)) {
       throw new ServiceUnavailableException('فونت فارسی PDF پیدا نشد؛ مسیر FSB_PDF_FONT_PATH را به فایل TTF فارسی معتبر تنظیم کنید');
     }

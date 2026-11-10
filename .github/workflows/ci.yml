@@ -11,8 +11,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install workspace dependencies
-        run: if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+      - name: Install workspace dependencies from the committed lockfile
+        run: test -s package-lock.json && npm ci --no-audit --no-fund
       - run: npm run build
       - run: npm run test:workflow --workspace @fsb/api
       - name: Validate operations shell scripts
@@ -21,3 +21,5 @@ jobs:
         run: |
           cp .env.example .env
           docker compose --env-file .env -f compose.production.yaml config --quiet
+      - name: Build production API and Web images
+        run: docker compose --env-file .env -f compose.production.yaml build api web

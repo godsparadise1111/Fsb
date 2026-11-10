@@ -26,7 +26,7 @@ Workerها process مستقل‌اند. متغیر فعال‌سازی Workerه�
 6. `FSB_PUBLIC_APP_URL` را با URL عمومی HTTPS وب تنظیم کنید.
 7. کلید Outbox را با `openssl rand -hex 32` تولید کنید و در `FSB_OUTBOX_ENCRYPTION_KEY` بگذارید. این کلید را در Secret Manager نگهداری کنید؛ تغییر آن بدون برنامه مهاجرت payloadهای رمزگذاری‌شده باعث غیرقابل‌خواندن شدن پیام‌های قبلی می‌شود.
 8. SMTP host/port/from و در صورت نیاز هر دو مقدار SMTP user/pass را تنظیم کنید. برای پورت 465 معمولاً `FSB_SMTP_SECURE=true` و برای 587 معمولاً false است؛ تنظیم قطعی را از سرویس‌دهنده SMTP بگیرید.
-9. `FSB_PDF_FONT_PATH` در تصویر API به فونت DejaVu Sans تنظیم شده است. این فونت فارسی را در سطح پایه پشتیبانی می‌کند؛ برای کیفیت مطلوب‌تر فارسی، یک TTF فارسی مورد تأیید را در تصویر اضافه و مسیر آن را تنظیم کنید.
+9. `FSB_PDF_FONT_PATH` در تصویر API به فونت TTF خانواده Noto Naskh Arabic تنظیم شده است؛ بسته `fonts-noto-core` در image نصب و وجود فایل فونت در زمان build کنترل می‌شود. برای استفاده از فونت سازمانی دیگر، یک TTF معتبر و دارای مجوز را در image قرار دهید و همین متغیر را به مسیر آن تغییر دهید.
 
 فایل `.env` و کلیدهای واقعی نباید commit یا داخل image شوند.
 
@@ -39,15 +39,18 @@ sh scripts/ops/preflight.sh
 docker compose --env-file .env -f compose.production.yaml build
 ```
 
-در وضعیت فعلی lockfile ریشه ثبت نشده است. پیش از Production از ریشه مخزن اجرا کنید:
+Lockfile ریشه در `package-lock.json` ثبت شده است. برای بازتولید و اعتبارسنجی نصب در clone محلی از ریشه مخزن اجرا کنید:
 
 ```sh
 sh scripts/ops/prepare-lockfile.sh
+git status --short
+git diff -- package-lock.json
+# فقط اگر lockfile نسبت به package manifests تغییر کرده است:
 git add package-lock.json
-git commit -m "build: add root npm workspace lockfile"
+git commit -m "build: refresh root npm workspace lockfile"
 ```
 
-اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند. Dockerfileهای API و Web برای imageهای Production وجود lockfile را اجباری می‌کنند و فقط با `npm ci` نصب می‌کنند؛ Build بدون `package-lock.json` عمداً شکست می‌خورد. Preflight علاوه بر secrets، جداسازی پرچم Workerها و محدودبودن پورت API/Web به loopback را بررسی می‌کند.
+اسکریپت `prepare-lockfile.sh` فایل واحد را می‌سازد و `npm ci` را اعتبارسنجی می‌کند؛ GitHub Actions نیز در bootstrap اولیه lockfile را تولید و پس از Build و Docker build موفق در main ثبت کرده است. Dockerfileهای API و Web برای imageهای Production وجود lockfile را اجباری می‌کنند و فقط با `npm ci` نصب می‌کنند؛ Build بدون `package-lock.json` عمداً شکست می‌خورد. Preflight علاوه بر secrets، جداسازی پرچم Workerها و محدودبودن پورت API/Web به loopback را بررسی می‌کند.
 
 در Windows PowerShell نیز می‌توانید همین دو دستور npm را مستقیم از ریشه اجرا کنید: `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` و سپس `npm ci --no-audit --no-fund`.
 
@@ -140,6 +143,6 @@ RPO/RTO تا زمان تمرین بازیابی واقعی و تصویب مال�
 - سرور/Staging در این کار راه‌اندازی نشده است.
 - Migrationها اجرا نشده‌اند.
 - SMTP واقعی، خروجی PDF/XLSX و نمایش فونت فارسی روی image ساخته‌شده آزمایش نشده‌اند.
-- Build و تست Docker/Compose اجرا نشده‌اند.
-- Lockfile ریشه هنوز موجود نیست؛ Dockerfileهای Production تا commit شدن آن Build را متوقف می‌کنند.
+- Build و تست Docker/Compose در CI اجرا شده‌اند؛ آزمون runtime، SMTP، PDF بصری و Restore کامل روی Staging باقی است.
+- Lockfile ریشه ثبت شده و Dockerfileهای Production با `npm ci` از آن استفاده می‌کنند.
 - `scripts/ops/deploy-smoke.sh` پس از بالا آمدن سرویس‌ها API readiness، پاسخ HTTP وب، وضعیت هفت سرویس و ثبت Migrationهای 024/025/026 در ledger را کنترل می‌کند؛ اجرای آن روی Staging هنوز انجام نشده است.
