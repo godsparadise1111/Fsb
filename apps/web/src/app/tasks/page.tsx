@@ -153,7 +153,7 @@ export default function TasksPage() {
   }
 
   async function reassign(taskId: string) {
-    const parseIds = (value: string) => value.split(/[،,\\s]+/).map(item => item.trim()).filter(Boolean);
+    const parseIds = (value: string) => value.split(/[،,\s]+/).map(item => item.trim()).filter(Boolean);
     const assigneeUserIds = parseIds(reassignUsers);
     const assigneePositionIds = parseIds(reassignPositions);
     const assigneeUnitIds = parseIds(reassignUnits);
