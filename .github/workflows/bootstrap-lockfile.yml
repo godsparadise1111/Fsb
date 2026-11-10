@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   generate-and-verify:
-    if: ${{ hashFiles('package-lock.json') == '' }}
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,22 +20,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Detect missing lockfile
+        id: lockfile
+        run: |
+          if [ -s package-lock.json ]; then echo "missing=false" >> "$GITHUB_OUTPUT"; else echo "missing=true" >> "$GITHUB_OUTPUT"; fi
       - name: Generate the root workspace lockfile
+        if: steps.lockfile.outputs.missing == 'true'
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Verify clean reproducible installation
+        if: steps.lockfile.outputs.missing == 'true'
         run: npm ci --no-audit --no-fund
       - name: Build all workspaces
+        if: steps.lockfile.outputs.missing == 'true'
         run: npm run build
       - name: Run workflow engine tests
+        if: steps.lockfile.outputs.missing == 'true'
         run: npm run test:workflow --workspace @fsb/api
       - name: Validate operations scripts
+        if: steps.lockfile.outputs.missing == 'true'
         run: for script in scripts/ops/*.sh; do sh -n "$script"; done
       - name: Validate and build production containers
+        if: steps.lockfile.outputs.missing == 'true'
         run: |
           cp .env.example .env
           docker compose --env-file .env -f compose.production.yaml config --quiet
           docker compose --env-file .env -f compose.production.yaml build api web
       - name: Commit the generated lockfile to main
+        if: steps.lockfile.outputs.missing == 'true'
         run: |
           test -s package-lock.json
           git config user.name "github-actions[bot]"
