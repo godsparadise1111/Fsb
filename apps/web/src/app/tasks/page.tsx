@@ -49,6 +49,11 @@ export default function TasksPage() {
   const [returnTask, setReturnTask] = useState('');
   const [target, setTarget] = useState('');
   const [reason, setReason] = useState('');
+  const [reassignTask, setReassignTask] = useState('');
+  const [reassignUsers, setReassignUsers] = useState('');
+  const [reassignPositions, setReassignPositions] = useState('');
+  const [reassignUnits, setReassignUnits] = useState('');
+  const [reassignReason, setReassignReason] = useState('');
 
   const headers = useCallback(() => ({
     Authorization: 'Bearer ' + token,
@@ -147,6 +152,48 @@ export default function TasksPage() {
     }
   }
 
+  async function reassign(taskId: string) {
+    const parseIds = (value: string) => value.split(/[،,\s]+/).map(item => item.trim()).filter(Boolean);
+    const assigneeUserIds = parseIds(reassignUsers);
+    const assigneePositionIds = parseIds(reassignPositions);
+    const assigneeUnitIds = parseIds(reassignUnits);
+    if (!assigneeUserIds.length && !assigneePositionIds.length && !assigneeUnitIds.length) {
+      setError('حداقل یک کاربر، سمت یا واحد برای ارجاع انتخاب/وارد کنید');
+      return;
+    }
+    if (reassignReason.trim().length < 3) {
+      setError('دلیل ارجاع باید حداقل ۳ نویسه باشد');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(API + '/tasks/' + taskId + '/reassign', {
+        method: 'POST',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(assigneeUserIds.length ? { assigneeUserIds } : {}),
+          ...(assigneePositionIds.length ? { assigneePositionIds } : {}),
+          ...(assigneeUnitIds.length ? { assigneeUnitIds } : {}),
+          reason: reassignReason.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.message || 'ارجاع مجدد وظیفه ناموفق بود');
+      setReassignTask('');
+      setReassignUsers('');
+      setReassignPositions('');
+      setReassignUnits('');
+      setReassignReason('');
+      await Promise.all([loadInbox(), loadOutbox()]);
+      if (detail) await openProcess(detail.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'خطا در ارجاع مجدد');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function returnTargets(task: Task): number[] {
     const schema = task.processInstance?.processVersion?.schema;
     const current = task.processInstance?.currentStepIndex ?? 0;
@@ -195,7 +242,11 @@ export default function TasksPage() {
               <article key={task.id} style={cardStyle}>
                 <h2 style={{ margin: '0 0 6px' }}>{task.title}</h2>
                 <p>{task.processInstance?.title} · مرحله {current + 1} از {steps.length || '—'}</p>
-                <p style={{ color: '#667085' }}>مهلت: {task.dueAt ? new Date(task.dueAt).toLocaleString('fa-IR') : 'بدون مهلت'}</p>
+                <p style={{ color: '#667085' }}>
+                  مهلت: {task.dueAt ? new Date(task.dueAt).toLocaleString('fa-IR') : 'بدون مهلت'}
+                  {task.dueAt && new Date(task.dueAt).getTime() < Date.now() && ['OPEN', 'IN_PROGRESS'].includes(task.status)
+                    ? <strong style={{ color: '#b42318', marginRight: 10 }}> · معوق از موعد SLA</strong> : null}
+                </p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button disabled={busy} style={buttonStyle} onClick={() => void act(task.id, 'APPROVED')}>تأیید</button>
                   <button disabled={busy} style={buttonStyle} onClick={() => void act(task.id, 'REJECTED')}>رد</button>
@@ -204,7 +255,33 @@ export default function TasksPage() {
                     setTarget(String(targets[targets.length - 1]));
                     setReason('');
                   }}>بازگشت به مرحله قبل</button>}
+                  <button disabled={busy} style={buttonStyle} onClick={() => {
+                    setReassignTask(reassignTask === task.id ? '' : task.id);
+                    setReassignUsers(''); setReassignPositions(''); setReassignUnits(''); setReassignReason('');
+                  }}>ارجاع مجدد</button>
+                  <button disabled={detailLoading} style={buttonStyle} onClick={() => { setActiveTab('outbox'); void openProcess(task.processInstance.id); }}>مشاهده گردش و تاریخچه</button>
                 </div>
+                {reassignTask === task.id && (
+                  <div style={{ marginTop: 14, padding: 14, background: '#f7f8fa', borderRadius: 10, display: 'grid', gap: 10 }}>
+                    <p style={{ margin: 0 }}>شناسه‌ها را از ساختار سازمانی وارد کنید؛ می‌توانید یک یا چند نوع مقصد را هم‌زمان مشخص کنید.</p>
+                    <label>شناسه کاربران (با ویرگول جدا کنید)
+                      <input value={reassignUsers} onChange={event => setReassignUsers(event.target.value)} placeholder="UUID کاربر" />
+                    </label>
+                    <label>شناسه سمت‌ها (با ویرگول جدا کنید)
+                      <input value={reassignPositions} onChange={event => setReassignPositions(event.target.value)} placeholder="UUID سمت سازمانی" />
+                    </label>
+                    <label>شناسه واحدها (با ویرگول جدا کنید)
+                      <input value={reassignUnits} onChange={event => setReassignUnits(event.target.value)} placeholder="UUID واحد سازمانی" />
+                    </label>
+                    <label>دلیل ارجاع
+                      <textarea value={reassignReason} onChange={event => setReassignReason(event.target.value)} rows={2} maxLength={1000} placeholder="دلیل ارجاع را بنویسید" />
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button disabled={busy || reassignReason.trim().length < 3} style={buttonStyle} onClick={() => void reassign(task.id)}>ثبت ارجاع</button>
+                      <button disabled={busy} style={buttonStyle} onClick={() => setReassignTask('')}>انصراف</button>
+                    </div>
+                  </div>
+                )}
                 {returnTask === task.id && (
                   <div style={{ marginTop: 14, padding: 14, background: '#f7f8fa', borderRadius: 10, display: 'grid', gap: 10 }}>
                     <label>مرحله مقصد
