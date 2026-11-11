@@ -87,9 +87,9 @@ export class WorkflowService {
 
   private resolveTransitionTarget(
     schema: Record<string, unknown>, fromStepIndex: number, action: 'APPROVED' | 'REJECTED' | 'RETURNED',
-    fallbackTarget: number | null, requireExplicit = false,
+    fallbackTarget: number | null, requireExplicit = false, data: Record<string, unknown> = {},
   ): number | null {
-    return resolveWorkflowTransitionTarget(schema, fromStepIndex, action, fallbackTarget, requireExplicit);
+    return resolveWorkflowTransitionTarget(schema, fromStepIndex, action, fallbackTarget, requireExplicit, data);
   }
 
   private resolveStepAssignees(
@@ -507,7 +507,7 @@ export class WorkflowService {
         }
         if (instance.status !== 'RUNNING') throw new ConflictException('Only a running process can return to an earlier step');
         if (Array.isArray(instance.processVersion.schema?.transitions)) {
-          const configuredTarget = this.resolveTransitionTarget(instance.processVersion.schema, fromStepIndex, 'RETURNED', null, true);
+          const configuredTarget = this.resolveTransitionTarget(instance.processVersion.schema, fromStepIndex, 'RETURNED', null, true, instance.data);
           if (configuredTarget !== targetIndex) throw new BadRequestException('RETURNED destination does not match the published transition graph');
         }
         const target = steps[targetIndex];
@@ -547,7 +547,7 @@ export class WorkflowService {
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps : [];
         const rejectedTarget = this.resolveTransitionTarget(
-          instance.processVersion.schema, instance.currentStepIndex, 'REJECTED', null, false,
+          instance.processVersion.schema, instance.currentStepIndex, 'REJECTED', null, false, instance.data,
         );
         for (const pending of all.filter(item => item.status === 'PENDING')) {
           pending.status = 'REASSIGNED';
@@ -596,7 +596,7 @@ export class WorkflowService {
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
         const fallbackNext = instance.currentStepIndex + 1 < steps.length ? instance.currentStepIndex + 1 : null;
-        const nextIndex = this.resolveTransitionTarget(instance.processVersion.schema, instance.currentStepIndex, 'APPROVED', fallbackNext, true);
+        const nextIndex = this.resolveTransitionTarget(instance.processVersion.schema, instance.currentStepIndex, 'APPROVED', fallbackNext, true, instance.data);
         if (nextIndex !== null) {
           if (nextIndex < 0 || nextIndex >= steps.length) throw new BadRequestException('APPROVED transition points to a missing process step');
           const next = await this.createTaskForStep(manager, instance, nextIndex, tenantId);
