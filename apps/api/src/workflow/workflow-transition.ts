@@ -71,10 +71,7 @@ export function resolveWorkflowTransitionTarget(
     return fallbackTarget;
   }
   const matching = candidates.filter((edge: any) => matchesRule(edge.when, data));
-  if (!matching.length) {
-    if (requireExplicit) throw new BadRequestException(`No ${action} transition condition matched for step ${fromStepIndex + 1}`);
-    return fallbackTarget;
-  }
+  if (!matching.length) throw new BadRequestException(`No ${action} transition condition matched for step ${fromStepIndex + 1}`);
   if (matching.length !== 1) throw new ConflictException('Process transition graph contains ambiguous matching rules');
   const target = matching[0].toStepIndex;
   if (target === null) return null;
