@@ -301,7 +301,7 @@ export class ProcessService {
               if (!condition || typeof condition !== 'object' || Array.isArray(condition)) return false;
               const item = condition as Record<string, unknown>;
               return typeof item.field === 'string' &&
-                /^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,7}$/.test(item.field) &&
+                /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*){0,7}$/.test(item.field) &&
                 ['exists','eq','neq','gt','gte','lt','lte','in','contains'].includes(String(item.operator));
             };
             const rule = edge.when as Record<string, unknown>;
