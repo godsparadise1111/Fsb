@@ -63,7 +63,12 @@ export default function OrganizationStructurePage() {
     if (!t) return;
     void (async () => {
       try {
-        const rows = await api("/organizations/accessible");
+        const response = await fetch(API + "/organizations/accessible", {
+          headers: { Authorization: "Bearer " + t, ...(tenant ? { "X-Tenant-Id": tenant } : {}) },
+          cache: "no-store",
+        });
+        const rows = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(rows?.message || "دریافت سازمان‌ها ناموفق بود");
         const list = Array.isArray(rows) ? rows as Organization[] : [];
         setOrganizations(list);
         const stored = localStorage.getItem("fsb.organizationId") || "";
