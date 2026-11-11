@@ -32,19 +32,20 @@ jobs:
       - run: npm run test:forms --workspace @fsb/api
       - name: Validate migration ordering and duplicate table creation
         run: node scripts/ops/validate-migrations.mjs
-      - name: Apply all SQL migrations to a clean PostgreSQL 16 database
+      - name: Apply guarded migration runner and verify clean PostgreSQL 16 database
         env:
-          PGPASSWORD: fsb-ci-password
+          DATABASE_URL: postgresql://postgres:fsb-ci-password@127.0.0.1:5432/fsb_ci
         run: |
           docker run --rm --network host \
-            -e PGPASSWORD="$PGPASSWORD" \
-            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
             postgres:16-alpine sh -c '
               set -eu
-              for migration in /workspace/apps/api/database/migrations/*.sql; do
-                echo "Applying migration: $migration"
-                psql -h 127.0.0.1 -U postgres -d fsb_ci -v ON_ERROR_STOP=1 -f "$migration"
-              done
+              printf "ephemeral CI-only backup marker\n" > /tmp/fsb-ci-backup
+              sha256sum /tmp/fsb-ci-backup > /tmp/fsb-ci-backup.sha256
+              FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh
+              FSB_STAGING_TESTS=true bash scripts/ops/verify-staging.sh
             '
       - name: Validate operations shell scripts
         run: for script in scripts/ops/*.sh; do bash -n "$script"; done; bash -n scripts/staging-enterprise-acceptance.sh; bash -n scripts/staging-workflow-idempotency.sh
