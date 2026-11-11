@@ -7,7 +7,11 @@ function readPath(data: Record<string, unknown>, path: string): unknown {
   if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*){0,7}$/.test(path)) {
     throw new ConflictException('Transition condition field path is invalid');
   }
-  return path.split('.').reduce<unknown>((value, key) =>
+  const segments = path.split('.');
+  if (segments.some(key => ['__proto__', 'prototype', 'constructor'].includes(key))) {
+    throw new ConflictException('Transition condition field path contains a reserved segment');
+  }
+  return segments.reduce<unknown>((value, key) =>
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)[key]
       : undefined, data);
