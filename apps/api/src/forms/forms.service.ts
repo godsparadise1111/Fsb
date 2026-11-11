@@ -10,6 +10,7 @@ import { FormSubmission } from './entities/form-submission.entity';
 import { CreateFormDto } from './dto/create-form.dto';
 import { CreateFormVersionDto } from './dto/create-form-version.dto';
 import { SubmitFormDto } from './dto/submit-form.dto';
+import { validateFormSchema, validateFormSubmission } from './form-schema';
 
 @Injectable()
 export class FormsService {
@@ -85,6 +86,7 @@ export class FormsService {
       const version = await manager.findOne(FormVersion, { where: { id: versionId, definitionId }, lock: { mode: 'pessimistic_write' } });
       if (!version) throw new NotFoundException('Form version not found');
       if (version.status !== 'DRAFT') throw new BadRequestException('Only draft form versions can be published');
+      validateFormSchema(version.schema);
       version.status = 'PUBLISHED';
       version.publishedAt = new Date();
       await manager.save(version);
@@ -100,6 +102,7 @@ export class FormsService {
     if (version.definition.organization?.tenantId !== tenantId || version.definition.organization.tenant?.status !== 'ACTIVE') {
       throw new BadRequestException('Form is outside the active customer account');
     }
+    validateFormSubmission(version.schema, dto.data);
     if (!await this.users.exist({ where: { id: submittedByUserId, isActive: true } })) throw new NotFoundException('Active submitter not found');
     if (dto.processInstanceId) {
       const instance = await this.instances.findOne({ where: { id: dto.processInstanceId }, relations: { organization: { tenant: true } } });
