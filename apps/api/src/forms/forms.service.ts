@@ -34,6 +34,7 @@ export class FormsService {
     if (!tenantId) return Promise.resolve([]);
     const query = this.definitions.createQueryBuilder('definition')
       .innerJoinAndSelect('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
       .orderBy('definition.name', 'ASC');
     query.andWhere('organization.tenantId = :tenantId AND organization.isActive = true', { tenantId });
     if (organizationId) query.andWhere('definition.organizationId = :organizationId', { organizationId });
@@ -44,6 +45,7 @@ export class FormsService {
     return this.dataSource.transaction(async manager => {
       const definition = await manager.createQueryBuilder(FormDefinition, 'definition')
         .innerJoin('definition.organization', 'organization')
+        .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
         .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
         .setLock('pessimistic_write').getOne();
       if (!definition) throw new NotFoundException('Form definition not found');
@@ -60,9 +62,11 @@ export class FormsService {
     const rows = await this.versions.createQueryBuilder('version')
       .innerJoin('version.definition', 'definition')
       .innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
       .where('version.definitionId = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
       .orderBy('version.versionNumber', 'DESC').getMany();
     if (!rows.length && !await this.definitions.createQueryBuilder('definition').innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
       .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId }).getExists()) {
       throw new NotFoundException('Form definition not found');
     }
