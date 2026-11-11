@@ -151,7 +151,7 @@ export default function OrganizationStructurePage() {
 
   if (!token) return <main dir="rtl" style={{ maxWidth: 620, margin: "48px auto", padding: 24, ...panel }}>
     <h1>ساختار سازمانی</h1><p>ابتدا در سامانه وارد شوید تا سازمان‌های مجاز نمایش داده شوند.</p>
-    <a href="/login">رفتن به ورود</a>
+    <a href="/">رفتن به ورود</a>
   </main>;
 
   return <main dir="rtl" style={{ maxWidth: 1180, margin: "0 auto", padding: 24, display: "grid", gap: 18 }}>
