@@ -9,6 +9,8 @@ import { Tenant } from '../tenant/entities/tenant.entity';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
+import { UpdateUnitDto } from './dto/update-unit.dto';
+import { UpdatePositionDto } from './dto/update-position.dto';
 @Injectable()
 export class OrganizationService {
   constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>, @InjectRepository(UserRole) private readonly userRoles: Repository<UserRole>) {}
@@ -109,6 +111,89 @@ export class OrganizationService {
     if (await this.positions.findOne({ where: { organizationUnitId: dto.organizationUnitId, code: dto.code } })) throw new ConflictException('Position code already exists in this unit');
     return this.positions.save(this.positions.create(dto));
   }
+  async updateUnit(unitId: string, dto: UpdateUnitDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const unit = await this.units.createQueryBuilder('unit')
+      .innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
+      .where('unit.id=:unitId AND unit.isActive=true AND organization.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { unitId, tenantId, active: 'ACTIVE' })
+      .getOne();
+    if (!unit) throw new NotFoundException('Organization unit not found');
+    if (dto.parentId) {
+      const [cycle] = await this.units.manager.query(
+        `WITH RECURSIVE descendants(id) AS (
+           SELECT id FROM organization_units WHERE id=$1
+           UNION ALL
+           SELECT child.id FROM organization_units child JOIN descendants d ON child."parentId"=d.id
+         ) SELECT id FROM descendants WHERE id=$2 LIMIT 1`,
+        [unitId, dto.parentId],
+      );
+      if (cycle) throw new BadRequestException('A unit cannot be moved below itself or one of its descendants');
+      const parent = await this.units.findOne({ where: { id: dto.parentId, organizationId: unit.organizationId, isActive: true } });
+      if (!parent) throw new BadRequestException('Parent unit must be active and belong to the same organization');
+    }
+    const nextCode = dto.code ?? unit.code;
+    const nextParent = dto.parentId ?? unit.parentId;
+    const duplicate = await this.units.createQueryBuilder('other')
+      .where('other.organizationId=:organizationId AND other.id<>:unitId AND other.code=:code', { organizationId: unit.organizationId, unitId, code: nextCode })
+      .andWhere('other.parentId IS NOT DISTINCT FROM :parentId', { parentId: nextParent })
+      .getOne();
+    if (duplicate) throw new ConflictException('Unit code already exists under this parent');
+    Object.assign(unit, { name: dto.name ?? unit.name, code: nextCode, parentId: nextParent });
+    return this.units.save(unit);
+  }
+
+  async deactivateUnit(unitId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const unit = await this.units.createQueryBuilder('unit')
+      .innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
+      .where('unit.id=:unitId AND unit.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { unitId, tenantId, active: 'ACTIVE' })
+      .getOne();
+    if (!unit) throw new NotFoundException('Organization unit not found');
+    const [dependencies] = await this.units.manager.query(
+      `SELECT
+         (SELECT count(*)::int FROM organization_units WHERE "parentId"=$1 AND "isActive"=true) AS children,
+         (SELECT count(*)::int FROM positions WHERE "organizationUnitId"=$1 AND "isActive"=true) AS positions`,
+      [unitId],
+    );
+    if (Number(dependencies.children) || Number(dependencies.positions)) {
+      throw new ConflictException('Move or deactivate active child units and positions before deactivating this unit');
+    }
+    unit.isActive = false;
+    return this.units.save(unit);
+  }
+
+  async updatePosition(positionId: string, dto: UpdatePositionDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const position = await this.positions.createQueryBuilder('position')
+      .innerJoin('position.unit', 'unit').innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
+      .where('position.id=:positionId AND position.isActive=true AND unit.isActive=true AND organization.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { positionId, tenantId, active: 'ACTIVE' })
+      .getOne();
+    if (!position) throw new NotFoundException('Position not found');
+    const code = dto.code ?? position.code;
+    if (await this.positions.createQueryBuilder('other').where('other.organizationUnitId=:unitId AND other.id<>:positionId AND other.code=:code', { unitId: position.organizationUnitId, positionId, code }).getExists()) {
+      throw new ConflictException('Position code already exists in this unit');
+    }
+    Object.assign(position, { title: dto.title ?? position.title, code });
+    return this.positions.save(position);
+  }
+
+  async deactivatePosition(positionId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const position = await this.positions.createQueryBuilder('position')
+      .innerJoin('position.unit', 'unit').innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
+      .where('position.id=:positionId AND position.isActive=true AND unit.isActive=true AND organization.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { positionId, tenantId, active: 'ACTIVE' })
+      .getOne();
+    if (!position) throw new NotFoundException('Position not found');
+    const [assignment] = await this.positions.manager.query(
+      `SELECT id FROM user_positions WHERE "positionId"=$1 AND "isActive"=true
+        AND ("validUntil" IS NULL OR "validUntil">=now()) LIMIT 1`,
+      [positionId],
+    );
+    if (assignment) throw new ConflictException('End active user assignments before deactivating this position');
+    position.isActive = false;
+    return this.positions.save(position);
+  }
+
   async listPositions(unitId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     const unit = await this.units.createQueryBuilder('unit').innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
