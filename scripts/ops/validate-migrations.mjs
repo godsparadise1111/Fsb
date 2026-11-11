@@ -13,9 +13,11 @@ for (const file of files) {
     failures.push(file + ': migration is empty');
     continue;
   }
+  // Ignore SQL comments so examples and explanations cannot look like DDL.
+  const sql = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '');
   const expression = /\bCREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_$]*))/gi;
   let match;
-  while ((match = expression.exec(source)) !== null) {
+  while ((match = expression.exec(sql)) !== null) {
     const conditional = Boolean(match[1]);
     const table = (match[2] || match[3]).toLowerCase();
     const previous = firstCreator.get(table);
