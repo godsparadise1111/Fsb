@@ -16,7 +16,9 @@ jobs:
       - run: npm run build
       - run: npm run test:workflow --workspace @fsb/api
       - run: npm run test:forms --workspace @fsb/api
-      - name: Validate migration ordering and duplicate table creation\n        run: node scripts/ops/validate-migrations.mjs\n      - name: Validate operations shell scripts
+      - name: Validate migration ordering and duplicate table creation
+        run: node scripts/ops/validate-migrations.mjs
+      - name: Validate operations shell scripts
         run: for script in scripts/ops/*.sh; do bash -n "$script"; done; bash -n scripts/staging-enterprise-acceptance.sh; bash -n scripts/staging-workflow-idempotency.sh
       - name: Validate production Compose configuration
         run: |
