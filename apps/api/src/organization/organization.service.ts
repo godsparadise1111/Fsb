@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { UserRole } from '../identity/entities/user-role.entity';
 import { Organization } from './entities/organization.entity';
 import { OrganizationUnit } from './entities/organization-unit.entity';
@@ -11,6 +11,7 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UpdatePositionDto } from './dto/update-position.dto';
+import { TenantAuditService } from '../tenant/tenant-audit.service';
 @Injectable()
 export class OrganizationService {
   constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>, @InjectRepository(UserRole) private readonly userRoles: Repository<UserRole>) {}
@@ -77,8 +78,8 @@ export class OrganizationService {
       order: { name: 'ASC' },
     });
   }
-  async createUnit(dto: CreateUnitDto, tenantId?: string | null) {
-    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+  async createUnit(dto: CreateUnitDto, tenantId?: string | null, actorUserId?: string) {
+    if (!tenantId || !actorUserId) throw new ForbiddenException('An active tenant context and actor are required');
     const organization = await this.organizations.createQueryBuilder('organization').innerJoin('organization.tenant', 'tenant')
       .where('organization.id = :organizationId AND organization.tenantId = :tenantId AND organization.isActive = true AND tenant.status = :active', { organizationId: dto.organizationId, tenantId, active: 'ACTIVE' }).getOne();
     if (!organization) throw new NotFoundException('Organization not found');
@@ -91,7 +92,7 @@ export class OrganizationService {
       .andWhere('unit.parentId IS NOT DISTINCT FROM :parentId', { parentId: dto.parentId ?? null })
       .getOne();
     if (duplicate) throw new ConflictException('Unit code already exists under this parent');
-    return this.units.save(this.units.create({ ...dto, parentId: dto.parentId ?? null }));
+    return this.mutateWithAudit(tenantId, actorUserId, 'organization.unit.created', 'ORGANIZATION_UNIT', null, { organizationId: dto.organizationId, code: dto.code, parentId: dto.parentId ?? null }, manager => manager.save(OrganizationUnit, manager.create(OrganizationUnit, { ...dto, parentId: dto.parentId ?? null })));
   }
   async listUnits(organizationId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
@@ -100,8 +101,8 @@ export class OrganizationService {
     if (!organization) throw new NotFoundException('Organization not found');
     return this.units.find({ where: { organizationId, isActive: true }, relations: { parent: true }, order: { name: 'ASC' } });
   }
-  async createPosition(dto: CreatePositionDto, tenantId?: string | null) {
-    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+  async createPosition(dto: CreatePositionDto, tenantId?: string | null, actorUserId?: string) {
+    if (!tenantId || !actorUserId) throw new ForbiddenException('An active tenant context and actor are required');
     const unit = await this.units.createQueryBuilder('unit')
       .innerJoin('unit.organization', 'organization')
       .innerJoin('organization.tenant', 'tenant')
@@ -109,10 +110,10 @@ export class OrganizationService {
       .getOne();
     if (!unit) throw new NotFoundException('Organization unit not found');
     if (await this.positions.findOne({ where: { organizationUnitId: dto.organizationUnitId, code: dto.code } })) throw new ConflictException('Position code already exists in this unit');
-    return this.positions.save(this.positions.create(dto));
+    return this.mutateWithAudit(tenantId, actorUserId, 'organization.position.created', 'POSITION', null, { organizationUnitId: dto.organizationUnitId, code: dto.code }, manager => manager.save(Position, manager.create(Position, dto)));
   }
-  async updateUnit(unitId: string, dto: UpdateUnitDto, tenantId?: string | null) {
-    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+  async updateUnit(unitId: string, dto: UpdateUnitDto, tenantId?: string | null, actorUserId?: string) {
+    if (!tenantId || !actorUserId) throw new ForbiddenException('An active tenant context and actor are required');
     const unit = await this.units.createQueryBuilder('unit')
       .innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
       .where('unit.id=:unitId AND unit.isActive=true AND organization.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { unitId, tenantId, active: 'ACTIVE' })
@@ -139,11 +140,11 @@ export class OrganizationService {
       .getOne();
     if (duplicate) throw new ConflictException('Unit code already exists under this parent');
     Object.assign(unit, { name: dto.name ?? unit.name, code: nextCode, parentId: nextParent });
-    return this.units.save(unit);
+    return this.mutateWithAudit(tenantId, actorUserId, 'organization.unit.updated', 'ORGANIZATION_UNIT', unit.id, { name: unit.name, code: unit.code, parentId: unit.parentId }, manager => manager.save(OrganizationUnit, unit));
   }
 
-  async deactivateUnit(unitId: string, tenantId?: string | null) {
-    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+  async deactivateUnit(unitId: string, tenantId?: string | null, actorUserId?: string) {
+    if (!tenantId || !actorUserId) throw new ForbiddenException('An active tenant context and actor are required');
     const unit = await this.units.createQueryBuilder('unit')
       .innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
       .where('unit.id=:unitId AND unit.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { unitId, tenantId, active: 'ACTIVE' })
@@ -159,11 +160,11 @@ export class OrganizationService {
       throw new ConflictException('Move or deactivate active child units and positions before deactivating this unit');
     }
     unit.isActive = false;
-    return this.units.save(unit);
+    return this.mutateWithAudit(tenantId, actorUserId, 'organization.unit.deactivated', 'ORGANIZATION_UNIT', unit.id, {}, manager => manager.save(OrganizationUnit, unit));
   }
 
-  async updatePosition(positionId: string, dto: UpdatePositionDto, tenantId?: string | null) {
-    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+  async updatePosition(positionId: string, dto: UpdatePositionDto, tenantId?: string | null, actorUserId?: string) {
+    if (!tenantId || !actorUserId) throw new ForbiddenException('An active tenant context and actor are required');
     const position = await this.positions.createQueryBuilder('position')
       .innerJoin('position.unit', 'unit').innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
       .where('position.id=:positionId AND position.isActive=true AND unit.isActive=true AND organization.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { positionId, tenantId, active: 'ACTIVE' })
@@ -174,11 +175,11 @@ export class OrganizationService {
       throw new ConflictException('Position code already exists in this unit');
     }
     Object.assign(position, { title: dto.title ?? position.title, code });
-    return this.positions.save(position);
+    return this.mutateWithAudit(tenantId, actorUserId, 'organization.position.updated', 'POSITION', position.id, { title: position.title, code: position.code }, manager => manager.save(Position, position));
   }
 
-  async deactivatePosition(positionId: string, tenantId?: string | null) {
-    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+  async deactivatePosition(positionId: string, tenantId?: string | null, actorUserId?: string) {
+    if (!tenantId || !actorUserId) throw new ForbiddenException('An active tenant context and actor are required');
     const position = await this.positions.createQueryBuilder('position')
       .innerJoin('position.unit', 'unit').innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
       .where('position.id=:positionId AND position.isActive=true AND unit.isActive=true AND organization.isActive=true AND organization.tenantId=:tenantId AND tenant.status=:active', { positionId, tenantId, active: 'ACTIVE' })
@@ -191,7 +192,7 @@ export class OrganizationService {
     );
     if (assignment) throw new ConflictException('End active user assignments before deactivating this position');
     position.isActive = false;
-    return this.positions.save(position);
+    return this.mutateWithAudit(tenantId, actorUserId, 'organization.position.deactivated', 'POSITION', position.id, {}, manager => manager.save(Position, position));
   }
 
   async listPositions(unitId: string, tenantId?: string | null) {
