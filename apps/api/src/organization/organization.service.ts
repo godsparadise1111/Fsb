@@ -77,7 +77,8 @@ export class OrganizationService {
   }
   async createUnit(dto: CreateUnitDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, tenantId, isActive: true } });
+    const organization = await this.organizations.createQueryBuilder('organization').innerJoin('organization.tenant', 'tenant')
+      .where('organization.id = :organizationId AND organization.tenantId = :tenantId AND organization.isActive = true AND tenant.status = :active', { organizationId: dto.organizationId, tenantId, active: 'ACTIVE' }).getOne();
     if (!organization) throw new NotFoundException('Organization not found');
     if (dto.parentId) {
       const parent = await this.units.findOne({ where: { id: dto.parentId, organizationId: dto.organizationId, isActive: true } });
@@ -92,7 +93,9 @@ export class OrganizationService {
   }
   async listUnits(organizationId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    if (!await this.organizations.exist({ where: { id: organizationId, tenantId, isActive: true } })) throw new NotFoundException('Organization not found');
+    const organization = await this.organizations.createQueryBuilder('organization').innerJoin('organization.tenant', 'tenant')
+      .where('organization.id = :organizationId AND organization.tenantId = :tenantId AND organization.isActive = true AND tenant.status = :active', { organizationId, tenantId, active: 'ACTIVE' }).getOne();
+    if (!organization) throw new NotFoundException('Organization not found');
     return this.units.find({ where: { organizationId, isActive: true }, relations: { parent: true }, order: { name: 'ASC' } });
   }
   async createPosition(dto: CreatePositionDto, tenantId?: string | null) {
@@ -108,8 +111,8 @@ export class OrganizationService {
   }
   async listPositions(unitId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
-    const unit = await this.units.createQueryBuilder('unit').innerJoin('unit.organization', 'organization')
-      .where('unit.id = :unitId AND unit.isActive = true AND organization.isActive = true AND organization.tenantId = :tenantId', { unitId, tenantId }).getOne();
+    const unit = await this.units.createQueryBuilder('unit').innerJoin('unit.organization', 'organization').innerJoin('organization.tenant', 'tenant')
+      .where('unit.id = :unitId AND unit.isActive = true AND organization.isActive = true AND organization.tenantId = :tenantId AND tenant.status = :active', { unitId, tenantId, active: 'ACTIVE' }).getOne();
     if (!unit) throw new NotFoundException('Organization unit not found');
     return this.positions.find({ where: { organizationUnitId: unitId, isActive: true }, order: { title: 'ASC' } });
   }
