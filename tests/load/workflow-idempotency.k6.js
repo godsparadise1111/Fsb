@@ -28,13 +28,29 @@ export function setup() {
 }
 
 export default function (data) {
-  const response = http.post(data.url, JSON.stringify({ action: 'APPROVED', comment: 'Concurrent idempotency acceptance test' }), {
+  const response = http.post(data.url, JSON.stringify({
+    action: 'APPROVED',
+    comment: 'Concurrent idempotency acceptance test',
+  }), {
     headers: {
       Authorization: 'Bearer ' + token,
       'Content-Type': 'application/json',
       'Idempotency-Key': key,
     },
   });
-  const ok = check(response, { 'duplicate action returns committed idempotent response': r => (r.status === 200 || r.status === 201) });
+  const isSuccess = response.status === 200 || response.status === 201;
+  let hasJsonResponse = false;
+  if (isSuccess) {
+    try {
+      const body = response.json();
+      hasJsonResponse = body !== null && typeof body === 'object' && !Array.isArray(body);
+    } catch (_) {
+      hasJsonResponse = false;
+    }
+  }
+  const ok = check(response, {
+    'duplicate action returns a successful response': () => isSuccess,
+    'idempotent replay returns a JSON object': () => hasJsonResponse,
+  });
   failures.add(!ok);
 }
