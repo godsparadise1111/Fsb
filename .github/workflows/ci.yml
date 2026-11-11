@@ -57,7 +57,7 @@ jobs:
               source_count="$(psql -h 127.0.0.1 -U postgres -d fsb_ci -Atqc 'SELECT count(*) FROM fsb_schema_migration_ledger')"
               restored_count="$(psql -h 127.0.0.1 -U postgres -d fsb_ci_restore -Atqc 'SELECT count(*) FROM fsb_schema_migration_ledger')"
               test "$source_count" = "$restored_count"
-              test "$(psql -h 127.0.0.1 -U postgres -d fsb_ci_restore -Atqc "SELECT to_regclass(\\$\\$public.tenant_api_credentials\\$\\$) IS NOT NULL")" = "t"
+              test "$(psql -h 127.0.0.1 -U postgres -d fsb_ci_restore -Atqc "SELECT to_regclass(\$\$public.tenant_api_credentials\$\$) IS NOT NULL")" = "t"
               echo "Isolated database restore verified: $restored_count migration ledger rows"
             '
       - name: Validate operations shell scripts
