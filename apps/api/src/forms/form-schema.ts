@@ -80,14 +80,18 @@ export function validateFormSubmission(schema: Record<string, unknown>, data: Re
   for (const key of Object.keys(data)) if (!allowed.has(key)) throw new BadRequestException(`Unknown form field: ${key}`);
   const required = new Set(fields.filter(field => field.required === true).map(field => field.name));
   const hidden = new Set<string>();
+  const visibleTargets = new Set<string>();
+  const visibleNow = new Set<string>();
   for (const raw of (schema.rules as Array<Record<string, unknown>> | undefined) ?? []) {
-    if (!conditionMatches(raw.when, data)) continue;
     const then = raw.then as Record<string, unknown>;
+    for (const name of (then.visible as string[] | undefined) ?? []) visibleTargets.add(name);
+    if (!conditionMatches(raw.when, data)) continue;
+    for (const name of (then.visible as string[] | undefined) ?? []) visibleNow.add(name);
     for (const name of (then.required as string[] | undefined) ?? []) required.add(name);
     for (const name of (then.hidden as string[] | undefined) ?? []) hidden.add(name);
   }
   for (const field of fields) {
-    if (hidden.has(field.name)) continue;
+    if (hidden.has(field.name) || (visibleTargets.has(field.name) && !visibleNow.has(field.name))) continue;
     const value = data[field.name];
     if (required.has(field.name) && (value === undefined || value === null || value === '')) {
       throw new BadRequestException(`Form field ${field.name} is required`);
