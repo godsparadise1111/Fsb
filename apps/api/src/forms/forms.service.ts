@@ -77,6 +77,7 @@ export class FormsService {
     return this.dataSource.transaction(async manager => {
       const definition = await manager.createQueryBuilder(FormDefinition, 'definition')
         .innerJoin('definition.organization', 'organization')
+        .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
         .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
         .setLock('pessimistic_write').getOne();
       if (!definition) throw new NotFoundException('Form definition not found');
