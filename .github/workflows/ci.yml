@@ -35,9 +35,11 @@ jobs:
       - name: Apply guarded migration runner and verify clean PostgreSQL 16 database
         env:
           DATABASE_URL: postgresql://postgres:fsb-ci-password@127.0.0.1:5432/fsb_ci
+          PGPASSWORD: fsb-ci-password
         run: |
           docker run --rm --network host \
             -e DATABASE_URL="$DATABASE_URL" \
+            -e PGPASSWORD="$PGPASSWORD" \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             postgres:16 sh -c '
