@@ -22,30 +22,30 @@ export class OrganizationController {
   @RequirePermissions('organization.read')
   @Get('accessible') accessible(@CurrentUser() user: AuthenticatedUser) { return this.service.listAccessibleOrganizations(user.sub, user.tenantId); }
   @RequirePermissions('organization.manage')
-  @Post('units') createUnit(@Body() dto: CreateUnitDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createUnit(dto, user.tenantId); }
+  @Post('units') createUnit(@Body() dto: CreateUnitDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createUnit(dto, user.tenantId, user.sub); }
   @RequirePermissions('organization.read')
   @Get(':organizationId/units') units(@Param('organizationId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) { return this.service.listUnits(id, user.tenantId); }
   @RequirePermissions('organization.manage')
-  @Post('positions') createPosition(@Body() dto: CreatePositionDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createPosition(dto, user.tenantId); }
+  @Post('positions') createPosition(@Body() dto: CreatePositionDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createPosition(dto, user.tenantId, user.sub); }
   @RequirePermissions('organization.manage')
   @Patch('units/:unitId')
   updateUnit(@Param('unitId', new ParseUUIDPipe()) id: string, @Body() dto: UpdateUnitDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.updateUnit(id, dto, user.tenantId);
+    return this.service.updateUnit(id, dto, user.tenantId, user.sub);
   }
   @RequirePermissions('organization.manage')
   @Post('units/:unitId/deactivate')
   deactivateUnit(@Param('unitId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.deactivateUnit(id, user.tenantId);
+    return this.service.deactivateUnit(id, user.tenantId, user.sub);
   }
   @RequirePermissions('organization.manage')
   @Patch('positions/:positionId')
   updatePosition(@Param('positionId', new ParseUUIDPipe()) id: string, @Body() dto: UpdatePositionDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.updatePosition(id, dto, user.tenantId);
+    return this.service.updatePosition(id, dto, user.tenantId, user.sub);
   }
   @RequirePermissions('organization.manage')
   @Post('positions/:positionId/deactivate')
   deactivatePosition(@Param('positionId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.deactivatePosition(id, user.tenantId);
+    return this.service.deactivatePosition(id, user.tenantId, user.sub);
   }
 
   @RequirePermissions('organization.read')
