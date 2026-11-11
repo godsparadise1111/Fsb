@@ -1,0 +1,43 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+const API=(process.env.NEXT_PUBLIC_API_URL||"http://localhost:3001/api").replace(/\/$/,"");
+type Org={id:string;name:string;code?:string};
+type FormDef={id:string;name:string;code:string;status:string};
+type Version={id:string;versionNumber:number;status:string;schema:Record<string,unknown>};
+const sample={title:"فرم درخواست",description:"",fields:[{name:"subject",label:"موضوع",type:"text",required:true},{name:"amount",label:"مبلغ",type:"number",required:true},{name:"department",label:"واحد درخواست‌کننده",type:"select",options:["FIN","HR","IT"]}],process:{processDefinitionId:"",processVersionId:""},rules:[{when:{field:"amount",operator:"gt",value:1000000},then:{required:["justification"],visible:["justification"]}}]};
+export default function FormDesignPage(){
+ const [token,setToken]=useState(""),[tenantId,setTenantId]=useState(""),[orgs,setOrgs]=useState<Org[]>([]),[orgId,setOrgId]=useState("");
+ const [forms,setForms]=useState<FormDef[]>([]),[selected,setSelected]=useState(""),[versions,setVersions]=useState<Version[]>([]),[versionId,setVersionId]=useState("");
+ const [code,setCode]=useState(""),[name,setName]=useState(""),[schema,setSchema]=useState(JSON.stringify(sample,null,2)),[note,setNote]=useState("");
+ const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const headers=useCallback((json=false):Record<string,string>=>({Authorization:"Bearer "+token,...(tenantId?{"X-Tenant-Id":tenantId}:{}),...(json?{"Content-Type":"application/json"}:{})}),[token,tenantId]);
+ const api=useCallback(async(path:string,init:RequestInit={})=>{const r=await fetch(API+path,{...init,headers:headers(init.body!==undefined),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw new Error(d?.message||"درخواست ناموفق بود");return d},[headers]);
+ const loadForms=useCallback(async()=>{if(!orgId)return;const d=await api("/forms?organizationId="+encodeURIComponent(orgId));setForms(Array.isArray(d)?d:[])},[api,orgId]);
+ const loadVersions=useCallback(async(id:string)=>{if(!id){setVersions([]);return}const d=await api("/forms/"+id+"/versions");setVersions(Array.isArray(d)?d:[])},[api]);
+ useEffect(()=>{const t=localStorage.getItem("fsb.accessToken")||"",tenant=localStorage.getItem("fsb.tenantId")||"";setToken(t);setTenantId(tenant)},[]);
+ useEffect(()=>{if(!token)return;void(async()=>{try{const d=await api("/organizations/accessible");setOrgs(Array.isArray(d)?d:[])}catch(e){setError(e instanceof Error?e.message:"دریافت سازمان‌ها ناموفق بود")}})()},[token,api]);
+ useEffect(()=>{if(orgId)void loadForms().catch(e=>setError(e instanceof Error?e.message:"خطا"))},[orgId,loadForms]);
+ async function run(action:()=>Promise<void>,message:string){setBusy(true);setError("");setNotice("");try{await action();setNotice(message)}catch(e){setError(e instanceof Error?e.message:"عملیات ناموفق بود")}finally{setBusy(false)}}
+ async function createForm(e:React.FormEvent){e.preventDefault();await run(async()=>{const d=await api("/forms",{method:"POST",body:JSON.stringify({organizationId:orgId,code:code.trim(),name:name.trim()})});setCode("");setName("");await loadForms();setSelected(d.id);await loadVersions(d.id)},"فرم ایجاد شد؛ نسخه و ساختار فیلدها را تعریف کنید.")}
+ async function createVersion(e:React.FormEvent){e.preventDefault();await run(async()=>{const value=JSON.parse(schema);if(!value||typeof value!=="object"||Array.isArray(value))throw new Error("ساختار باید یک شیء JSON باشد");const d=await api("/forms/"+selected+"/versions",{method:"POST",body:JSON.stringify({schema:value,changeNote:note||undefined})});setNote("");await loadVersions(selected);setVersionId(d.id)},"نسخه پیش‌نویس ایجاد شد.")}
+ async function publish(id:string){await run(async()=>{await api("/forms/"+selected+"/versions/"+id+"/publish",{method:"POST"});await loadVersions(selected)},"نسخه فرم منتشر شد.")}
+ const panel:React.CSSProperties={background:"var(--panel,#fff)",border:"1px solid #e4e8f0",borderRadius:14,padding:18,minWidth:0};
+ const input:React.CSSProperties={width:"100%",padding:10,border:"1px solid #d0d5dd",borderRadius:8,font:"inherit"};
+ const button:React.CSSProperties={padding:"9px 14px",border:"1px solid #cbd5e1",borderRadius:8,background:"#fff",cursor:"pointer",font:"inherit"};
+ if(!token)return <main dir="rtl" style={{maxWidth:600,margin:"48px auto",padding:24,...panel}}><h1>فرم‌ساز سازمانی</h1><p>برای دسترسی به فرم‌ساز ابتدا وارد سامانه شوید.</p><a href="/login">ورود</a></main>;
+ return <main dir="rtl" style={{maxWidth:1200,margin:"0 auto",padding:24,display:"grid",gap:18}}>
+ <header><p style={{color:"#667085"}}>F-S / FORM DESIGNER</p><h1>فرم‌ساز متصل به فرایند</h1><p>تعریف فرم، نسخه‌بندی، فیلدها، قوانین نمایشی و اتصال اختیاری به نسخه فرایند</p></header>
+ {error&&<p role="alert" style={{color:"#b42318",background:"#fef3f2",padding:12,borderRadius:8}}>{error}</p>}{notice&&<p role="status" style={{color:"#067647",background:"#ecfdf3",padding:12,borderRadius:8}}>{notice}</p>}
+ <section style={panel}><label>سازمان</label><select style={input} value={orgId} onChange={e=>{setOrgId(e.target.value);setSelected("");setVersions([])}}><option value="">انتخاب سازمان مجاز</option>{orgs.map(o=><option key={o.id} value={o.id}>{o.name}{o.code?" · "+o.code:""}</option>)}</select></section>
+ <section style={{display:"grid",gridTemplateColumns:"minmax(260px,.8fr) minmax(0,1.2fr)",gap:18,alignItems:"start"}}>
+ <div style={{display:"grid",gap:18}}>
+ <section style={panel}><h2>تعریف فرم</h2><form onSubmit={createForm} style={{display:"grid",gap:10}}><input style={input} placeholder="کد فرم" value={code} onChange={e=>setCode(e.target.value)} minLength={2} maxLength={120} required/><input style={input} placeholder="نام فرم" value={name} onChange={e=>setName(e.target.value)} minLength={2} maxLength={200} required/><button style={button} disabled={busy||!orgId}>ایجاد فرم</button></form></section>
+ <section style={panel}><h2>فرم‌های سازمان</h2>{forms.length===0&&<p>فرمی ثبت نشده است.</p>}{forms.map(f=><button key={f.id} onClick={()=>{setSelected(f.id);void loadVersions(f.id)}} style={{...button,width:"100%",textAlign:"right",marginBottom:8,borderColor:selected===f.id?"#2563eb":"#cbd5e1"}}><strong>{f.name}</strong><small style={{display:"block",color:"#667085"}}>{f.code} · {f.status}</small></button>)}</section>
+ </div>
+ <div style={{display:"grid",gap:18}}>
+ <section style={panel}><h2>طراحی نسخه</h2><p>Schema شامل fields، rules و process است. ساختار قوانین در زمان انتشار باید مطابق عملگرهای مجاز باشد؛ ارزیابی سمت سرور از اجرای کد دلخواه یا expression استفاده نمی‌کند.</p><form onSubmit={createVersion} style={{display:"grid",gap:10}}><input style={input} placeholder="یادداشت تغییر" value={note} onChange={e=>setNote(e.target.value)} maxLength={500}/><textarea spellCheck={false} dir="ltr" style={{...input,fontFamily:"monospace",textAlign:"left"}} rows={22} value={schema} onChange={e=>setSchema(e.target.value)}/><button style={button} disabled={busy||!selected}>ایجاد نسخه پیش‌نویس</button></form></section>
+ <section style={panel}><h2>نسخه‌ها و انتشار</h2>{versions.map(v=><article key={v.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:10,borderBottom:"1px solid #eee"}}><button style={button} onClick={()=>{setVersionId(v.id);setSchema(JSON.stringify(v.schema,null,2))}}>نسخه {v.versionNumber} · {v.status}</button>{v.status==="DRAFT"&&<button style={button} disabled={busy} onClick={()=>void publish(v.id)}>اعتبارسنجی و انتشار</button>}</article>)}{!versions.length&&<p>نسخه‌ای وجود ندارد.</p>}</section>
+ <section style={panel}><h2>اتصال به فرایند</h2><p>در بخش process داخل Schema شناسه تعریف و نسخه منتشرشده فرایند را قرار دهید. هنگام ثبت، می‌توان شناسه نمونه فرایند را در API ارسال کرد؛ سرور مالکیت Tenant و سازمان را کنترل می‌کند.</p><p style={{fontFamily:"monospace",direction:"ltr",textAlign:"left"}}>{'"process":{"processDefinitionId":"UUID","processVersionId":"UUID"}'}</p><a href="/process-design">رفتن به طراح فرایند</a></section>
+ </div></section>
+ </main>;
+}
