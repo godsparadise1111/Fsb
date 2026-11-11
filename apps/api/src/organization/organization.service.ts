@@ -23,12 +23,12 @@ export class OrganizationService {
   ): Promise<T> {
     return this.organizations.manager.transaction(async manager => {
       const result = await persist(manager);
-      const id = (result as { id?: string } | null)?.id ?? resourceId;
+      const id = (result as unknown as { id?: string } | null)?.id ?? resourceId;
       await this.audit.record(manager, { tenantId, actorUserId, action, resourceType, resourceId: id, metadata });
       return result;
     });
   }
-  async createOrganization(dto: CreateOrganizationDto) {
+  async createOrganization(dto: CreateOrganizationDto, actorUserId?: string) {
     if (!dto.tenantId) throw new BadRequestException('A tenant must be explicitly selected or derived from the authenticated tenant context');
     return this.organizations.manager.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, { where: { id: dto.tenantId }, lock: { mode: 'pessimistic_write' } });
@@ -51,7 +51,9 @@ export class OrganizationService {
       }
       const repository = manager.getRepository(Organization);
       if (await repository.findOne({ where: { code: dto.code } })) throw new ConflictException('Organization code already exists');
-      return repository.save(repository.create({ ...dto, tenant }));
+      const created = await repository.save(repository.create({ ...dto, tenant }));
+      if (actorUserId) await this.audit.record(manager, { tenantId: tenant.id, actorUserId, action: 'organization.created', resourceType: 'ORGANIZATION', resourceId: created.id, metadata: { code: created.code, name: created.name } });
+      return created;
     });
   }
   listOrganizations(tenantId?: string | null) { return this.organizations.find({ where: tenantId ? { tenantId, isActive: true } : { isActive: true }, order: { name: 'ASC' } }); }
