@@ -336,7 +336,7 @@ BEGIN
     PERFORM set_config('fsb.lifecycle_cleanup', 'off', true);
 
     UPDATE notification_outbox SET status='DEAD', "lockedBy"=NULL, "lockedAt"=NULL,
-      lastError='Tenant closed; queued notification was permanently suppressed', "updatedAt"=now()
+      "lastError"='Tenant closed; queued notification was permanently suppressed', "updatedAt"=now()
      WHERE "tenantId"=NEW.id AND status IN ('PENDING','PROCESSING');
   END IF;
   RETURN NEW;
@@ -422,7 +422,7 @@ SELECT set_config('fsb.lifecycle_cleanup', 'off', true);
 
 UPDATE notification_outbox o
    SET status='DEAD', "lockedBy"=NULL, "lockedAt"=NULL,
-       lastError='Tenant was already closed when workflow lifecycle migration was applied', "updatedAt"=now()
+       "lastError"='Tenant was already closed when workflow lifecycle migration was applied', "updatedAt"=now()
   FROM tenants t
  WHERE t.id=o."tenantId" AND t.status='CLOSED' AND o.status IN ('PENDING','PROCESSING');
 

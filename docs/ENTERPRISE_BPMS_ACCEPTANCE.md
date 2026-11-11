@@ -53,17 +53,18 @@ API فرم‌ها و ساختار سازمانی اکنون Tenant احراز‌
 ~~~sh
 FSB_STAGING_TESTS=true \
 BASE_URL=https://staging.example.test \
-TOKEN_TENANT_A='...' TOKEN_TENANT_B='...' \
-TENANT_A_ID='...' TENANT_B_ID='...' \
-ORG_B_ID='...' PROCESS_B_ID='...' FORM_B_ID='...' TASK_B_ID='...' \
+TOKEN_TENANT_A='...' TOKEN_TENANT_A_MEMBER='...' TOKEN_TENANT_B='...' \
+TOKEN_PLATFORM_ADMIN='...' TENANT_A_ID='...' TENANT_B_ID='...' \
+ORG_B_ID='...' PROCESS_B_ID='...' FORM_B_ID='...' FORM_B_VERSION_ID='...' \
+SUBMISSION_B_ID='...' ATTACHMENT_B_ID='...' TASK_B_ID='...' \
 bash scripts/staging-enterprise-acceptance.sh
 ~~~
 
-اسکریپت فقط GET و آزمون جعل Tenant header را اجرا می‌کند و درخواست‌های خواندن هم‌زمان را نیز بررسی می‌کند. Host خارج از allowlist رد می‌شود.
+اسکریپت فقط درخواست‌های خواندنی اجرا می‌کند و آزمون جعل Tenant header، جداسازی سازمان/فرایند/فرم/Submission/پیوست/وظیفه، دسترسی دانلود فایل خصوصی، نقش Tenant Admin در برابر عضو عادی، منع دسترسی Tenant به endpoint پلتفرم و دسترسی مدیر پلتفرم را بررسی می‌کند. توکن Tenant A باید متعلق به مدیر Tenant، توکن Tenant A Member متعلق به عضو عادی همان Tenant بدون مجوزهای tenant.members.read و tenant.audit.read، توکن Tenant B متعلق به مدیر Tenant B و توکن Platform متعلق به مدیر پلتفرم دارای مجوز tenants.read باشد. Host خارج از allowlist رد می‌شود. شناسه‌های Fixture باید واقعی و متعلق به Tenant B باشند؛ فایل پیوست نیز باید فایل آزمایشی بی‌خطر باشد.
 
 ## بررسی قیود دیتابیس
 
-پس از اعمال Migrationهای نسخه و تأیید ledger/checksum، کنترل‌های read-only را اجرا کنید:
+پس از اعمال Migrationهای نسخه با Runner محافظت‌شده، ابتدا ledger و checksum تک‌تک فایل‌ها را بررسی و سپس کنترل‌های read-only را اجرا کنید. اسکریپت این کنترل را خودش انجام می‌دهد و در صورت نبود ledger، migration ثبت‌نشده، checksum متفاوت یا تعداد ردیف ناسازگار متوقف می‌شود:
 
 ~~~sh
 FSB_STAGING_TESTS=true \
@@ -96,7 +97,16 @@ TEST_TASK_ID='...' IDEMPOTENCY_KEY='acceptance-20261111-workflow-001' \
 k6 run tests/load/workflow-idempotency.k6.js
 ~~~
 
-پاسخ موفق باید یکسان و idempotent باشد؛ استفاده مجدد از همان کلید با payload متفاوت باید Conflict بدهد (این سناریو را جداگانه با API client بررسی کنید).
+پس از آزمون هم‌زمان k6، اسکریپت مکمل زیر را با همان Task و Idempotency-Key اجرا کنید. این اسکریپت پاسخ replay را با پاسخ ثبت‌شده مقایسه می‌کند و استفاده مجدد از همان کلید با payload متفاوت را باید با HTTP 409 رد کند: 
+
+~~~sh
+FSB_STAGING_TESTS=true TEST_FIXTURE_CONFIRMED=true \
+BASE_URL=https://staging.example.test ACCESS_TOKEN='...' \
+TEST_TASK_ID='...' IDEMPOTENCY_KEY='acceptance-20261111-workflow-001' \
+bash scripts/staging-workflow-idempotency.sh
+~~~
+
+این عملیات وظیفه آزمایشی را تغییر وضعیت می‌دهد؛ فقط از Fixture دورریختنی استفاده کنید.
 
 ## پایداری Workerها
 
@@ -119,3 +129,17 @@ FSB_MAX_WORKER_RESTARTS=0 bash scripts/ops/worker-stability-check.sh
 5. زمان بازیابی، تعداد رکوردها، صحت فایل‌ها، ledger/checksum و نتیجه آزمون‌های خواندن/نوشتن را ثبت کنید.
 
 این Repository از راه دور به سرور Staging دسترسی ندارد؛ هیچ Migration، Restore، ارسال SMTP یا تست بار واقعی در این تغییرات اجرا نمی‌شود. این‌ها گام‌های پذیرش اپراتور پس از آماده شدن سرور هستند.
+
+
+## کنترل نسخه و Migration در مرحله تثبیت
+
+- فقط از `scripts/ops/migrate.sh` به‌عنوان Runner رسمی استفاده کنید. این Runner به Backup رمزگذاری‌شده با checksum معتبر نیاز دارد، برای اجرای هم‌زمان Migrationها advisory lock می‌گیرد و ثبت filename/checksum را در همان تراکنش DDL انجام می‌دهد.
+- اسکریپت قدیمی `scripts/migrate-onprem.sh` از ledger جداگانه استفاده می‌کرد و برای جلوگیری از دو تاریخچه مهاجرت، غیرفعال شده است؛ آن را اجرا نکنید.
+- `scripts/ops/verify-staging.sh` پیش از SQLهای invariant، تمام فایل‌های Migration را با `fsb_schema_migration_ledger` تطبیق می‌دهد. هر اختلاف، فایل ثبت‌نشده یا تعداد ردیف متفاوت به معنی توقف پذیرش است.
+- شماره‌گذاری فایل‌ها ممکن است بین تاریخ‌ها از نو آغاز شود؛ ترتیب واقعی اجرای Runner ترتیب lexical نام کامل فایل‌هاست. فایل‌های موجود را پس از اعمال تغییر ندهید؛ اصلاحات فقط با Migration جدید انجام شوند.
+- Migrationها در این شاخه روی دیتابیس اجرا نشده‌اند. اعمال آن‌ها فقط پس از Backup قابل بازیابی، تعیین baseline معتبر و تأیید اپراتور Staging مجاز است.
+
+
+## ثبت شواهد و گزارش نهایی
+
+برای هر اجرای Staging، یک کپی از قالب `docs/STAGING_ACCEPTANCE_REPORT_TEMPLATE.md` تهیه کنید. هر آزمون تا زمان اجرای واقعی باید `NOT RUN` بماند؛ فقط با شواهد قابل بازبینی به `PASS` یا `FAIL` تغییر کند. نتیجه انتشار تا تأیید همه آزمون‌های اجباری و بسته‌شدن نقص‌های بحرانی/بالا `NOT APPROVED` است.

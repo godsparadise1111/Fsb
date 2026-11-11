@@ -46,32 +46,41 @@ run_ledger_transaction() {
   name="$(basename "$file")"
   case "$name" in *[!A-Za-z0-9_.-]* ) echo "ERROR: unsafe migration filename: $name" >&2; exit 1 ;; esac
   checksum="$(sha256sum "$file" | awk '{print $1}')"
+
+  recorded_checksum="$(psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc \
+    "SELECT sha256 FROM fsb_schema_migration_ledger WHERE filename='$name'")"
+  if [ -n "$recorded_checksum" ]; then
+    [ "$recorded_checksum" = "$checksum" ] || {
+      echo "ERROR: checksum mismatch for already recorded migration: $name" >&2
+      exit 1
+    }
+    echo "Already recorded and checksum verified: $name"
+    return 0
+  fi
+
   script="$(mktemp)"
   migration_sql=""
   if [ "$mode" = "apply" ]; then
     migration_sql="$(mktemp)"
     sed -E '/^[[:space:]]*BEGIN;[[:space:]]*$/Id; /^[[:space:]]*COMMIT;[[:space:]]*$/Id' "$file" > "$migration_sql"
   fi
+
   {
-    printf "BEGIN;\nSELECT pg_advisory_xact_lock(hashtext('fsb-schema-migrations'));\n"
-    printf "SELECT EXISTS(SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s') AS migration_applied \\gset\n" "$name"
-    printf "\\if :migration_applied\n"
-    printf "  SELECT EXISTS(SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s' AND sha256='%s') AS checksum_matches \\gset\n" "$name" "$checksum"
-    printf "  \\if :checksum_matches\n"
-    printf "    \\echo Already recorded and checksum verified: %s\n" "$name"
-    printf "  \\else\n    \\echo ERROR: checksum mismatch for %s\n    \\quit 3\n  \\endif\n" "$name"
-    printf "\\else\n"
-    if [ "$mode" = "baseline" ]; then
-      printf "  INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',true);\n" "$name" "$checksum"
-      printf "  \\echo Baseline recorded without execution: %s\n" "$name"
+    printf 'BEGIN;\n'
+    printf "SELECT pg_advisory_xact_lock(hashtext('fsb-schema-migrations'));\n"
+    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s') THEN RAISE EXCEPTION 'migration was concurrently recorded; rerun to verify checksum'; END IF; END \$\$;\n" "$name"
+    if [ "$mode" = "apply" ]; then
+      printf "\\\\i '%s'\n" "$migration_sql"
+      printf "INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',false);\n" "$name" "$checksum"
+      printf "SELECT 'Applied and checksummed: %s';\n" "$name"
     else
-      printf "  \\i '%s'\n" "$migration_sql"
-      printf "  INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',false);\n" "$name" "$checksum"
-      printf "  \\echo Applied and checksummed: %s\n" "$name"
+      printf "INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',true);\n" "$name" "$checksum"
+      printf "SELECT 'Baseline recorded without execution: %s';\n" "$name"
     fi
-    printf "\\endif\nCOMMIT;\n"
+    printf 'COMMIT;\n'
   } > "$script"
-  if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$script"; then
+
+  if ! psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$script"; then
     rm -f "$script"
     [ -z "$migration_sql" ] || rm -f "$migration_sql"
     echo "ERROR: migration transaction failed: $name" >&2

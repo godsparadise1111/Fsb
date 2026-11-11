@@ -56,7 +56,7 @@ SELECT wal.id AS "actionLogId", wal."taskId", wal."tenantId"
 -- 7. A workflow task assignment notification may only remain queued while
 -- its task and recipient are still eligible. The worker revalidates before send.
 SELECT o.id AS "outboxId", o."tenantId", o.recipient,
-       (o.payloadCiphertext IS NULL) AS "missingCiphertext"
+       (o."payloadCiphertext" IS NULL) AS "missingCiphertext"
   FROM notification_outbox o
  WHERE o."eventType"='workflow.task.assigned'
    AND o.status IN ('PENDING','PROCESSING')
