@@ -92,6 +92,19 @@ export class WorkflowService {
     return resolveWorkflowTransitionTarget(schema, fromStepIndex, action, fallbackTarget, requireExplicit, data);
   }
 
+  private async loadProcessRoutingData(manager: EntityManager, instance: ProcessInstance): Promise<Record<string, unknown>> {
+    const [submission] = await manager.query(
+      `SELECT data FROM form_submissions
+        WHERE "processInstanceId"=$1 AND "tenantId"=$2
+        ORDER BY "submittedAt" DESC, id DESC LIMIT 1`,
+      [instance.id, instance.tenantId],
+    );
+    const submittedData = submission?.data && typeof submission.data === 'object' && !Array.isArray(submission.data)
+      ? submission.data as Record<string, unknown>
+      : {};
+    return { ...(instance.data ?? {}), ...submittedData };
+  }
+
   private resolveStepAssignees(
     manager: EntityManager, organizationId: string, tenantId: string, config: Record<string, unknown>,
   ): Promise<string[]> {
@@ -498,6 +511,7 @@ export class WorkflowService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!instance) throw new NotFoundException('Process instance not found');
+        const routingData = await this.loadProcessRoutingData(manager, instance);
         const fromStepIndex = instance.currentStepIndex;
         const targetIndex = dto.returnToStepIndex;
         const rawSteps = instance.processVersion.schema?.steps;
@@ -507,7 +521,7 @@ export class WorkflowService {
         }
         if (instance.status !== 'RUNNING') throw new ConflictException('Only a running process can return to an earlier step');
         if (Array.isArray(instance.processVersion.schema?.transitions)) {
-          const configuredTarget = this.resolveTransitionTarget(instance.processVersion.schema, fromStepIndex, 'RETURNED', null, true, instance.data);
+          const configuredTarget = this.resolveTransitionTarget(instance.processVersion.schema, fromStepIndex, 'RETURNED', null, true, routingData);
           if (configuredTarget !== targetIndex) throw new BadRequestException('RETURNED destination does not match the published transition graph');
         }
         const target = steps[targetIndex];
@@ -546,8 +560,9 @@ export class WorkflowService {
         if (!instance) throw new NotFoundException('Process instance not found');
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps : [];
+        const routingData = await this.loadProcessRoutingData(manager, instance);
         const rejectedTarget = this.resolveTransitionTarget(
-          instance.processVersion.schema, instance.currentStepIndex, 'REJECTED', null, false, instance.data,
+          instance.processVersion.schema, instance.currentStepIndex, 'REJECTED', null, false, routingData,
         );
         for (const pending of all.filter(item => item.status === 'PENDING')) {
           pending.status = 'REASSIGNED';
@@ -596,7 +611,8 @@ export class WorkflowService {
         const rawSteps = instance.processVersion.schema?.steps;
         const steps = Array.isArray(rawSteps) ? rawSteps as Array<{ title?: string; instructions?: string; assigneeUserIds?: string[]; assignmentPolicy?: 'ANY_ASSIGNEE' | 'ALL_ASSIGNEES'; dueInHours?: unknown }> : [];
         const fallbackNext = instance.currentStepIndex + 1 < steps.length ? instance.currentStepIndex + 1 : null;
-        const nextIndex = this.resolveTransitionTarget(instance.processVersion.schema, instance.currentStepIndex, 'APPROVED', fallbackNext, true, instance.data);
+        const routingData = await this.loadProcessRoutingData(manager, instance);
+        const nextIndex = this.resolveTransitionTarget(instance.processVersion.schema, instance.currentStepIndex, 'APPROVED', fallbackNext, true, routingData);
         if (nextIndex !== null) {
           if (nextIndex < 0 || nextIndex >= steps.length) throw new BadRequestException('APPROVED transition points to a missing process step');
           const next = await this.createTaskForStep(manager, instance, nextIndex, tenantId);
