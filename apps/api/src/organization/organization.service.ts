@@ -75,8 +75,9 @@ export class OrganizationService {
       order: { name: 'ASC' },
     });
   }
-  async createUnit(dto: CreateUnitDto) {
-    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true } });
+  async createUnit(dto: CreateUnitDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, tenantId, isActive: true } });
     if (!organization) throw new NotFoundException('Organization not found');
     if (dto.parentId) {
       const parent = await this.units.findOne({ where: { id: dto.parentId, organizationId: dto.organizationId, isActive: true } });
@@ -89,18 +90,27 @@ export class OrganizationService {
     if (duplicate) throw new ConflictException('Unit code already exists under this parent');
     return this.units.save(this.units.create({ ...dto, parentId: dto.parentId ?? null }));
   }
-  async listUnits(organizationId: string) {
-    if (!await this.organizations.exist({ where: { id: organizationId } })) throw new NotFoundException('Organization not found');
-    return this.units.find({ where: { organizationId }, relations: { parent: true }, order: { name: 'ASC' } });
+  async listUnits(organizationId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    if (!await this.organizations.exist({ where: { id: organizationId, tenantId, isActive: true } })) throw new NotFoundException('Organization not found');
+    return this.units.find({ where: { organizationId, isActive: true }, relations: { parent: true }, order: { name: 'ASC' } });
   }
-  async createPosition(dto: CreatePositionDto) {
-    const unit = await this.units.findOne({ where: { id: dto.organizationUnitId, isActive: true } });
+  async createPosition(dto: CreatePositionDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const unit = await this.units.createQueryBuilder('unit')
+      .innerJoin('unit.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant')
+      .where('unit.id = :unitId AND unit.isActive = true AND organization.isActive = true AND organization.tenantId = :tenantId AND tenant.status = :active', { unitId: dto.organizationUnitId, tenantId, active: 'ACTIVE' })
+      .getOne();
     if (!unit) throw new NotFoundException('Organization unit not found');
     if (await this.positions.findOne({ where: { organizationUnitId: dto.organizationUnitId, code: dto.code } })) throw new ConflictException('Position code already exists in this unit');
     return this.positions.save(this.positions.create(dto));
   }
-  async listPositions(unitId: string) {
-    if (!await this.units.exist({ where: { id: unitId } })) throw new NotFoundException('Organization unit not found');
+  async listPositions(unitId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const unit = await this.units.createQueryBuilder('unit').innerJoin('unit.organization', 'organization')
+      .where('unit.id = :unitId AND unit.isActive = true AND organization.isActive = true AND organization.tenantId = :tenantId', { unitId, tenantId }).getOne();
+    if (!unit) throw new NotFoundException('Organization unit not found');
     return this.positions.find({ where: { organizationUnitId: unitId, isActive: true }, order: { title: 'ASC' } });
   }
 }
