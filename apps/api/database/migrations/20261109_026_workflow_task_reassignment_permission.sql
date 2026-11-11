@@ -1,6 +1,6 @@
 BEGIN;
 
-DO $
+DO $$
 DECLARE constraint_name text;
 BEGIN
   FOR constraint_name IN
@@ -15,7 +15,7 @@ BEGIN
   ALTER TABLE workflow_task_reassignments
     ADD CONSTRAINT workflow_task_reassignments_trigger_type_check
     CHECK ("triggerType" IN ('SLA','INACTIVE_ASSIGNEE','MANUAL'));
-END $;
+END $$;
 
 INSERT INTO permissions (code, name, description)
 VALUES (
