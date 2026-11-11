@@ -2,7 +2,6 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Organization } from '../organization/entities/organization.entity';
-import { User } from '../identity/entities/user.entity';
 import { ProcessInstance } from '../workflow/entities/process-instance.entity';
 import { FormDefinition } from './entities/form-definition.entity';
 import { FormVersion } from './entities/form-version.entity';
@@ -20,7 +19,6 @@ export class FormsService {
     @InjectRepository(FormVersion) private readonly versions: Repository<FormVersion>,
     @InjectRepository(FormSubmission) private readonly submissions: Repository<FormSubmission>,
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
-    @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(ProcessInstance) private readonly instances: Repository<ProcessInstance>,
   ) {}
   async createDefinition(dto: CreateFormDto, tenantId?: string | null) {
