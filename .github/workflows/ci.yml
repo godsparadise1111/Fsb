@@ -17,7 +17,7 @@ jobs:
       - run: npm run test:workflow --workspace @fsb/api
       - run: npm run test:forms --workspace @fsb/api
       - name: Validate operations shell scripts
-        run: for script in scripts/ops/*.sh; do bash -n "$script"; done; bash -n scripts/staging-enterprise-acceptance.sh
+        run: for script in scripts/ops/*.sh; do bash -n "$script"; done; bash -n scripts/staging-enterprise-acceptance.sh; bash -n scripts/staging-workflow-idempotency.sh
       - name: Validate production Compose configuration
         run: |
           cp .env.example .env
