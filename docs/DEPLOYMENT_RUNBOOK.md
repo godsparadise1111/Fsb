@@ -146,3 +146,8 @@ RPO/RTO تا زمان تمرین بازیابی واقعی و تصویب مال�
 - Build و تست Docker/Compose در CI اجرا شده‌اند؛ آزمون runtime، SMTP، PDF بصری و Restore کامل روی Staging باقی است.
 - Lockfile ریشه ثبت شده و Dockerfileهای Production با `npm ci` از آن استفاده می‌کنند.
 - `scripts/ops/deploy-smoke.sh` پس از بالا آمدن سرویس‌ها API readiness، پاسخ HTTP وب، وضعیت هفت سرویس و ثبت Migrationهای 024/025/026 در ledger را کنترل می‌کند؛ اجرای آن روی Staging هنوز انجام نشده است.
+
+
+## 8. BPMS سازمانی و پذیرش پیشرفته
+
+برای مدیریت ساختار سازمانی و فرم‌های متصل، مسیرهای شرطی داده‌محور، تست‌های Tenant isolation، هم‌زمانی، پایداری Worker و Restore به سند `docs/ENTERPRISE_BPMS_ACCEPTANCE.md` مراجعه کنید. اسکریپت‌های `scripts/staging-enterprise-acceptance.sh` و `scripts/ops/verify-staging.sh` فقط در محیط Staging صریحاً opt-in شده اجرا می‌شوند. آزمون k6 مربوط به اقدام Workflow وضعیت Fixture را تغییر می‌دهد و فقط باید روی وظیفه دورریختنی اجرا شود.
