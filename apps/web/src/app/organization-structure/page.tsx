@@ -15,6 +15,8 @@ export default function OrganizationStructurePage() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [unitId, setUnitId] = useState("");
   const [positions, setPositions] = useState<Position[]>([]);
+  const [orgName, setOrgName] = useState("");
+  const [orgCode, setOrgCode] = useState("");
   const [unitName, setUnitName] = useState("");
   const [unitCode, setUnitCode] = useState("");
   const [parentId, setParentId] = useState("");
@@ -85,6 +87,28 @@ export default function OrganizationStructurePage() {
     try { await action(); setNotice(success); }
     catch (e) { setError(e instanceof Error ? e.message : "عملیات ناموفق بود"); }
     finally { setBusy(false); }
+  }
+
+  async function createOrganization(event: React.FormEvent) {
+    event.preventDefault();
+    await run(async () => {
+      await api("/organizations/tenant", { method: "POST", body: JSON.stringify({ name: orgName.trim(), code: orgCode.trim() }) });
+      setOrgName(""); setOrgCode("");
+      const rows = await api("/organizations/accessible");
+      const list = Array.isArray(rows) ? rows as Organization[] : [];
+      setOrganizations(list);
+      const created = list.find(item => item.code === orgCode.trim());
+      if (created) setOrganizationId(created.id);
+    }, "سازمان جدید ایجاد شد.");
+  }
+
+  function unitDepth(unit: Unit): number {
+    let depth = 0; let parent = unit.parentId; const seen = new Set<string>();
+    while (parent && !seen.has(parent) && depth < 12) {
+      seen.add(parent); depth++;
+      parent = units.find(item => item.id === parent)?.parentId ?? null;
+    }
+    return depth;
   }
 
   async function createUnit(event: React.FormEvent) {
@@ -162,7 +186,14 @@ export default function OrganizationStructurePage() {
     {error && <p role="alert" style={{ color: "#b42318", background: "#fef3f2", padding: 12, borderRadius: 8 }}>{error}</p>}
     {notice && <p role="status" style={{ color: "#067647", background: "#ecfdf3", padding: 12, borderRadius: 8 }}>{notice}</p>}
     <section style={panel}>
-      <label>سازمان فعال</label>
+      <h2>ایجاد سازمان در Tenant فعال</h2>
+      <form onSubmit={createOrganization} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+        <input style={input} placeholder="نام سازمان" value={orgName} onChange={e => setOrgName(e.target.value)} minLength={2} maxLength={160} required />
+        <input style={input} placeholder="کد سازمان" value={orgCode} onChange={e => setOrgCode(e.target.value)} pattern="[A-Za-z0-9_-]{2,80}" required />
+        <button style={button} disabled={busy}>ایجاد سازمان</button>
+      </form>
+      <small>این عملیات به مجوز مدیریت سازمان و اشتراک فعال Tenant نیاز دارد.</small>
+      <label style={{ display: "block", marginTop: 12 }}>سازمان فعال</label>
       <select style={input} value={organizationId} onChange={e => setOrganizationId(e.target.value)}>
         <option value="">انتخاب سازمان مجاز</option>
         {organizations.map(org => <option key={org.id} value={org.id}>{org.name} · {org.code}</option>)}
@@ -186,7 +217,7 @@ export default function OrganizationStructurePage() {
           {units.length === 0 && <p>هنوز واحدی برای این سازمان ثبت نشده است.</p>}
           {unitId && <div style={{ display: "flex", gap: 8 }}><button style={button} onClick={() => void editSelectedUnit()}>ویرایش نام واحد انتخاب‌شده</button><button style={button} onClick={() => void deactivateSelectedUnit()}>غیرفعال‌سازی واحد</button></div>}
           <div style={{ display: "grid", gap: 8 }}>
-            {units.map(unit => <button key={unit.id} onClick={() => { setUnitId(unit.id); void loadPositions(unit.id).catch(e => setError(e instanceof Error ? e.message : "خطا")); }} style={{ ...button, textAlign: "right", borderColor: unitId === unit.id ? "#2563eb" : "#d0d5dd", opacity: unit.isActive ? 1 : .6 }}>
+            {units.map(unit => <button key={unit.id} onClick={() => { setUnitId(unit.id); void loadPositions(unit.id).catch(e => setError(e instanceof Error ? e.message : "خطا")); }} style={{ ...button, textAlign: "right", marginRight: unitDepth(unit) * 18, borderColor: unitId === unit.id ? "#2563eb" : "#d0d5dd", opacity: unit.isActive ? 1 : .6 }}>
               <strong>{unit.name}</strong><div style={{ fontSize: 12, color: "#667085" }}>{unit.code} · {unit.parentId ? "زیرواحد" : "واحد ریشه"} · {unit.isActive ? "فعال" : "غیرفعال"}</div>
             </button>)}
           </div>
