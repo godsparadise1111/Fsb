@@ -26,7 +26,7 @@ export default function FormDesignPage(){
  const panel:React.CSSProperties={background:"var(--panel,#fff)",border:"1px solid #e4e8f0",borderRadius:14,padding:18,minWidth:0};
  const input:React.CSSProperties={width:"100%",padding:10,border:"1px solid #d0d5dd",borderRadius:8,font:"inherit"};
  const button:React.CSSProperties={padding:"9px 14px",border:"1px solid #cbd5e1",borderRadius:8,background:"#fff",cursor:"pointer",font:"inherit"};
- if(!token)return <main dir="rtl" style={{maxWidth:600,margin:"48px auto",padding:24,...panel}}><h1>فرم‌ساز سازمانی</h1><p>برای دسترسی به فرم‌ساز ابتدا وارد سامانه شوید.</p><a href="/login">ورود</a></main>;
+ if(!token)return <main dir="rtl" style={{maxWidth:600,margin:"48px auto",padding:24,...panel}}><h1>فرم‌ساز سازمانی</h1><p>برای دسترسی به فرم‌ساز ابتدا وارد سامانه شوید.</p><a href="/">ورود</a></main>;
  return <main dir="rtl" style={{maxWidth:1200,margin:"0 auto",padding:24,display:"grid",gap:18}}>
  <header><p style={{color:"#667085"}}>F-S / FORM DESIGNER</p><h1>فرم‌ساز متصل به فرایند</h1><p>تعریف فرم، نسخه‌بندی، فیلدها، قوانین نمایشی و اتصال اختیاری به نسخه فرایند</p></header>
  {error&&<p role="alert" style={{color:"#b42318",background:"#fef3f2",padding:12,borderRadius:8}}>{error}</p>}{notice&&<p role="status" style={{color:"#067647",background:"#ecfdf3",padding:12,borderRadius:8}}>{notice}</p>}
