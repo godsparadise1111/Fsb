@@ -29,6 +29,11 @@ test('enforces conditional required fields when a rule matches', () => {
   assert.doesNotThrow(() => validateFormSubmission(schema, { amount: 1500, department: 'FIN', justification: 'Budget approval' }));
 });
 
+test('conditionally visible fields are not required while their rule is inactive', () => {
+  assert.doesNotThrow(() => validateFormSubmission(schema, { amount: 10, department: 'FIN' }));
+  assert.throws(() => validateFormSubmission(schema, { amount: 1500, department: 'FIN' }), BadRequestException);
+});
+
 test('accepts a valid select option and boolean checkbox', () => {
   assert.doesNotThrow(() => validateFormSubmission(schema, {
     amount: 10, department: 'HR', approved: false,
