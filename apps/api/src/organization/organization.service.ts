@@ -14,7 +14,20 @@ import { UpdatePositionDto } from './dto/update-position.dto';
 import { TenantAuditService } from '../tenant/tenant-audit.service';
 @Injectable()
 export class OrganizationService {
-  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>, @InjectRepository(UserRole) private readonly userRoles: Repository<UserRole>) {}
+  constructor(@InjectRepository(Organization) private readonly organizations: Repository<Organization>, @InjectRepository(OrganizationUnit) private readonly units: Repository<OrganizationUnit>, @InjectRepository(Position) private readonly positions: Repository<Position>, @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>, @InjectRepository(UserRole) private readonly userRoles: Repository<UserRole>, private readonly audit: TenantAuditService) {}
+
+  private mutateWithAudit<T>(
+    tenantId: string, actorUserId: string, action: string, resourceType: string,
+    resourceId: string | null, metadata: Record<string, unknown>,
+    persist: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    return this.organizations.manager.transaction(async manager => {
+      const result = await persist(manager);
+      const id = (result as { id?: string } | null)?.id ?? resourceId;
+      await this.audit.record(manager, { tenantId, actorUserId, action, resourceType, resourceId: id, metadata });
+      return result;
+    });
+  }
   async createOrganization(dto: CreateOrganizationDto) {
     if (!dto.tenantId) throw new BadRequestException('A tenant must be explicitly selected or derived from the authenticated tenant context');
     return this.organizations.manager.transaction(async manager => {
