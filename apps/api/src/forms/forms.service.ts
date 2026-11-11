@@ -103,7 +103,14 @@ export class FormsService {
       throw new BadRequestException('Form is outside the active customer account');
     }
     validateFormSubmission(version.schema, dto.data);
-    if (!await this.users.exist({ where: { id: submittedByUserId, isActive: true } })) throw new NotFoundException('Active submitter not found');
+    const [activeSubmitter] = await this.dataSource.query(
+      `SELECT 1 FROM tenant_memberships tm
+         JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+         JOIN tenants t ON t.id=tm."tenantId" AND t.status='ACTIVE'
+        WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true LIMIT 1`,
+      [tenantId, submittedByUserId],
+    );
+    if (!activeSubmitter) throw new NotFoundException('Active submitter membership not found in this tenant');
     if (dto.processInstanceId) {
       const instance = await this.instances.findOne({ where: { id: dto.processInstanceId }, relations: { organization: { tenant: true } } });
       if (!instance) throw new NotFoundException('Process instance not found');
