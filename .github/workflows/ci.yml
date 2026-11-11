@@ -45,6 +45,8 @@ jobs:
               printf "ephemeral CI-only backup marker\n" > /tmp/fsb-ci-backup
               sha256sum /tmp/fsb-ci-backup > /tmp/fsb-ci-backup.sha256
               FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh
+              echo "Re-running the guarded migration runner to verify checksum-safe idempotency"
+              FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh
               FSB_STAGING_TESTS=true bash scripts/ops/verify-staging.sh
             '
       - name: Validate operations shell scripts
