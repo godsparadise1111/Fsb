@@ -14,15 +14,15 @@ type UploadedBinary = { originalname: string; mimetype: string; size: number; bu
 export class FormsController {
   constructor(private readonly forms: FormsService, private readonly fileAttachments: FileAttachmentsService) {}
   @RequirePermissions('forms.manage')
-  @Post() create(@Body() dto: CreateFormDto) { return this.forms.createDefinition(dto); }
+  @Post() create(@Body() dto: CreateFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.createDefinition(dto, user.tenantId); }
   @RequirePermissions('forms.read')
   @Get() list(@Query('organizationId') organizationId: string | undefined, @CurrentUser() user: AuthenticatedUser) { return this.forms.listDefinitions(organizationId, user.tenantId); }
   @RequirePermissions('forms.manage')
-  @Post(':id/versions') createVersion(@Param('id') id: string, @Body() dto: CreateFormVersionDto) { return this.forms.createVersion(id, dto); }
+  @Post(':id/versions') createVersion(@Param('id') id: string, @Body() dto: CreateFormVersionDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.createVersion(id, dto, user.tenantId); }
   @RequirePermissions('forms.read')
-  @Get(':id/versions') versions(@Param('id') id: string) { return this.forms.listVersions(id); }
+  @Get(':id/versions') versions(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.forms.listVersions(id, user.tenantId); }
   @RequirePermissions('forms.publish')
-  @Post(':id/versions/:versionId/publish') publish(@Param('id') id: string, @Param('versionId') versionId: string) { return this.forms.publishVersion(id, versionId); }
+  @Post(':id/versions/:versionId/publish') publish(@Param('id') id: string, @Param('versionId') versionId: string, @CurrentUser() user: AuthenticatedUser) { return this.forms.publishVersion(id, versionId, user.tenantId); }
   @RequirePermissions('forms.submit')
   @Post('versions/:versionId/submissions') submit(@Param('versionId') versionId: string, @Body() dto: SubmitFormDto, @CurrentUser() user: AuthenticatedUser) { return this.forms.submit(versionId, user.sub, dto, user.tenantId); }
   @RequirePermissions('forms.read')

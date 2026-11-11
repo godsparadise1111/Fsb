@@ -103,6 +103,27 @@
 
 مهاجرت `20261109_026_workflow_task_reassignment_permission.sql` مجوز مستقل ارجاع مجدد را ثبت و مقدار trigger نوع MANUAL را به تاریخچه ارجاع اضافه می‌کند.
 
+## مسیرهای شرطی مبتنی بر داده فرم
+
+یال‌های انتقال می‌توانند شرط مبتنی بر داده ثبت‌شده نمونه فرایند داشته باشند. موتور فقط مسیرهای ساده و محدود را ارزیابی می‌کند و هیچ JavaScript، expression یا query دلخواهی اجرا نمی‌شود. نمونه:
+
+```json
+{
+  "transitions": [
+    { "fromStepIndex": 0, "action": "APPROVED", "toStepIndex": 1,
+      "when": { "field": "amount", "operator": "lte", "value": 1000000 } },
+    { "fromStepIndex": 0, "action": "APPROVED", "toStepIndex": 2,
+      "when": { "all": [
+        { "field": "amount", "operator": "gt", "value": 1000000 },
+        { "field": "department.code", "operator": "eq", "value": "FIN" }
+      ] } },
+    { "fromStepIndex": 1, "action": "APPROVED", "toStepIndex": null }
+  ]
+}
+```
+
+عملگرهای مجاز: `exists`, `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`. شرط مرکب `all` و `any` حداکثر ۲۰ شرط دارد. مسیر فیلد فقط نام‌های ساده با حداکثر ۸ سطح تو در تو را می‌پذیرد. هنگام اقدام، شرط‌ها با `process_instances.data` ارزیابی می‌شوند؛ اگر هیچ شرطی منطبق نشود یا بیش از یک مسیر منطبق باشد، اقدام به‌صورت fail-closed رد می‌شود. انتشار نسخه نیز ساختار شرط‌ها را اعتبارسنجی می‌کند.
+
 ## امنیت و ممیزی
 
 - Tenant از JWT و عضویت جاری پایگاه داده استخراج/تأیید می‌شود؛ `tenantId` بدنه مرجع امنیت نیست.

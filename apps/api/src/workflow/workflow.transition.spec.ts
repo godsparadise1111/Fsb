@@ -22,6 +22,59 @@ test('explicit terminal approval transition completes the process', () => {
   assert.equal(resolve(schema, 2, 'APPROVED', null, true), null);
 });
 
+
+test('conditional transitions select a branch using process instance data', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: 'amount', operator: 'lte', value: 1000 } },
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 2, when: { all: [
+      { field: 'amount', operator: 'gt', value: 1000 },
+      { field: 'department.code', operator: 'eq', value: 'FIN' },
+    ] } },
+  ] };
+  assert.equal(resolve(schema, 0, 'APPROVED', null, true, { amount: 500 }), 1);
+  assert.equal(resolve(schema, 0, 'APPROVED', null, true, { amount: 2500, department: { code: 'FIN' } }), 2);
+});
+
+test('conditional transition rules support any, membership and contains operators', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 1, action: 'APPROVED', toStepIndex: 3, when: { any: [
+      { field: 'category', operator: 'in', value: ['A', 'B'] },
+      { field: 'description', operator: 'contains', value: 'urgent' },
+    ] } },
+  ] };
+  assert.equal(resolve(schema, 1, 'APPROVED', null, true, { category: 'B' }), 3);
+  assert.equal(resolve(schema, 1, 'APPROVED', null, true, { description: 'urgent review' }), 3);
+});
+
+test('conditional transition resolution fails closed when no condition matches', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: 'amount', operator: 'gt', value: 100 } },
+  ] };
+  assert.throws(() => resolve(schema, 0, 'APPROVED', null, true, { amount: 50 }), BadRequestException);
+});
+
+test('a conditional branch that does not match never falls through to a default target', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 0, action: 'REJECTED', toStepIndex: 1, when: { field: 'risk', operator: 'eq', value: 'HIGH' } },
+  ] };
+  assert.throws(() => resolve(schema, 0, 'REJECTED', null, false, { risk: 'LOW' }), BadRequestException);
+});
+
+test('overlapping conditional transition matches are rejected as ambiguous', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: 'amount', operator: 'gt', value: 10 } },
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 2, when: { field: 'amount', operator: 'gt', value: 20 } },
+  ] };
+  assert.throws(() => resolve(schema, 0, 'APPROVED', null, true, { amount: 30 }), ConflictException);
+});
+
+test('conditional transition field paths reject prototype traversal', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: 'constructor.prototype.admin', operator: 'eq', value: true } },
+  ] };
+  assert.throws(() => resolve(schema, 0, 'APPROVED', null, true, {}), ConflictException);
+});
+
 test('a rejection without a configured branch is terminal', () => {
   const schema = { transitions: [{ fromStepIndex: 0, action: 'APPROVED', toStepIndex: null }] };
   assert.equal(resolve(schema, 0, 'REJECTED', null), null);

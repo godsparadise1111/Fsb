@@ -1,7 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { CreatePositionDto } from './dto/create-position.dto';
+import { UpdateUnitDto } from './dto/update-unit.dto';
+import { UpdatePositionDto } from './dto/update-position.dto';
 import { OrganizationService } from './organization.service';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.decorator';
@@ -9,22 +11,43 @@ import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.
 export class OrganizationController {
   constructor(private readonly service: OrganizationService) {}
   @RequirePermissions('tenants.manage')
-  @Post() create(@Body() dto: CreateOrganizationDto) { return this.service.createOrganization(dto); }
+  @Post() create(@Body() dto: CreateOrganizationDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createOrganization(dto, user.sub); }
   @RequirePermissions('tenant.organizations.manage')
   @Post('tenant') createForTenant(@Body() dto: CreateOrganizationDto, @CurrentUser() user: AuthenticatedUser) {
     if (!user.tenantId) throw new BadRequestException('An authenticated tenant context is required');
-    return this.service.createOrganization({ ...dto, tenantId: user.tenantId });
+    return this.service.createOrganization({ ...dto, tenantId: user.tenantId }, user.sub);
   }
   @RequirePermissions('organization.read')
   @Get() list(@CurrentUser() user: AuthenticatedUser) { return this.service.listOrganizations(user.tenantId); }
   @RequirePermissions('organization.read')
   @Get('accessible') accessible(@CurrentUser() user: AuthenticatedUser) { return this.service.listAccessibleOrganizations(user.sub, user.tenantId); }
   @RequirePermissions('organization.manage')
-  @Post('units') createUnit(@Body() dto: CreateUnitDto) { return this.service.createUnit(dto); }
+  @Post('units') createUnit(@Body() dto: CreateUnitDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createUnit(dto, user.tenantId, user.sub); }
   @RequirePermissions('organization.read')
-  @Get(':organizationId/units') units(@Param('organizationId', new ParseUUIDPipe()) id: string) { return this.service.listUnits(id); }
+  @Get(':organizationId/units') units(@Param('organizationId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) { return this.service.listUnits(id, user.tenantId); }
   @RequirePermissions('organization.manage')
-  @Post('positions') createPosition(@Body() dto: CreatePositionDto) { return this.service.createPosition(dto); }
+  @Post('positions') createPosition(@Body() dto: CreatePositionDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createPosition(dto, user.tenantId, user.sub); }
+  @RequirePermissions('organization.manage')
+  @Patch('units/:unitId')
+  updateUnit(@Param('unitId', new ParseUUIDPipe()) id: string, @Body() dto: UpdateUnitDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.updateUnit(id, dto, user.tenantId, user.sub);
+  }
+  @RequirePermissions('organization.manage')
+  @Post('units/:unitId/deactivate')
+  deactivateUnit(@Param('unitId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.deactivateUnit(id, user.tenantId, user.sub);
+  }
+  @RequirePermissions('organization.manage')
+  @Patch('positions/:positionId')
+  updatePosition(@Param('positionId', new ParseUUIDPipe()) id: string, @Body() dto: UpdatePositionDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.updatePosition(id, dto, user.tenantId, user.sub);
+  }
+  @RequirePermissions('organization.manage')
+  @Post('positions/:positionId/deactivate')
+  deactivatePosition(@Param('positionId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.deactivatePosition(id, user.tenantId, user.sub);
+  }
+
   @RequirePermissions('organization.read')
-  @Get('units/:unitId/positions') positions(@Param('unitId', new ParseUUIDPipe()) id: string) { return this.service.listPositions(id); }
+  @Get('units/:unitId/positions') positions(@Param('unitId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) { return this.service.listPositions(id, user.tenantId); }
 }

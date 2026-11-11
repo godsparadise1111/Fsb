@@ -1,8 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Organization } from '../organization/entities/organization.entity';
-import { User } from '../identity/entities/user.entity';
 import { ProcessInstance } from '../workflow/entities/process-instance.entity';
 import { FormDefinition } from './entities/form-definition.entity';
 import { FormVersion } from './entities/form-version.entity';
@@ -10,6 +9,7 @@ import { FormSubmission } from './entities/form-submission.entity';
 import { CreateFormDto } from './dto/create-form.dto';
 import { CreateFormVersionDto } from './dto/create-form-version.dto';
 import { SubmitFormDto } from './dto/submit-form.dto';
+import { validateFormSchema, validateFormSubmission } from './form-schema';
 
 @Injectable()
 export class FormsService {
@@ -19,27 +19,34 @@ export class FormsService {
     @InjectRepository(FormVersion) private readonly versions: Repository<FormVersion>,
     @InjectRepository(FormSubmission) private readonly submissions: Repository<FormSubmission>,
     @InjectRepository(Organization) private readonly organizations: Repository<Organization>,
-    @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(ProcessInstance) private readonly instances: Repository<ProcessInstance>,
   ) {}
-  async createDefinition(dto: CreateFormDto) {
-    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+  async createDefinition(dto: CreateFormDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, tenantId, isActive: true }, relations: { tenant: true } });
     if (!organization) throw new NotFoundException('Active organization not found');
     if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
     if (await this.definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) throw new ConflictException('Form code already exists in this organization');
     return this.definitions.save(this.definitions.create({ ...dto, status: 'DRAFT', description: dto.description ?? null }));
   }
   listDefinitions(organizationId?: string, tenantId?: string | null) {
+    if (!tenantId) return Promise.resolve([]);
     const query = this.definitions.createQueryBuilder('definition')
       .innerJoinAndSelect('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
       .orderBy('definition.name', 'ASC');
+    query.andWhere('organization.tenantId = :tenantId AND organization.isActive = true', { tenantId });
     if (organizationId) query.andWhere('definition.organizationId = :organizationId', { organizationId });
-    else if (tenantId) query.andWhere('organization.tenantId = :tenantId', { tenantId });
     return query.getMany();
   }
-  async createVersion(definitionId: string, dto: CreateFormVersionDto) {
+  async createVersion(definitionId: string, dto: CreateFormVersionDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
-      const definition = await manager.findOne(FormDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      const definition = await manager.createQueryBuilder(FormDefinition, 'definition')
+        .innerJoin('definition.organization', 'organization')
+        .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
+        .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+        .setLock('pessimistic_write').getOne();
       if (!definition) throw new NotFoundException('Form definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived form cannot be changed');
       const latest = await manager.findOne(FormVersion, { where: { definitionId }, order: { versionNumber: 'DESC' } });
@@ -49,18 +56,35 @@ export class FormsService {
       }));
     });
   }
-  async listVersions(definitionId: string) {
-    if (!await this.definitions.exist({ where: { id: definitionId } })) throw new NotFoundException('Form definition not found');
-    return this.versions.find({ where: { definitionId }, order: { versionNumber: 'DESC' } });
+  async listVersions(definitionId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const rows = await this.versions.createQueryBuilder('version')
+      .innerJoin('version.definition', 'definition')
+      .innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
+      .where('version.definitionId = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+      .orderBy('version.versionNumber', 'DESC').getMany();
+    if (!rows.length && !await this.definitions.createQueryBuilder('definition').innerJoin('definition.organization', 'organization')
+      .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
+      .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId }).getExists()) {
+      throw new NotFoundException('Form definition not found');
+    }
+    return rows;
   }
-  async publishVersion(definitionId: string, versionId: string) {
+  async publishVersion(definitionId: string, versionId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
-      const definition = await manager.findOne(FormDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      const definition = await manager.createQueryBuilder(FormDefinition, 'definition')
+        .innerJoin('definition.organization', 'organization')
+        .innerJoin('organization.tenant', 'tenant', 'tenant.status = :activeTenant', { activeTenant: 'ACTIVE' })
+        .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+        .setLock('pessimistic_write').getOne();
       if (!definition) throw new NotFoundException('Form definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived form cannot be published');
       const version = await manager.findOne(FormVersion, { where: { id: versionId, definitionId }, lock: { mode: 'pessimistic_write' } });
       if (!version) throw new NotFoundException('Form version not found');
       if (version.status !== 'DRAFT') throw new BadRequestException('Only draft form versions can be published');
+      validateFormSchema(version.schema);
       version.status = 'PUBLISHED';
       version.publishedAt = new Date();
       await manager.save(version);
@@ -76,7 +100,15 @@ export class FormsService {
     if (version.definition.organization?.tenantId !== tenantId || version.definition.organization.tenant?.status !== 'ACTIVE') {
       throw new BadRequestException('Form is outside the active customer account');
     }
-    if (!await this.users.exist({ where: { id: submittedByUserId, isActive: true } })) throw new NotFoundException('Active submitter not found');
+    validateFormSubmission(version.schema, dto.data);
+    const [activeSubmitter] = await this.dataSource.query(
+      `SELECT 1 FROM tenant_memberships tm
+         JOIN users u ON u.id=tm."userId" AND u."isActive"=true
+         JOIN tenants t ON t.id=tm."tenantId" AND t.status='ACTIVE'
+        WHERE tm."tenantId"=$1 AND tm."userId"=$2 AND tm."isActive"=true LIMIT 1`,
+      [tenantId, submittedByUserId],
+    );
+    if (!activeSubmitter) throw new NotFoundException('Active submitter membership not found in this tenant');
     if (dto.processInstanceId) {
       const instance = await this.instances.findOne({ where: { id: dto.processInstanceId }, relations: { organization: { tenant: true } } });
       if (!instance) throw new NotFoundException('Process instance not found');

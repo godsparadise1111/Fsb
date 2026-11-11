@@ -49,6 +49,7 @@ export default function ProcessDesignPage() {
   const [changeNote, setChangeNote] = useState('');
   const [schemaText, setSchemaText] = useState(JSON.stringify(exampleSchema, null, 2));
   const [instanceTitle, setInstanceTitle] = useState('');
+  const [instanceDataText, setInstanceDataText] = useState('{}');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -200,7 +201,7 @@ export default function ProcessDesignPage() {
     try {
       await api('/process-instances', {
         method: 'POST',
-        body: JSON.stringify({ processVersionId: version.id, organizationId: organizationId.trim(), title: instanceTitle.trim() }),
+        body: JSON.stringify({ processVersionId: version.id, organizationId: organizationId.trim(), title: instanceTitle.trim(), data: JSON.parse(instanceDataText) }),
       });
       setInstanceTitle('');
       setNotice('فرایند آغاز شد. برای پیگیری و اقدام به کارتابل ورودی/خروجی بروید.');
@@ -317,6 +318,8 @@ export default function ProcessDesignPage() {
             <form onSubmit={startProcess} style={{ display: 'grid', gap: 10 }}>
               <p>{selectedVersion?.status === 'PUBLISHED' ? 'نسخه منتشرشده انتخاب شده است.' : 'برای شروع، یک نسخه منتشرشده را از فهرست نسخه‌ها انتخاب کنید.'}</p>
               <input style={inputStyle} placeholder="عنوان نمونه فرایند" value={instanceTitle} onChange={e => setInstanceTitle(e.target.value)} minLength={2} maxLength={240} required />
+              <label>داده‌های فرم اولیه (JSON؛ برای مسیرهای شرطی)</label>
+              <textarea spellCheck={false} style={{ ...inputStyle, fontFamily: "monospace", direction: "ltr", textAlign: "left" }} rows={8} value={instanceDataText} onChange={e => setInstanceDataText(e.target.value)} />
               <button style={buttonStyle} disabled={busy || selectedVersion?.status !== 'PUBLISHED' || !organizationId.trim()}>شروع و ایجاد وظیفه مرحله اول</button>
             </form>
           </section>
