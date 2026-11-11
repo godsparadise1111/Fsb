@@ -15,6 +15,9 @@ for (const file of files) {
   }
   // Ignore SQL comments so examples and explanations cannot look like DDL.
   const sql = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--.*$/gm, '');
+  if (/\bDO\s+\$(?!\$|[A-Za-z_][A-Za-z0-9_]*\$)/i.test(sql)) {
+    failures.push(file + ': invalid DO block dollar-quote delimiter');
+  }
   const expression = /\bCREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_$]*))/gi;
   let match;
   while ((match = expression.exec(sql)) !== null) {
