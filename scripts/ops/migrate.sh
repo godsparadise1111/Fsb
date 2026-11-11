@@ -68,7 +68,7 @@ run_ledger_transaction() {
   {
     printf 'BEGIN;\n'
     printf "SELECT pg_advisory_xact_lock(hashtext('fsb-schema-migrations'));\n"
-    printf "DO \\\$\\\$ BEGIN IF EXISTS (SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s') THEN RAISE EXCEPTION 'migration was concurrently recorded; rerun to verify checksum'; END IF; END \\\$\\\$;\n" "$name"
+    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM fsb_schema_migration_ledger WHERE filename='%s') THEN RAISE EXCEPTION 'migration was concurrently recorded; rerun to verify checksum'; END IF; END \$\$;\n" "$name"
     if [ "$mode" = "apply" ]; then
       printf "\\\\i '%s'\n" "$migration_sql"
       printf "INSERT INTO fsb_schema_migration_ledger(filename,sha256,baseline_recorded) VALUES ('%s','%s',false);\n" "$name" "$checksum"
