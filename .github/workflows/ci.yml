@@ -40,7 +40,7 @@ jobs:
             -e DATABASE_URL="$DATABASE_URL" \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
-            postgres:16-alpine sh -c '
+            postgres:16 sh -c '
               set -eu
               printf "ephemeral CI-only backup marker\n" > /tmp/fsb-ci-backup
               sha256sum /tmp/fsb-ci-backup > /tmp/fsb-ci-backup.sha256
