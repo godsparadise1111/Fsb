@@ -53,6 +53,13 @@ test('conditional transition resolution fails closed when no condition matches',
   assert.throws(() => resolve(schema, 0, 'APPROVED', null, true, { amount: 50 }), BadRequestException);
 });
 
+test('a conditional branch that does not match never falls through to a default target', () => {
+  const schema = { transitions: [
+    { fromStepIndex: 0, action: 'REJECTED', toStepIndex: 1, when: { field: 'risk', operator: 'eq', value: 'HIGH' } },
+  ] };
+  assert.throws(() => resolve(schema, 0, 'REJECTED', null, false, { risk: 'LOW' }), BadRequestException);
+});
+
 test('overlapping conditional transition matches are rejected as ambiguous', () => {
   const schema = { transitions: [
     { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: 'amount', operator: 'gt', value: 10 } },
@@ -63,7 +70,7 @@ test('overlapping conditional transition matches are rejected as ambiguous', () 
 
 test('conditional transition field paths reject prototype traversal', () => {
   const schema = { transitions: [
-    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: '__proto__.admin', operator: 'eq', value: true } },
+    { fromStepIndex: 0, action: 'APPROVED', toStepIndex: 1, when: { field: 'constructor.prototype.admin', operator: 'eq', value: true } },
   ] };
   assert.throws(() => resolve(schema, 0, 'APPROVED', null, true, {}), ConflictException);
 });
