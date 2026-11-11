@@ -100,9 +100,9 @@ k6 run tests/load/workflow-idempotency.k6.js
 پس از آزمون هم‌زمان k6، اسکریپت مکمل زیر را با همان Task و Idempotency-Key اجرا کنید. این اسکریپت پاسخ replay را با پاسخ ثبت‌شده مقایسه می‌کند و استفاده مجدد از همان کلید با payload متفاوت را باید با HTTP 409 رد کند: 
 
 ~~~sh
-FSB_STAGING_TESTS=true TEST_FIXTURE_CONFIRMED=true \\
-BASE_URL=https://staging.example.test ACCESS_TOKEN='...' \\
-TEST_TASK_ID='...' IDEMPOTENCY_KEY='acceptance-20261111-workflow-001' \\
+FSB_STAGING_TESTS=true TEST_FIXTURE_CONFIRMED=true \
+BASE_URL=https://staging.example.test ACCESS_TOKEN='...' \
+TEST_TASK_ID='...' IDEMPOTENCY_KEY='acceptance-20261111-workflow-001' \
 bash scripts/staging-workflow-idempotency.sh
 ~~~
 
