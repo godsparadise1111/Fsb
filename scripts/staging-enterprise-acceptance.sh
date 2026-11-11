@@ -32,6 +32,15 @@ expect_allowed(){
   code="$(request "$TOKEN_TENANT_B" "$path" "$tmp/allowed.json")"
   [[ "$code" == "200" ]] || fail "Tenant B could not read its own resource $path (HTTP $code)"
 }
+expect_no_leak(){
+  local path="$1" code
+  code="$(request "$TOKEN_TENANT_A" "$path" "$tmp/no-leak.json")"
+  if [[ "$code" == "200" ]]; then
+    [[ "$(jq 'length' "$tmp/no-leak.json")" == "0" ]] || fail "Tenant A list exposed Tenant B records at $path"
+  elif [[ "$code" != "403" && "$code" != "404" ]]; then
+    fail "Unexpected cross-tenant list response at $path (HTTP $code)"
+  fi
+}
 
 echo "[1/6] Tenant context spoofing"
 code="$(curl -sS -o "$tmp/spoof.json" -w '%{http_code}' -H "Authorization: Bearer $TOKEN_TENANT_A" -H "X-Tenant-Id: $TENANT_B_ID" "$API/tenant/commercial")"
@@ -44,13 +53,13 @@ expect_denied "/organizations/$ORG_B_ID/units"
 expect_allowed "/organizations/$ORG_B_ID/units"
 
 echo "[3/6] Process definition and version boundary"
-expect_denied "/process-definitions?organizationId=$ORG_B_ID"
+expect_no_leak "/process-definitions?organizationId=$ORG_B_ID"
 expect_allowed "/process-definitions?organizationId=$ORG_B_ID"
 expect_denied "/process-definitions/$PROCESS_B_ID/versions"
 expect_allowed "/process-definitions/$PROCESS_B_ID/versions"
 
 echo "[4/6] Form definition and version boundary"
-expect_denied "/forms?organizationId=$ORG_B_ID"
+expect_no_leak "/forms?organizationId=$ORG_B_ID"
 expect_allowed "/forms?organizationId=$ORG_B_ID"
 expect_denied "/forms/$FORM_B_ID/versions"
 expect_allowed "/forms/$FORM_B_ID/versions"
