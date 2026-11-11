@@ -48,6 +48,15 @@ jobs:
               echo "Re-running the guarded migration runner to verify checksum-safe idempotency"
               FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh
               FSB_STAGING_TESTS=true bash scripts/ops/verify-staging.sh
+              echo "Running disposable PostgreSQL custom-format backup and isolated restore drill"
+              pg_dump -U postgres -d fsb_ci -Fc -f /tmp/fsb-ci-restore-drill.dump
+              createdb -U postgres fsb_ci_restore
+              pg_restore --no-owner --no-acl --exit-on-error -U postgres -d fsb_ci_restore /tmp/fsb-ci-restore-drill.dump
+              source_count="$(psql -U postgres -d fsb_ci -Atqc 'SELECT count(*) FROM fsb_schema_migration_ledger')"
+              restored_count="$(psql -U postgres -d fsb_ci_restore -Atqc 'SELECT count(*) FROM fsb_schema_migration_ledger')"
+              test "$source_count" = "$restored_count"
+              test "$(psql -U postgres -d fsb_ci_restore -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_name='tenant_api_credentials'")" = "1"
+              echo "Isolated database restore verified: $restored_count migration ledger rows"
             '
       - name: Validate operations shell scripts
         run: for script in scripts/ops/*.sh; do bash -n "$script"; done; bash -n scripts/staging-enterprise-acceptance.sh; bash -n scripts/staging-workflow-idempotency.sh
