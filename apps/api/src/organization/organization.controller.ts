@@ -20,11 +20,11 @@ export class OrganizationController {
   @RequirePermissions('organization.read')
   @Get('accessible') accessible(@CurrentUser() user: AuthenticatedUser) { return this.service.listAccessibleOrganizations(user.sub, user.tenantId); }
   @RequirePermissions('organization.manage')
-  @Post('units') createUnit(@Body() dto: CreateUnitDto) { return this.service.createUnit(dto); }
+  @Post('units') createUnit(@Body() dto: CreateUnitDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createUnit(dto, user.tenantId); }
   @RequirePermissions('organization.read')
-  @Get(':organizationId/units') units(@Param('organizationId', new ParseUUIDPipe()) id: string) { return this.service.listUnits(id); }
+  @Get(':organizationId/units') units(@Param('organizationId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) { return this.service.listUnits(id, user.tenantId); }
   @RequirePermissions('organization.manage')
-  @Post('positions') createPosition(@Body() dto: CreatePositionDto) { return this.service.createPosition(dto); }
+  @Post('positions') createPosition(@Body() dto: CreatePositionDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createPosition(dto, user.tenantId); }
   @RequirePermissions('organization.read')
-  @Get('units/:unitId/positions') positions(@Param('unitId', new ParseUUIDPipe()) id: string) { return this.service.listPositions(id); }
+  @Get('units/:unitId/positions') positions(@Param('unitId', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) { return this.service.listPositions(id, user.tenantId); }
 }
