@@ -3,8 +3,8 @@ set -eu
 umask 077
 export LC_ALL=C
 
-: "\${DATABASE_URL:?Set DATABASE_URL for the target Staging database}"
-: "\${FSB_MIGRATION_BACKUP_FILE:?Set FSB_MIGRATION_BACKUP_FILE to a verified pre-migration backup}"
+: "${DATABASE_URL:?Set DATABASE_URL for the target Staging database}"
+: "${FSB_MIGRATION_BACKUP_FILE:?Set FSB_MIGRATION_BACKUP_FILE to a verified pre-migration backup}"
 [ -s "$FSB_MIGRATION_BACKUP_FILE" ] || { echo "ERROR: pre-migration backup is missing or empty." >&2; exit 1; }
 [ -s "$FSB_MIGRATION_BACKUP_FILE.sha256" ] || { echo "ERROR: pre-migration backup checksum sidecar is missing." >&2; exit 1; }
 command -v psql >/dev/null 2>&1 || { echo "ERROR: psql is required." >&2; exit 1; }
@@ -18,9 +18,9 @@ migration_dir="apps/api/database/migrations"
 set -- "$migration_dir"/*.sql
 [ -f "$1" ] || { echo "ERROR: no SQL migrations found." >&2; exit 1; }
 
-if [ -n "\${FSB_MIGRATION_BASELINE:-}" ]; then
+if [ -n "${FSB_MIGRATION_BASELINE:-}" ]; then
   case "$FSB_MIGRATION_BASELINE" in */* ) echo "ERROR: baseline must be a migration filename, not a path." >&2; exit 1 ;; esac
-  [ "\${FSB_CONFIRM_BASELINE:-}" = "YES" ] || {
+  [ "${FSB_CONFIRM_BASELINE:-}" = "YES" ] || {
     echo "ERROR: set FSB_CONFIRM_BASELINE=YES only after verifying every migration up to the selected baseline is already applied." >&2
     exit 1
   }
@@ -91,7 +91,7 @@ run_ledger_transaction() {
 }
 
 baseline_pending=false
-if [ -n "\${FSB_MIGRATION_BASELINE:-}" ]; then baseline_pending=true; fi
+if [ -n "${FSB_MIGRATION_BASELINE:-}" ]; then baseline_pending=true; fi
 baseline_found=false
 for file in "$migration_dir"/*.sql; do
   name="$(basename "$file")"
@@ -106,7 +106,7 @@ for file in "$migration_dir"/*.sql; do
   run_ledger_transaction "$file" apply
 done
 
-if [ -n "\${FSB_MIGRATION_BASELINE:-}" ] && [ "$baseline_found" != true ]; then
+if [ -n "${FSB_MIGRATION_BASELINE:-}" ] && [ "$baseline_found" != true ]; then
   echo "ERROR: selected migration baseline was not reached in lexical order." >&2
   exit 1
 fi
