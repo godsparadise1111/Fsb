@@ -92,6 +92,13 @@ code="$(request "$TOKEN_TENANT_B" "/forms/versions/$FORM_B_VERSION_ID/submission
 echo "[7/8] Workflow task history boundary"
 expect_denied "$TOKEN_TENANT_A" "/tasks/$TASK_B_ID/history"
 expect_allowed "$TOKEN_TENANT_B" "/tasks/$TASK_B_ID/history"
+action_code="$(curl -sS -o "$tmp/cross-tenant-action.json" -w '%{http_code}' -X POST \
+  -H "Authorization: Bearer $TOKEN_TENANT_A" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: staging-cross-tenant-action-0001' \
+  --data '{"action":"APPROVED","comment":"Cross-tenant write isolation test"}' \
+  "$API/tasks/$TASK_B_ID/actions")"
+[[ "$action_code" == "403" || "$action_code" == "404" ]] || fail "Tenant A attempted an action on Tenant B task (HTTP $action_code)"
 
 echo "[8/8] Concurrent tenant-scoped read stability"
 export API TOKEN_TENANT_A
