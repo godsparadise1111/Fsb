@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Organization } from '../organization/entities/organization.entity';
@@ -22,24 +22,30 @@ export class FormsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(ProcessInstance) private readonly instances: Repository<ProcessInstance>,
   ) {}
-  async createDefinition(dto: CreateFormDto) {
-    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, isActive: true }, relations: { tenant: true } });
+  async createDefinition(dto: CreateFormDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const organization = await this.organizations.findOne({ where: { id: dto.organizationId, tenantId, isActive: true }, relations: { tenant: true } });
     if (!organization) throw new NotFoundException('Active organization not found');
     if (!organization.tenant || organization.tenant.status !== 'ACTIVE') throw new BadRequestException('The organization customer account is not active');
     if (await this.definitions.findOneBy({ organizationId: dto.organizationId, code: dto.code })) throw new ConflictException('Form code already exists in this organization');
     return this.definitions.save(this.definitions.create({ ...dto, status: 'DRAFT', description: dto.description ?? null }));
   }
   listDefinitions(organizationId?: string, tenantId?: string | null) {
+    if (!tenantId) return Promise.resolve([]);
     const query = this.definitions.createQueryBuilder('definition')
       .innerJoinAndSelect('definition.organization', 'organization')
       .orderBy('definition.name', 'ASC');
+    query.andWhere('organization.tenantId = :tenantId AND organization.isActive = true', { tenantId });
     if (organizationId) query.andWhere('definition.organizationId = :organizationId', { organizationId });
-    else if (tenantId) query.andWhere('organization.tenantId = :tenantId', { tenantId });
     return query.getMany();
   }
-  async createVersion(definitionId: string, dto: CreateFormVersionDto) {
+  async createVersion(definitionId: string, dto: CreateFormVersionDto, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
-      const definition = await manager.findOne(FormDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      const definition = await manager.createQueryBuilder(FormDefinition, 'definition')
+        .innerJoin('definition.organization', 'organization')
+        .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+        .setLock('pessimistic_write').getOne();
       if (!definition) throw new NotFoundException('Form definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived form cannot be changed');
       const latest = await manager.findOne(FormVersion, { where: { definitionId }, order: { versionNumber: 'DESC' } });
@@ -49,13 +55,26 @@ export class FormsService {
       }));
     });
   }
-  async listVersions(definitionId: string) {
-    if (!await this.definitions.exist({ where: { id: definitionId } })) throw new NotFoundException('Form definition not found');
-    return this.versions.find({ where: { definitionId }, order: { versionNumber: 'DESC' } });
+  async listVersions(definitionId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
+    const rows = await this.versions.createQueryBuilder('version')
+      .innerJoin('version.definition', 'definition')
+      .innerJoin('definition.organization', 'organization')
+      .where('version.definitionId = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+      .orderBy('version.versionNumber', 'DESC').getMany();
+    if (!rows.length && !await this.definitions.createQueryBuilder('definition').innerJoin('definition.organization', 'organization')
+      .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId }).getExists()) {
+      throw new NotFoundException('Form definition not found');
+    }
+    return rows;
   }
-  async publishVersion(definitionId: string, versionId: string) {
+  async publishVersion(definitionId: string, versionId: string, tenantId?: string | null) {
+    if (!tenantId) throw new ForbiddenException('An active tenant context is required');
     return this.dataSource.transaction(async manager => {
-      const definition = await manager.findOne(FormDefinition, { where: { id: definitionId }, lock: { mode: 'pessimistic_write' } });
+      const definition = await manager.createQueryBuilder(FormDefinition, 'definition')
+        .innerJoin('definition.organization', 'organization')
+        .where('definition.id = :definitionId AND organization.tenantId = :tenantId AND organization.isActive = true', { definitionId, tenantId })
+        .setLock('pessimistic_write').getOne();
       if (!definition) throw new NotFoundException('Form definition not found');
       if (definition.status === 'ARCHIVED') throw new BadRequestException('Archived form cannot be published');
       const version = await manager.findOne(FormVersion, { where: { id: versionId, definitionId }, lock: { mode: 'pessimistic_write' } });
