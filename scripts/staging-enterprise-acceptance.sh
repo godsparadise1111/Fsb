@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-[[ "\${FSB_STAGING_TESTS:-}" == "true" ]] || { echo "Set FSB_STAGING_TESTS=true in an isolated disposable staging environment" >&2; exit 2; }
-: "\${BASE_URL:?Set BASE_URL to staging API origin}"
-: "\${TOKEN_TENANT_A:?Set Tenant A JWT}"
-: "\${TOKEN_TENANT_B:?Set Tenant B JWT}"
-: "\${TENANT_A_ID:?Set Tenant A UUID}"
-: "\${TENANT_B_ID:?Set Tenant B UUID}"
-: "\${ORG_B_ID:?Set an active organization UUID owned only by Tenant B}"
-: "\${PROCESS_B_ID:?Set a process definition UUID owned only by Tenant B}"
-: "\${FORM_B_ID:?Set a form definition UUID owned only by Tenant B}"
-: "\${TASK_B_ID:?Set an active workflow task UUID owned only by Tenant B}"
+[[ "${FSB_STAGING_TESTS:-}" == "true" ]] || { echo "Set FSB_STAGING_TESTS=true in an isolated disposable staging environment" >&2; exit 2; }
+: "${BASE_URL:?Set BASE_URL to staging API origin}"
+: "${TOKEN_TENANT_A:?Set Tenant A JWT}"
+: "${TOKEN_TENANT_B:?Set Tenant B JWT}"
+: "${TENANT_A_ID:?Set Tenant A UUID}"
+: "${TENANT_B_ID:?Set Tenant B UUID}"
+: "${ORG_B_ID:?Set an active organization UUID owned only by Tenant B}"
+: "${PROCESS_B_ID:?Set a process definition UUID owned only by Tenant B}"
+: "${FORM_B_ID:?Set a form definition UUID owned only by Tenant B}"
+: "${TASK_B_ID:?Set an active workflow task UUID owned only by Tenant B}"
 command -v curl >/dev/null
 command -v jq >/dev/null
-host="\${BASE_URL#*://}"; host="\${host%%/*}"; host="\${host%%:*}"
+host="${BASE_URL#*://}"; host="${host%%/*}"; host="${host%%:*}"
 case "$host" in localhost|127.0.0.1|staging|staging.*|*.staging.*|test.*|*.test|*.test.*) ;; *) echo "Refusing non-staging host" >&2; exit 2 ;; esac
-API="\${BASE_URL%/}/api"
+API="${BASE_URL%/}/api"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 fail(){ echo "FAIL: $*" >&2; exit 1; }
 request(){
