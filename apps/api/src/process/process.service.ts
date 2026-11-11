@@ -296,7 +296,35 @@ export class ProcessService {
             throw new BadRequestException(`Transition ${index + 1} RETURNED target must be an earlier step`);
           }
           const key = String(from) + ':' + String(action);
-          if (keys.has(key)) throw new BadRequestException('Only one transition per step and action is allowed');
+          if (edge.when !== undefined) {
+            const validCondition = (condition: unknown): boolean => {
+              if (!condition || typeof condition !== 'object' || Array.isArray(condition)) return false;
+              const item = condition as Record<string, unknown>;
+              return typeof item.field === 'string' &&
+                /^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,7}$/.test(item.field) &&
+                ['exists','eq','neq','gt','gte','lt','lte','in','contains'].includes(String(item.operator));
+            };
+            const rule = edge.when as Record<string, unknown>;
+            if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+              throw new BadRequestException(`Transition ${index + 1} when must be a condition object`);
+            }
+            if (rule.all !== undefined || rule.any !== undefined) {
+              const all = rule.all === undefined ? [] : rule.all;
+              const any = rule.any === undefined ? [] : rule.any;
+              if (!Array.isArray(all) || !Array.isArray(any) || all.length + any.length < 1 ||
+                  all.length + any.length > 20 || [...all, ...any].some(item => !validCondition(item))) {
+                throw new BadRequestException(`Transition ${index + 1} all/any conditions are invalid`);
+              }
+            } else if (!validCondition(rule)) {
+              throw new BadRequestException(`Transition ${index + 1} condition is invalid`);
+            }
+          }
+          const existing = (transitions as Array<Record<string, unknown>>).filter(item =>
+            item !== edge && item.fromStepIndex === from && item.action === action,
+          );
+          if (existing.length && (edge.when === undefined || existing.some(item => item.when === undefined))) {
+            throw new BadRequestException('Multiple transitions for one step/action must all define conditions');
+          }
           keys.add(key);
         }
         let changed = true;
