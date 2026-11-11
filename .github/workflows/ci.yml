@@ -50,6 +50,18 @@ jobs:
               echo "Re-running the guarded migration runner to verify checksum-safe idempotency"
               FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh
               FSB_STAGING_TESTS=true bash scripts/ops/verify-staging.sh
+              echo "Verifying migration checksum drift is rejected without applying DDL"
+              probe=apps/api/database/migrations/20261109_026_workflow_task_reassignment_permission.sql
+              cp "$probe" /tmp/fsb-migration-probe.sql
+              printf '\n-- CI-only checksum drift probe\n' >> "$probe"
+              if FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh > /tmp/fsb-migration-drift.log 2>&1; then
+                mv /tmp/fsb-migration-probe.sql "$probe"
+                echo "ERROR: migration runner accepted a changed checksum" >&2
+                exit 1
+              fi
+              mv /tmp/fsb-migration-probe.sql "$probe"
+              grep -q "checksum mismatch for already recorded migration: 20261109_026_workflow_task_reassignment_permission.sql" /tmp/fsb-migration-drift.log
+              FSB_MIGRATION_BACKUP_FILE=/tmp/fsb-ci-backup sh scripts/ops/migrate.sh
               echo "Running disposable PostgreSQL custom-format backup and isolated restore drill"
               pg_dump -h 127.0.0.1 -U postgres -d fsb_ci -Fc -f /tmp/fsb-ci-restore-drill.dump
               createdb -h 127.0.0.1 -U postgres fsb_ci_restore
