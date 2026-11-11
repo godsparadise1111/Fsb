@@ -60,7 +60,7 @@ SUBMISSION_B_ID='...' ATTACHMENT_B_ID='...' TASK_B_ID='...' \
 bash scripts/staging-enterprise-acceptance.sh
 ~~~
 
-اسکریپت فقط درخواست‌های خواندنی اجرا می‌کند و آزمون جعل Tenant header، جداسازی سازمان/فرایند/فرم/Submission/پیوست/وظیفه، دسترسی دانلود فایل خصوصی، نقش Tenant Admin در برابر عضو عادی، منع دسترسی Tenant به endpoint پلتفرم و دسترسی مدیر پلتفرم را بررسی می‌کند. توکن Tenant A باید متعلق به مدیر Tenant، توکن Tenant A Member متعلق به کاربر عادی همان Tenant، توکن Tenant B متعلق به مدیر Tenant B و توکن Platform متعلق به مدیر پلتفرم باشد. Host خارج از allowlist رد می‌شود. شناسه‌های Fixture باید واقعی و متعلق به Tenant B باشند؛ فایل پیوست نیز باید فایل آزمایشی بی‌خطر باشد.
+اسکریپت فقط درخواست‌های خواندنی اجرا می‌کند و آزمون جعل Tenant header، جداسازی سازمان/فرایند/فرم/Submission/پیوست/وظیفه، دسترسی دانلود فایل خصوصی، نقش Tenant Admin در برابر عضو عادی، منع دسترسی Tenant به endpoint پلتفرم و دسترسی مدیر پلتفرم را بررسی می‌کند. توکن Tenant A باید متعلق به مدیر Tenant، توکن Tenant A Member متعلق به عضو عادی همان Tenant بدون مجوزهای tenant.members.read و tenant.audit.read، توکن Tenant B متعلق به مدیر Tenant B و توکن Platform متعلق به مدیر پلتفرم دارای مجوز tenants.read باشد. Host خارج از allowlist رد می‌شود. شناسه‌های Fixture باید واقعی و متعلق به Tenant B باشند؛ فایل پیوست نیز باید فایل آزمایشی بی‌خطر باشد.
 
 ## بررسی قیود دیتابیس
 
