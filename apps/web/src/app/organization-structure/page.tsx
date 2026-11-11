@@ -109,6 +109,31 @@ export default function OrganizationStructurePage() {
     }, "سمت سازمانی ایجاد شد.");
   }
 
+  async function editSelectedUnit() {
+    const unit = units.find(item => item.id === unitId);
+    if (!unit) return;
+    const name = window.prompt("نام جدید واحد", unit.name);
+    if (!name || name.trim() === unit.name) return;
+    await run(async () => { await api("/organizations/units/" + unit.id, { method: "PATCH", body: JSON.stringify({ name: name.trim() }) }); await loadUnits(organizationId); }, "نام واحد به‌روزرسانی شد.");
+  }
+
+  async function deactivateSelectedUnit() {
+    const unit = units.find(item => item.id === unitId);
+    if (!unit || !window.confirm("واحد غیرفعال شود؟ ابتدا باید زیرواحدها و سمت‌های فعال آن تعیین تکلیف شوند.")) return;
+    await run(async () => { await api("/organizations/units/" + unit.id + "/deactivate", { method: "POST" }); await loadUnits(organizationId); }, "واحد غیرفعال شد.");
+  }
+
+  async function editPosition(position: Position) {
+    const title = window.prompt("عنوان جدید سمت", position.title);
+    if (!title || title.trim() === position.title) return;
+    await run(async () => { await api("/organizations/positions/" + position.id, { method: "PATCH", body: JSON.stringify({ title: title.trim() }) }); await loadPositions(unitId); }, "عنوان سمت به‌روزرسانی شد.");
+  }
+
+  async function deactivatePosition(position: Position) {
+    if (!window.confirm("سمت غیرفعال شود؟ ابتدا انتساب‌های فعال کاربران را پایان دهید.")) return;
+    await run(async () => { await api("/organizations/positions/" + position.id + "/deactivate", { method: "POST" }); await loadPositions(unitId); }, "سمت غیرفعال شد.");
+  }
+
   async function createSubstitution(event: React.FormEvent) {
     event.preventDefault();
     await run(async () => {
@@ -159,6 +184,7 @@ export default function OrganizationStructurePage() {
         <section style={panel}>
           <h2>ساختار واحدها</h2>
           {units.length === 0 && <p>هنوز واحدی برای این سازمان ثبت نشده است.</p>}
+          {unitId && <div style={{ display: "flex", gap: 8 }}><button style={button} onClick={() => void editSelectedUnit()}>ویرایش نام واحد انتخاب‌شده</button><button style={button} onClick={() => void deactivateSelectedUnit()}>غیرفعال‌سازی واحد</button></div>}
           <div style={{ display: "grid", gap: 8 }}>
             {units.map(unit => <button key={unit.id} onClick={() => { setUnitId(unit.id); void loadPositions(unit.id).catch(e => setError(e instanceof Error ? e.message : "خطا")); }} style={{ ...button, textAlign: "right", borderColor: unitId === unit.id ? "#2563eb" : "#d0d5dd", opacity: unit.isActive ? 1 : .6 }}>
               <strong>{unit.name}</strong><div style={{ fontSize: 12, color: "#667085" }}>{unit.code} · {unit.parentId ? "زیرواحد" : "واحد ریشه"} · {unit.isActive ? "فعال" : "غیرفعال"}</div>
@@ -175,7 +201,7 @@ export default function OrganizationStructurePage() {
               <input style={input} placeholder="کد سمت" value={positionCode} onChange={e => setPositionCode(e.target.value)} pattern="[A-Za-z0-9_-]{2,80}" required />
               <button style={button} disabled={busy}>افزودن</button>
             </form>
-            <div style={{ overflowX: "auto", marginTop: 14 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={{ textAlign: "right", padding: 8 }}>عنوان سمت</th><th style={{ textAlign: "right", padding: 8 }}>کد</th><th style={{ textAlign: "right", padding: 8 }}>وضعیت</th></tr></thead><tbody>{positions.map(position => <tr key={position.id}><td style={{ padding: 8, borderTop: "1px solid #eee" }}>{position.title}</td><td style={{ padding: 8, borderTop: "1px solid #eee" }}>{position.code}</td><td style={{ padding: 8, borderTop: "1px solid #eee" }}>{position.isActive ? "فعال" : "غیرفعال"}</td></tr>)}</tbody></table></div>
+            <div style={{ overflowX: "auto", marginTop: 14 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={{ textAlign: "right", padding: 8 }}>عنوان سمت</th><th style={{ textAlign: "right", padding: 8 }}>کد</th><th style={{ textAlign: "right", padding: 8 }}>وضعیت</th><th style={{ textAlign: "right", padding: 8 }}>عملیات</th></tr></thead><tbody>{positions.map(position => <tr key={position.id}><td style={{ padding: 8, borderTop: "1px solid #eee" }}>{position.title}</td><td style={{ padding: 8, borderTop: "1px solid #eee" }}>{position.code}</td><td style={{ padding: 8, borderTop: "1px solid #eee" }}>{position.isActive ? "فعال" : "غیرفعال"}</td><td style={{ padding: 8, borderTop: "1px solid #eee", whiteSpace: "nowrap" }}>{position.isActive && <><button style={button} onClick={() => void editPosition(position)}>ویرایش</button> <button style={button} onClick={() => void deactivatePosition(position)}>غیرفعال‌سازی</button></>}</td></tr>)}</tbody></table></div>
           </> : <p>برای مشاهده سمت‌ها، یک واحد را انتخاب کنید.</p>}
         </section>
         <section style={panel}>
