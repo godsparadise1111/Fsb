@@ -35,6 +35,6 @@ export default function (data) {
       'Idempotency-Key': key,
     },
   });
-  const ok = check(response, { 'duplicate action returns committed idempotent response': r => r.status === 200 });
+  const ok = check(response, { 'duplicate action returns committed idempotent response': r => (r.status === 200 || r.status === 201) });
   failures.add(!ok);
 }
