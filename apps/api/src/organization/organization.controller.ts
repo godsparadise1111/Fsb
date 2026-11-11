@@ -11,11 +11,11 @@ import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.
 export class OrganizationController {
   constructor(private readonly service: OrganizationService) {}
   @RequirePermissions('tenants.manage')
-  @Post() create(@Body() dto: CreateOrganizationDto) { return this.service.createOrganization(dto); }
+  @Post() create(@Body() dto: CreateOrganizationDto, @CurrentUser() user: AuthenticatedUser) { return this.service.createOrganization(dto, user.sub); }
   @RequirePermissions('tenant.organizations.manage')
   @Post('tenant') createForTenant(@Body() dto: CreateOrganizationDto, @CurrentUser() user: AuthenticatedUser) {
     if (!user.tenantId) throw new BadRequestException('An authenticated tenant context is required');
-    return this.service.createOrganization({ ...dto, tenantId: user.tenantId });
+    return this.service.createOrganization({ ...dto, tenantId: user.tenantId }, user.sub);
   }
   @RequirePermissions('organization.read')
   @Get() list(@CurrentUser() user: AuthenticatedUser) { return this.service.listOrganizations(user.tenantId); }
