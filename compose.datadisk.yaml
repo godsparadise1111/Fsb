@@ -1,0 +1,21 @@
+# Optional override: keep PostgreSQL data and private files on the dedicated data disk.
+#
+#   Production: FSB_DATA_DIR=/srv/fsb-data/production
+#   Staging:    FSB_DATA_DIR=/srv/fsb-data/staging
+#
+# Prepare the directories first:  scripts/ops/prepare-data-disk.sh staging
+# Use with a distinct project name so the two environments never share containers/networks:
+#   docker compose -p fsb-staging --env-file .env.staging \
+#     -f compose.production.yaml -f compose.datadisk.yaml up -d
+#
+# Bind mounts with the same container path replace the named volumes of compose.production.yaml.
+services:
+  db:
+    volumes:
+      - ${FSB_DATA_DIR:?Set FSB_DATA_DIR (e.g. /srv/fsb-data/staging)}/postgres:/var/lib/postgresql/data
+  api:
+    volumes:
+      - ${FSB_DATA_DIR:?Set FSB_DATA_DIR}/private-files:/app/apps/api/var/private-files
+  report-worker:
+    volumes:
+      - ${FSB_DATA_DIR:?Set FSB_DATA_DIR}/private-files:/app/apps/api/var/private-files

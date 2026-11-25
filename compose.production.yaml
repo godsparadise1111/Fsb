@@ -1,5 +1,19 @@
 name: fsb
 
+# Shared liveness check for the four background workers. The worker process refreshes
+# /tmp/fsb-worker-heartbeat only after a successful PostgreSQL round-trip (see
+# apps/api/src/common/worker-heartbeat.ts), so "healthy" means the worker is really working.
+x-worker-healthcheck: &worker-healthcheck
+  test:
+    - CMD
+    - node
+    - -e
+    - "try{const s=require('fs').statSync('/tmp/fsb-worker-heartbeat');process.exit(Date.now()-s.mtimeMs<60000?0:1)}catch(e){process.exit(1)}"
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 90s
+
 services:
   db:
     image: postgres:16-alpine
@@ -93,6 +107,7 @@ services:
         condition: service_healthy
     volumes:
       - private_files:/app/apps/api/var/private-files
+    healthcheck: *worker-healthcheck
     networks: [private]
     security_opt: ["no-new-privileges:true"]
 
@@ -116,6 +131,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck: *worker-healthcheck
     networks: [private]
     security_opt: ["no-new-privileges:true"]
 
@@ -139,6 +155,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck: *worker-healthcheck
     networks: [private]
     security_opt: ["no-new-privileges:true"]
 
@@ -162,6 +179,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck: *worker-healthcheck
     networks: [private]
     security_opt: ["no-new-privileges:true"]
 
