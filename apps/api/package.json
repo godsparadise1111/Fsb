@@ -19,7 +19,8 @@
     "worker:recovery": "node dist/notifications/worker.main.js",
     "worker:recovery:dev": "tsx src/notifications/worker.main.ts",
     "test:workflow": "tsx --test src/workflow/workflow.transition.spec.ts",
-    "test:forms": "tsx --test src/forms/form-schema.spec.ts"
+    "test:forms": "tsx --test src/forms/form-schema.spec.ts",
+    "test:auth": "tsx --test src/auth/auth-security.spec.ts src/auth/security-events.spec.ts src/common/http-security.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

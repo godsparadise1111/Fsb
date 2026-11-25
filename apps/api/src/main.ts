@@ -4,6 +4,9 @@ import { NestFactory } from '@nestjs/core';
 import { randomUUID } from 'crypto';
 import { AppModule } from './app.module';
 import { TelemetryService } from './health/telemetry.service';
+import {
+  FixedWindowRateLimiter, callerKey, ipKey, parseTrustProxy, positiveInt, rateLimitMiddleware, securityHeadersMiddleware,
+} from './common/http-security';
 
 async function bootstrap() {
   if (process.env.NODE_ENV === 'production' && process.env.DB_SYNCHRONIZE === 'true') {
@@ -16,17 +19,37 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.setGlobalPrefix('api');
+
+  // Express hardening: never advertise the framework, and only trust X-Forwarded-For from explicitly configured proxies.
+  const http = app.getHttpAdapter().getInstance();
+  http.disable('x-powered-by');
+  const trustProxy = parseTrustProxy(process.env.FSB_TRUST_PROXY);
+  if (trustProxy !== false) http.set('trust proxy', trustProxy);
+  else if (process.env.NODE_ENV === 'production') {
+    console.warn(JSON.stringify({ level: 'warn', event: 'trust_proxy_not_configured',
+      message: 'FSB_TRUST_PROXY is unset: behind a reverse proxy every client appears with the proxy IP. Set it to the number of proxy hops (for example 1).' }));
+  }
+
   app.enableCors({
     origin: process.env.NODE_ENV === 'production' ? allowedOrigins : true,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id', 'X-Request-ID', 'X-FSB-API-Key'],
-    exposedHeaders: ['X-Request-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id', 'X-Request-ID', 'X-FSB-API-Key', 'Idempotency-Key'],
+    exposedHeaders: ['X-Request-ID', 'Retry-After'],
   });
   app.enableShutdownHooks();
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, transform: true, forbidNonWhitelisted: true,
     transformOptions: { enableImplicitConversion: false },
   }));
+
+  app.use(securityHeadersMiddleware({ forceHsts: process.env.FSB_HSTS === 'true' }));
+  if (process.env.FSB_RATE_LIMIT_ENABLED !== 'false') {
+    // Coarse flood guards. Per-account lockout of failed sign-ins is enforced separately in the database.
+    const general = new FixedWindowRateLimiter({ windowMs: 60_000, max: positiveInt(process.env.FSB_RATE_LIMIT_PER_MINUTE, 600) });
+    const authentication = new FixedWindowRateLimiter({ windowMs: 60_000, max: positiveInt(process.env.FSB_AUTH_RATE_LIMIT_PER_MINUTE, 120) });
+    app.use(rateLimitMiddleware(authentication, ipKey, path => path.startsWith('/api/auth/')));
+    app.use(rateLimitMiddleware(general, callerKey));
+  }
 
   const telemetry = app.get(TelemetryService);
   app.use((request: any, response: any, next: () => void) => {
@@ -35,10 +58,6 @@ async function bootstrap() {
       ? supplied : randomUUID();
     const startedAt = process.hrtime.bigint();
     response.setHeader('X-Request-ID', requestId);
-    response.setHeader('X-Content-Type-Options', 'nosniff');
-    response.setHeader('X-Frame-Options', 'DENY');
-    response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     response.on('finish', () => {
       const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
       const route = request.route?.path
