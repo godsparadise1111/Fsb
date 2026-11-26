@@ -18,9 +18,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({ jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), ignoreExpiration: false, secretOrKey: jwtSecret, passReqToCallback: true });
   }
 
-  async validate(request: { headers?: Record<string, string | string[] | undefined> }, payload: { sub: string; username: string; email: string }) {
+  async validate(request: { headers?: Record<string, string | string[] | undefined> }, payload: { sub: string; username: string; email: string; sid?: string }) {
     const activeUser = await this.users.exist({ where: { id: payload.sub, isActive: true } });
     if (!activeUser) throw new UnauthorizedException('User account is inactive or no longer exists');
+
+    // Tokens issued after sessions were introduced carry `sid`; logout revokes the session and kills the access token too.
+    // Tokens without `sid` (issued before this change) stay valid until they expire.
+    if (payload.sid) {
+      const [session] = await this.users.manager.query(
+        'SELECT 1 AS ok FROM auth_refresh_tokens WHERE "familyId" = $1 AND "userId" = $2 AND "revokedAt" IS NULL LIMIT 1',
+        [payload.sid, payload.sub],
+      );
+      if (!session) throw new UnauthorizedException('Session was ended; sign in again');
+    }
 
     const requestedTenantId = request.headers?.['x-tenant-id'];
     if (Array.isArray(requestedTenantId)) throw new UnauthorizedException('Invalid tenant context');
@@ -39,6 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       sub: payload.sub,
       username: payload.username,
       email: payload.email,
+      sid: payload.sid ?? null,
       tenantId: selected?.tenantId ?? null,
       tenantMembershipId: selected?.id ?? null,
       isTenantAdmin: selected?.isTenantAdmin ?? false,
