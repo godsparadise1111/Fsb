@@ -92,6 +92,26 @@ const port = Number(values.FSB_SMTP_PORT || 587);
 if (!Number.isInteger(port) || port < 1 || port > 65535) fail('FSB_SMTP_PORT is invalid.');
 if (values.FSB_SMTP_SECURE && !['true', 'false'].includes(values.FSB_SMTP_SECURE.toLowerCase())) fail('FSB_SMTP_SECURE must be true or false.');
 if (values.FSB_METRICS_TOKEN && values.FSB_METRICS_TOKEN.length < 32) fail('FSB_METRICS_TOKEN must contain at least 32 characters when configured.');
+// ---- Secret hygiene and abuse protection (security phase) ----
+for (const [name, value] of Object.entries(values)) {
+  if (/replace_with|change_me|changeme|your_?secret|password123/i.test(value)) fail(name + ' still contains a placeholder value.');
+}
+const secretNames = ['POSTGRES_PASSWORD', 'JWT_SECRET', 'BOOTSTRAP_TOKEN', 'FSB_OUTBOX_ENCRYPTION_KEY', 'FSB_METRICS_TOKEN'];
+const secretValues = secretNames.map(name => values[name]).filter(Boolean);
+if (new Set(secretValues).size !== secretValues.length) fail('POSTGRES_PASSWORD, JWT_SECRET, BOOTSTRAP_TOKEN, FSB_OUTBOX_ENCRYPTION_KEY and FSB_METRICS_TOKEN must all differ from each other.');
+if (new Set(values.JWT_SECRET).size < 12) fail('JWT_SECRET has too little variety. Generate one with: openssl rand -base64 48');
+if (new Set(key).size < 8) fail('FSB_OUTBOX_ENCRYPTION_KEY looks low-entropy. Generate one with: openssl rand -hex 32');
+const envMode = fs.statSync('.env').mode & 0o777;
+if ((envMode & 0o077) !== 0 && process.env.FSB_ALLOW_LOOSE_ENV_PERMS !== 'YES') fail('.env is readable by other users (mode ' + envMode.toString(8) + '). Run: chmod 600 .env');
+let envTracked = false;
+try { execFileSync('git', ['ls-files', '--error-unmatch', '.env'], { stdio: 'ignore' }); envTracked = true; } catch { /* not tracked, or git is not installed */ }
+if (envTracked) fail('.env is tracked by Git. Remove it from the repository and rotate every secret it contained.');
+const trustProxy = (values.FSB_TRUST_PROXY || '').trim().toLowerCase();
+if (!trustProxy || trustProxy === 'true' || trustProxy === 'false' || trustProxy === '0') fail('Set FSB_TRUST_PROXY to the number of reverse-proxy hops in front of the API (usually 1). Without it every client shares the proxy IP and rate limits cannot tell users apart.');
+for (const name of ['FSB_RATE_LIMIT_PER_MINUTE', 'FSB_AUTH_RATE_LIMIT_PER_MINUTE']) {
+  if (values[name] && !(Number.isInteger(Number(values[name])) && Number(values[name]) >= 1)) fail(name + ' must be a positive integer.');
+}
+if (values.FSB_RATE_LIMIT_ENABLED === 'false') fail('FSB_RATE_LIMIT_ENABLED=false is not allowed in Production.');
 process.stdout.write('Production configuration preflight passed.\n');
 NODE
 
