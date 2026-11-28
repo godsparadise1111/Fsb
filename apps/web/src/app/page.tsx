@@ -36,6 +36,8 @@ export default function Home() {
           <a href="#modules">ماژول‌ها</a>
           <a href="#capabilities">قابلیت‌ها</a>
           <a href="/reports">گزارش‌ها</a>
+          <a href="/login">ورود</a>
+          <a href="/account/security">امنیت حساب</a>
         </nav>
         <span className="fsb-home-status"><i /> محیط توسعه</span>
       </header>
@@ -47,7 +49,7 @@ export default function Home() {
           <p>از ساختار سازمانی و فرم‌های اطلاعاتی تا طراحی گردش‌کار، ارجاع وظایف و تحلیل عملکرد؛ همه در یک بستر یکپارچه، امن و قابل توسعه.</p>
           <div className="fsb-hero-actions">
             <a href="#modules" className="fsb-primary-cta">ورود به ماژول‌ها <span>←</span></a>
-            <a href="http://localhost:3001/api/health" target="_blank" rel="noreferrer" className="fsb-secondary-cta"><span className="fsb-api-dot" /> بررسی وضعیت API</a>
+            <a href={`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '')}/health`} target="_blank" rel="noreferrer" className="fsb-secondary-cta"><span className="fsb-api-dot" /> بررسی وضعیت API</a>
           </div>
           <div className="fsb-hero-proof"><span>✓</span> طراحی‌شده برای عملیات واقعی سازمانی <b>·</b> معماری چندمشتری</div>
         </div>
