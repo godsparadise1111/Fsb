@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, ParseUUIDPipe } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, ParseUUIDPipe, Req } from '@nestjs/common';
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
 import { IdentityService } from './identity.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -10,6 +10,12 @@ import { CurrentUser, AuthenticatedUser } from '../auth/decorators/current-user.
 
 class SetActiveDto { @IsBoolean() isActive: boolean; }
 class GrantRoleDto { @IsUUID() userId: string; @IsUUID() roleId: string; @IsOptional() @IsUUID() organizationId?: string; }
+
+type HttpRequest = { ip?: string; headers: Record<string, string | string[] | undefined> };
+function auditContext(actor: AuthenticatedUser, request: HttpRequest) {
+  const agent = request.headers['user-agent'];
+  return { actorUserId: actor.sub, ip: request.ip, userAgent: Array.isArray(agent) ? agent[0] : agent };
+}
 
 @Controller()
 export class IdentityController {
@@ -23,11 +29,11 @@ export class IdentityController {
   @RequirePermissions('organization.read')
   @Get('organizations/:organizationId/users') listOrganizationUsers(@Param('organizationId', new ParseUUIDPipe()) organizationId: string, @CurrentUser() user: AuthenticatedUser) { return this.identity.listOrganizationUsers(organizationId, user.tenantId); }
   @RequirePermissions('users.manage')
-  @Patch('users/:id/active') setUserActive(@Param('id') id: string, @Body() dto: SetActiveDto) { return this.identity.setUserActive(id, dto.isActive); }
+  @Patch('users/:id/active') setUserActive(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: SetActiveDto, @CurrentUser() actor: AuthenticatedUser, @Req() request: HttpRequest) { return this.identity.setUserActive(id, dto.isActive, auditContext(actor, request)); }
   @RequirePermissions('assignments.manage')
-  @Post('user-positions') assignPosition(@Body() dto: AssignPositionDto) { return this.identity.assignPosition(dto); }
+  @Post('user-positions') assignPosition(@Body() dto: AssignPositionDto, @CurrentUser() actor: AuthenticatedUser, @Req() request: HttpRequest) { return this.identity.assignPosition(dto, auditContext(actor, request)); }
   @RequirePermissions('users.read')
-  @Get('users/:id/positions') listUserPositions(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) { return this.identity.listUserPositions(id, user.tenantId); }
+  @Get('users/:id/positions') listUserPositions(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser) { return this.identity.listUserPositions(id, user.tenantId); }
   @RequirePermissions('permissions.manage')
   @Post('permissions') createPermission(@Body() dto: CreatePermissionDto) { return this.identity.createPermission(dto); }
   @RequirePermissions('permissions.manage')
@@ -37,5 +43,5 @@ export class IdentityController {
   @RequirePermissions('roles.manage')
   @Get('roles') listRoles() { return this.identity.listRoles(); }
   @RequirePermissions('assignments.manage')
-  @Post('user-roles') grantRole(@Body() dto: GrantRoleDto, @CurrentUser() actor: AuthenticatedUser) { return this.identity.grantRole(actor.sub, dto.userId, dto.roleId, dto.organizationId); }
+  @Post('user-roles') grantRole(@Body() dto: GrantRoleDto, @CurrentUser() actor: AuthenticatedUser, @Req() request: HttpRequest) { return this.identity.grantRole(actor.sub, dto.userId, dto.roleId, dto.organizationId, auditContext(actor, request)); }
 }

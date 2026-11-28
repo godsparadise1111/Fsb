@@ -16,6 +16,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { AssignPositionDto } from './dto/assign-position.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { CreatePermissionDto } from './dto/create-permission.dto';
+import { recordSecurityEvent } from '../auth/security-events';
+
+/** Who performed a sensitive administrative action and from where; recorded in auth_security_events. */
+export interface AuditContext { actorUserId?: string; ip?: string; userAgent?: string }
 
 @Injectable()
 export class IdentityService {
@@ -31,6 +35,8 @@ export class IdentityService {
 
   async createUser(dto: CreateUserDto, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required to create a tenant user');
+    // bcrypt silently ignores everything after the 72nd byte; refuse such passwords instead of storing a truncated one.
+    if (Buffer.byteLength(dto.password, 'utf8') > 72) throw new BadRequestException('Password must be at most 72 bytes (about 36 Persian characters)');
     const passwordHash = await bcrypt.hash(dto.password, 12);
     return this.users.manager.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, {
@@ -68,8 +74,8 @@ export class IdentityService {
       .innerJoin('tenants', 'tenant', 'tenant.id = :tenantId AND tenant.status = :tenantStatus', { tenantId, tenantStatus: 'ACTIVE' })
       .where('user.isActive = true').orderBy('user.lastName', 'ASC').addOrderBy('user.firstName', 'ASC').getMany();
   }
-  async setUserActive(id: string, isActive: boolean) {
-    return this.users.manager.transaction(async manager => {
+  async setUserActive(id: string, isActive: boolean, audit: AuditContext = {}) {
+    const saved = await this.users.manager.transaction(async manager => {
       const user = await manager.findOne(User, { where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!user) throw new NotFoundException('User not found');
       if (!isActive && user.isActive) {
@@ -93,9 +99,11 @@ export class IdentityService {
       user.isActive = isActive;
       return manager.save(user);
     });
+    await recordSecurityEvent(this.users.manager, { type: 'USER_ACTIVATION_CHANGED', userId: id, ip: audit.ip, userAgent: audit.userAgent, metadata: { actorUserId: audit.actorUserId, isActive } });
+    return saved;
   }
-  async assignPosition(dto: AssignPositionDto) {
-    return this.users.manager.transaction(async manager => {
+  async assignPosition(dto: AssignPositionDto, audit: AuditContext = {}) {
+    const saved = await this.users.manager.transaction(async manager => {
       const user = await manager.findOne(User, { where: { id: dto.userId, isActive: true }, lock: { mode: 'pessimistic_write' } });
       if (!user) throw new NotFoundException('Active user not found');
       const position = await manager.findOne(Position, {
@@ -127,6 +135,8 @@ export class IdentityService {
         isPrimary: dto.isPrimary ?? false,
       }));
     });
+    await recordSecurityEvent(this.users.manager, { type: 'POSITION_ASSIGNED', userId: dto.userId, ip: audit.ip, userAgent: audit.userAgent, metadata: { actorUserId: audit.actorUserId, positionId: dto.positionId } });
+    return saved;
   }
   async listOrganizationUsers(organizationId: string, tenantId?: string | null) {
     if (!tenantId) throw new ForbiddenException('An active tenant context is required');
@@ -189,7 +199,7 @@ export class IdentityService {
     return this.roles.save(this.roles.create({ code: dto.code, name: dto.name, description: dto.description ?? null, permissions }));
   }
   listRoles() { return this.roles.find({ where: { isActive: true }, relations: { permissions: true }, order: { name: 'ASC' } }); }
-  async grantRole(actorUserId: string, userId: string, roleId: string, organizationId?: string) {
+  async grantRole(actorUserId: string, userId: string, roleId: string, organizationId?: string, audit: AuditContext = {}) {
     if (!await this.users.exist({ where: { id: userId, isActive: true } })) throw new NotFoundException('Active user not found');
     const role = await this.roles.findOne({ where: { id: roleId, isActive: true } });
     if (!role) throw new NotFoundException('Active role not found');
@@ -214,7 +224,10 @@ export class IdentityService {
     }
 
     const existing = await this.userRoles.findOne({ where: { userId, roleId, organizationId: organizationId ?? IsNull() } });
-    if (existing) { existing.isActive = true; return this.userRoles.save(existing); }
-    return this.userRoles.save(this.userRoles.create({ userId, roleId, organizationId: organizationId ?? null }));
+    const saved = existing
+      ? await this.userRoles.save(Object.assign(existing, { isActive: true }))
+      : await this.userRoles.save(this.userRoles.create({ userId, roleId, organizationId: organizationId ?? null }));
+    await recordSecurityEvent(this.users.manager, { type: 'ROLE_GRANTED', userId, ip: audit.ip, userAgent: audit.userAgent, metadata: { actorUserId, roleId, roleCode: role.code, organizationId: organizationId ?? null } });
+    return saved;
   }
 }
