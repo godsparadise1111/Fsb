@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import * as nodemailer from 'nodemailer';
 import { DataSource } from 'typeorm';
 import { NotificationOutboxService } from './notification-outbox.service';
+import { deliverPasswordReset, PASSWORD_RESET_EVENT } from './password-reset-notification';
 
 @Injectable()
 export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
@@ -307,6 +308,12 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
         messageId:`<fsb-report-${jobId}@${baseUrl.hostname}>`,
       });
       return true;
+    }
+    if (item.eventType === PASSWORD_RESET_EVENT) {
+      return deliverPasswordReset(
+        { dataSource: this.dataSource, transporter: this.transporter, outbox: this.outbox, workerId: this.workerId, escapeHtml: value => this.escapeHtml(value) },
+        item,
+      );
     }
     if (item.eventType !== 'tenant.invitation.created') throw new Error(`Unsupported notification event: ${item.eventType}`);
     const invitationId = String(item.payload.invitationId ?? '');
